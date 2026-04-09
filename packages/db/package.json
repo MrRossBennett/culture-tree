@@ -19,6 +19,7 @@
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
     "@types/node": "catalog:",
+    "dotenv": "catalog:",
     "drizzle-kit": "catalog:",
     "typescript": "catalog:"
   },
