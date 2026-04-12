@@ -1,0 +1,174 @@
+{
+  "name": "OK Computer — Radiohead",
+  "type": "root",
+  "source": "ai",
+  "year": 1997,
+  "reason": "",
+  "searchHint": {
+    "title": "OK Computer",
+    "creator": "Radiohead"
+  },
+  "children": [
+    {
+      "name": "Talk Talk — Spirit of Eden",
+      "type": "album",
+      "source": "ai",
+      "year": 1988,
+      "reason": "Both bands abandoned conventional rock structures for ambient, post-rock soundscapes. Mark Hollis dissolved melody into atmosphere the same way Thom Yorke would a decade later—both reaching toward something more elemental than songs.",
+      "connectionType": "influence",
+      "searchHint": {
+        "title": "Spirit of Eden",
+        "creator": "Talk Talk"
+      },
+      "children": [
+        {
+          "name": "AMM — AMMMusic",
+          "type": "album",
+          "source": "ai",
+          "year": 1967,
+          "reason": "The British free improvisation collective that taught both Hollis and later ambient musicians how to make silence as important as sound. Their radical approach to collective non-composition directly influenced Spirit of Eden's organic sprawl.",
+          "connectionType": "influence",
+          "searchHint": {
+            "title": "AMMMusic",
+            "creator": "AMM"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Koyaanisqatsi",
+      "type": "film",
+      "source": "ai",
+      "year": 1982,
+      "reason": "Godfrey Reggio's dialogue-free meditation on technology overwhelming nature, set to Philip Glass's hypnotic minimalism. The same visual poetry as OK Computer: time-lapse cities breathing like machines, humans reduced to patterns, beauty and horror inseparable in the dance of progress.",
+      "connectionType": "thematic",
+      "searchHint": {
+        "title": "Koyaanisqatsi"
+      },
+      "children": [
+        {
+          "name": "Ron Fricke — Chronos",
+          "type": "film",
+          "source": "ai",
+          "year": 1985,
+          "reason": "Fricke's solo follow-up pushes the visual language further—35mm time-lapse cinematography that makes human civilization look like cellular processes under a microscope. Pure visual music about time and entropy.",
+          "connectionType": "spiritual-kin",
+          "searchHint": {
+            "title": "Chronos",
+            "creator": "Ron Fricke"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Brasília",
+      "type": "place",
+      "source": "ai",
+      "reason": "Brazil's modernist capital, designed in the 1950s as a utopian city but experienced as profoundly alienating. The same tension OK Computer explores: rational planning that leaves humans feeling emptier, progress that looks beautiful from above but isolates at ground level.",
+      "connectionType": "thematic",
+      "searchHint": {
+        "title": "Brasília",
+        "location": {
+          "city": "Brasília",
+          "country": "Brazil"
+        }
+      },
+      "children": [
+        {
+          "name": "Lucio Costa",
+          "type": "person",
+          "source": "ai",
+          "reason": "The urban planner who designed Brasília's airplane-shaped master plan. His vision of the city as a machine for living—efficient, rational, inhuman—perfectly captures OK Computer's anxiety about optimization crushing the soul.",
+          "connectionType": "catalyst",
+          "searchHint": {
+            "title": "Lucio Costa",
+            "wikiSlug": "Lucio_Costa"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Andrei Tarkovsky — Stalker",
+      "type": "film",
+      "source": "ai",
+      "year": 1979,
+      "reason": "Three men journey through an industrial wasteland to reach 'The Zone,' where wishes supposedly come true. Tarkovsky's meditation on faith and technology in decay maps directly onto OK Computer's landscape—rusted machinery as spiritual metaphor, progress as slow apocalypse.",
+      "connectionType": "spiritual-kin",
+      "searchHint": {
+        "title": "Stalker",
+        "creator": "Andrei Tarkovsky"
+      },
+      "children": [
+        {
+          "name": "Arkady and Boris Strugatsky — Roadside Picnic",
+          "type": "book",
+          "source": "ai",
+          "year": 1972,
+          "reason": "The Soviet sci-fi novel that inspired Stalker. Alien visitors leave behind mysterious zones filled with deadly artifacts and wish-granting rooms. The Strugatsky brothers wrote technology as cosmic horror—exactly OK Computer's frequency.",
+          "connectionType": "adaptation",
+          "searchHint": {
+            "title": "Roadside Picnic",
+            "creator": "Arkady Strugatsky"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "György Ligeti — Lux Aeterna",
+      "type": "song",
+      "source": "ai",
+      "year": 1966,
+      "reason": "Ligeti's choral composition for 16 voices creates the same vertigo as 'Climbing Up the Walls'—human voices processed into something alien and sublime. Both works use familiar elements (voices, guitars) to reach toward the inhuman.",
+      "connectionType": "spiritual-kin",
+      "searchHint": {
+        "title": "Lux Aeterna",
+        "creator": "György Ligeti"
+      },
+      "children": [
+        {
+          "name": "Hilliard Ensemble — Morimur",
+          "type": "album",
+          "source": "ai",
+          "year": 1999,
+          "reason": "Bach's violin partitas interwoven with Arvo Pärt's mirror compositions—ancient and modern colliding into something that sounds like music from another planet. The same temporal displacement as Ligeti, but through radical simplicity instead of complexity.",
+          "connectionType": "thematic",
+          "searchHint": {
+            "title": "Morimur",
+            "creator": "Hilliard Ensemble"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Miles Davis — Bitches Brew",
+      "type": "album",
+      "source": "ai",
+      "year": 1970,
+      "reason": "The anchor: both albums shocked their core audiences by abandoning familiar structures for something more atmospheric and exploratory. Davis plugged in and went electric; Radiohead unplugged their hearts and went digital.",
+      "connectionType": "influence",
+      "searchHint": {
+        "title": "Bitches Brew",
+        "creator": "Miles Davis"
+      },
+      "children": [
+        {
+          "name": "Teo Macero",
+          "type": "person",
+          "source": "ai",
+          "reason": "Davis's producer who pioneered studio-as-instrument techniques—splicing, looping, treating the mixing board like a compositional tool. His methods directly prefigure how Radiohead and Nigel Godrich would deconstruct rock in the studio.",
+          "connectionType": "influence",
+          "searchHint": {
+            "title": "Teo Macero",
+            "wikiSlug": "Teo_Macero"
+          },
+          "children": []
+        }
+      ]
+    }
+  ]
+}

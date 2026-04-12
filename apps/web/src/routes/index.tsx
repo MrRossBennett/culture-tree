@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { HomePage } from "~/components/home/home-page";
+
 export const Route = createFileRoute("/")({
-  component: HomePage,
+  component: HomeRoute,
 });
 
-function HomePage() {
-  return <div>Hello Culture Tree</div>;
+function HomeRoute() {
+  return <HomePage />;
 }

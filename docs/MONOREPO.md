@@ -44,7 +44,9 @@ culture-tree/                         ← tanstarter-plus base
 │   │   │   │   ├── index.tsx         ← search input + tree display
 │   │   │   │   └── tree.$treeId.tsx  ← view / share a saved tree
 │   │   │   ├── server/
-│   │   │   │   └── culture-tree.ts   ← server fns wrapping engine
+│   │   │   │   ├── culture-tree.ts   ← generate tree server fn
+│   │   │   │   ├── expand.ts         ← grow branch server fn
+│   │   │   │   └── search.ts         ← search-for-node server fn
 │   │   │   ├── components/
 │   │   │   │   ├── SearchInput.tsx
 │   │   │   │   ├── TreeDisplay.tsx
@@ -74,14 +76,15 @@ culture-tree/                         ← tanstarter-plus base
 │   │   ├── src/
 │   │   │   ├── generation/
 │   │   │   │   ├── pipeline.ts       ← multi-pass orchestrator
+│   │   │   │   ├── expand.ts         ← "grow this branch" generation
 │   │   │   │   └── prompts.ts        ← system prompt + few-shot
 │   │   │   ├── enrichment/
 │   │   │   │   ├── pipeline.ts       ← orchestrator + registry
 │   │   │   │   ├── cache.ts          ← Postgres enrichment cache
+│   │   │   │   ├── limiters.ts       ← per-API rate limiters (Bottleneck)
 │   │   │   │   ├── books.ts
-│   │   │   │   ├── films.ts
+│   │   │   │   ├── films.ts          ← TMDB, includes trailer IDs
 │   │   │   │   ├── music.ts
-│   │   │   │   ├── youtube.ts
 │   │   │   │   ├── wikipedia.ts      ← P2
 │   │   │   │   └── places.ts         ← P2
 │   │   │   ├── __tests__/
@@ -98,6 +101,7 @@ culture-tree/                         ← tanstarter-plus base
 │   │   │   ├── blood-meridian-standard.json
 │   │   │   └── nick-cave-boatmans-call-deep.json
 │   │   ├── package.json
+│   │   ├── vitest.config.ts
 │   │   └── tsconfig.json
 │   └── schemas/                      ← ADD: shared Zod types
 │       ├── src/
@@ -145,6 +149,8 @@ culture-tree/                         ← tanstarter-plus base
 Note: tanstarter-plus uses `@repo/` as the package scope (not `@ct/`).
 Use pnpm catalogs for dependency versions where possible.
 
+`@repo/schemas` defines `CultureTree` / `TreeNode` with `NodeSource` (default `ai`) and a root `type` of `root` for generated trees; see `docs/ARCHITECTURE.md`.
+
 ### packages/engine
 
 ```json
@@ -174,6 +180,7 @@ Public API:
 ```typescript
 // packages/engine/src/index.ts
 export { generateTree } from "./generation/pipeline";
+export { expandBranch } from "./generation/expand";
 export { enrichTree } from "./enrichment/pipeline";
 ```
 
@@ -344,10 +351,9 @@ BETTER_AUTH_SECRET=...
 # ADD for Culture Tree engine:
 MOCK_ENGINE=true                     # set false for real API calls
 ANTHROPIC_API_KEY=sk-ant-...
-TMDB_ACCESS_TOKEN=eyJ...
+TMDB_ACCESS_TOKEN=eyJ...             # includes trailer YouTube IDs in response
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
-YOUTUBE_API_KEY=AIza...
 GOOGLE_BOOKS_API_KEY=...
 
 # Phase 2

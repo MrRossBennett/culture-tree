@@ -38,7 +38,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         // scaffold:title
-        title: "TanStarter",
+        title: "Culture Tree",
       },
       {
         name: "description",

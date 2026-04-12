@@ -1,11 +1,13 @@
 export {
   ConnectionType,
   CultureTreeSchema,
+  NodeSource,
   NodeType,
   SearchHintSchema,
   TreeNodeSchema,
   type ConnectionTypeValue,
   type CultureTree,
+  type NodeSourceValue,
   type NodeTypeValue,
   type SearchHint,
   type TreeNode,

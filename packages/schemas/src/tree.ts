@@ -3,10 +3,12 @@ import { z } from "zod";
 export const NodeType = z.enum([
   "book",
   "album",
+  "song",
   "film",
   "tv",
   "artist",
   "podcast",
+  "artwork",
   "place",
   "event",
   "person",
@@ -27,6 +29,8 @@ export const ConnectionType = z.enum([
   "frequented",
   "contemporary",
 ]);
+
+export const NodeSource = z.enum(["ai", "ai-expanded", "user"]);
 
 export const SearchHintSchema = z.object({
   title: z.string(),
@@ -51,6 +55,7 @@ export const SearchHintSchema = z.object({
 
 export type NodeTypeValue = z.infer<typeof NodeType>;
 export type ConnectionTypeValue = z.infer<typeof ConnectionType>;
+export type NodeSourceValue = z.infer<typeof NodeSource>;
 export type SearchHint = z.infer<typeof SearchHintSchema>;
 
 export interface TreeNode {
@@ -60,6 +65,7 @@ export interface TreeNode {
   reason: string;
   connectionType: ConnectionTypeValue;
   searchHint: SearchHint;
+  source: NodeSourceValue;
   children: TreeNode[];
 }
 
@@ -71,6 +77,7 @@ export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
     reason: z.string(),
     connectionType: ConnectionType,
     searchHint: SearchHintSchema,
+    source: NodeSource.default("ai"),
     children: z.array(TreeNodeSchema).default([]),
   }),
 );
@@ -81,6 +88,7 @@ export const CultureTreeSchema = z.object({
   year: z.number().optional(),
   reason: z.string().default(""),
   searchHint: SearchHintSchema,
+  source: NodeSource.default("ai"),
   children: z.array(TreeNodeSchema),
 });
 
