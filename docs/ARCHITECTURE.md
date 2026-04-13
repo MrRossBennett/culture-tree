@@ -58,11 +58,10 @@ Features are gated by phase, not by schema changes.
 │  (query)     │     │  (Vercel AI SDK) │     │   Pipeline      │     │ (to client)  │
 └─────────────┘     └──────────────────┘     └─────────────────┘     └──────────────┘
                            │                        │
-                     Claude API              P1: Google Books
-                     via anthropic               TMDB (w/ trailer IDs)
-                     provider                    Spotify
-                                             P3: Wikipedia / Wikidata
-                                                 Google Places
+                     Claude API              P1: Google Books, TMDB,
+                     via anthropic               MusicBrainz + Cover Art,
+                     provider                    Wikipedia (people / artists)
+                                             P2: Google Places, Wikidata
 ```
 
 ---
@@ -580,11 +579,10 @@ export const EnrichedMediaSchema = z.object({
 
   // Links
   externalUrl: z.string().url().optional(),
-  spotifyUrl: z.string().url().optional(),
-  spotifyPreviewUrl: z.string().url().optional(),
+  // From TMDB videos only — never YouTube Data API (see docs/API_CONNECTIONS.md)
   youtubeVideoId: z.string().optional(),
   youtubeUrl: z.string().url().optional(),
-  wikipediaUrl: z.string().url().optional(), // Phase 2
+  wikipediaUrl: z.string().url().optional(),
 
   // Metadata
   rating: z.number().optional(),
@@ -712,54 +710,9 @@ export async function enrichTV(node: TreeNode): Promise<EnrichedMedia> {
 }
 ```
 
-```typescript
-// src/server/enrichment/music.ts
-let cachedToken: { token: string; expiresAt: number } | null = null;
-
-async function getSpotifyToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.token;
-  }
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${btoa(
-        `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
-      )}`,
-    },
-    body: "grant_type=client_credentials",
-  });
-  const data = await res.json();
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + data.expires_in * 1000 - 60_000,
-  };
-  return data.access_token;
-}
-
-export async function enrichAlbum(node: TreeNode): Promise<EnrichedMedia> {
-  const token = await getSpotifyToken();
-  const { title, creator } = node.searchHint;
-
-  const query = `album:${title} artist:${creator}`;
-  const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=album&limit=1`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  const data = await res.json();
-  const album = data.albums?.items?.[0];
-  if (!album) return {};
-
-  return {
-    coverUrl: album.images?.[0]?.url,
-    thumbnailUrl: album.images?.[2]?.url,
-    spotifyUrl: album.external_urls?.spotify,
-    externalUrl: album.external_urls?.spotify,
-    externalId: album.id,
-  };
-}
-```
+Album and song nodes use **MusicBrainz** (search + metadata) and the
+**Cover Art Archive** (images). No Spotify Web API. See
+`docs/API_CONNECTIONS.md` and `packages/engine/src/enrichment/music.ts`.
 
 Trailer data comes bundled with TMDB's film/TV enrichment via
 `append_to_response=videos`. No separate YouTube API needed — the
@@ -1088,15 +1041,15 @@ enrichment data already attached.
 
 **Search routes by type:**
 
-| Type selected | API searched        | Returns                                |
-| ------------- | ------------------- | -------------------------------------- |
-| book          | Google Books        | title, author, cover, ISBN             |
-| album         | Spotify             | title, artist, album art, Spotify link |
-| film          | TMDB                | title, year, poster, rating            |
-| tv            | TMDB                | title, year, poster, rating            |
-| place         | Google Places       | name, address, coordinates, photos     |
-| event         | Wikipedia           | title, extract, thumbnail              |
-| artist        | Spotify + Wikipedia | name, image, bio                       |
+| Type selected | API searched      | Returns                            |
+| ------------- | ----------------- | ---------------------------------- |
+| book          | Google Books      | title, author, cover, ISBN         |
+| album         | MusicBrainz + CAA | title, artist, cover, MB link      |
+| film          | TMDB              | title, year, poster, rating        |
+| tv            | TMDB              | title, year, poster, rating        |
+| place         | Google Places     | name, address, coordinates, photos |
+| event         | Wikipedia         | title, extract, thumbnail          |
+| artist        | Wikipedia         | name, image, bio                   |
 
 **Server function:**
 
@@ -1117,7 +1070,7 @@ export const searchForNode = createServerFn({ method: "GET" })
       case "book":
         return searchGoogleBooks(query); // returns title, author, cover, ISBN
       case "album":
-        return searchSpotify(query); // returns title, artist, art, link
+        return searchMusicBrainz(query); // returns title, artist, art, MB link
       case "film":
       case "tv":
         return searchTMDB(query, type); // returns title, year, poster
@@ -1240,7 +1193,7 @@ is where things break — and not uniformly.
 | ----------------------- | -------------------------------- | ------------------------------------------- |
 | Google Books            | 1,000/day unauth, 100/100s burst | Medium — burst limit matters for deep trees |
 | TMDB                    | No hard limit (removed 2024)     | Low                                         |
-| Spotify                 | 180 requests/minute (app-wide)   | High — shared pool across all users         |
+| MusicBrainz             | ~1 request/second per app        | High — strict; queue or serialize           |
 | Wikipedia               | No practical limit               | Low                                         |
 | Google Places (Phase 2) | Cost-limited, not rate-limited   | Cost risk, not rate risk                    |
 
@@ -1268,11 +1221,9 @@ export const limiters = {
     maxConcurrent: 10,
   }),
 
-  spotify: new Bottleneck({
-    reservoir: 150, // 150/min (leaves headroom under 180)
-    reservoirRefreshAmount: 150,
-    reservoirRefreshInterval: 60 * 1000,
-    maxConcurrent: 5,
+  musicbrainz: new Bottleneck({
+    maxConcurrent: 1,
+    minTime: 1100, // 1 req/s policy
   }),
 
   tmdb: new Bottleneck({
@@ -1322,7 +1273,7 @@ handles this: failed enrichments silently skip, the tree returns
 with partial media data.
 
 This is the critical UX point: **missing media must never break a
-node**. A Spotify throttle means the album node shows the AI's text
+node**. A MusicBrainz throttle or outage means the album node shows the AI's text
 content without an album cover. The recommendation itself is intact.
 The UI is designed from day one to handle nodes with no media.
 
@@ -1362,7 +1313,6 @@ re-generate.
 | Generated trees    | DB (per query hash)      | 7 days  | Avoid costly re-generation   |
 | Pass 1 output      | DB (per query hash)      | 7 days  | Reuse if user upgrades depth |
 | Enrichment data    | DB (per searchHint hash) | 30 days | API data is stable           |
-| Spotify token      | In-memory                | ~55 min | Expires every 60 min         |
 | Popular trees      | Edge/CDN                 | 1 hour  | Shared trees get traffic     |
 | Wikipedia extracts | DB                       | 90 days | Content rarely changes       |
 | Google Places data | DB                       | 30 days | Status may change            |
@@ -1392,10 +1342,9 @@ MOCK_ENGINE=true
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Phase 1 APIs
-TMDB_ACCESS_TOKEN=eyJ...           # provides film/TV data + embedded trailer IDs
-SPOTIFY_CLIENT_ID=...
-SPOTIFY_CLIENT_SECRET=...
+TMDB_ACCESS_TOKEN=eyJ...           # film/TV; trailer YouTube IDs from TMDB payload only
 GOOGLE_BOOKS_API_KEY=...           # optional, higher rate limits
+MUSICBRAINZ_USER_AGENT=CultureTree/0.1 (you@example.com)
 
 # Phase 2 APIs
 GOOGLE_PLACES_API_KEY=...
@@ -1837,7 +1786,7 @@ Every node is a purchasable thing. Structural advantage over most
 AI products:
 
 - Book nodes → Bookshop.org (~10% commission)
-- Album nodes → Spotify / Bandcamp
+- Album nodes → Bandcamp / retailer affiliates (no Spotify API in-product)
 - Film nodes → JustWatch affiliate program (streaming links)
 - The affiliate link IS a feature, not an interruption. Users
   discovered something and want to consume it.

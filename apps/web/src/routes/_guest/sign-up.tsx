@@ -11,11 +11,11 @@ import { toast } from "sonner";
 
 import { SignInSocialButton } from "~/components/sign-in-social-button";
 
-export const Route = createFileRoute("/_guest/signup")({
-  component: SignupForm,
+export const Route = createFileRoute("/_guest/sign-up")({
+  component: SignUpForm,
 });
 
-function SignupForm() {
+function SignUpForm() {
   const { redirectUrl } = Route.useRouteContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -69,9 +69,9 @@ function SignupForm() {
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEndIcon className="size-6" />
               </div>
-              <span className="sr-only">Acme Inc.</span>
+              <span className="sr-only">Culture Tree</span>
             </Link>
-            <h1 className="text-xl font-bold">Sign up for Acme Inc.</h1>
+            <h1 className="text-xl font-bold">Sign up for Culture Tree</h1>
           </div>
           <div className="flex flex-col gap-5">
             <div className="grid gap-2">
@@ -145,8 +145,8 @@ function SignupForm() {
 
       <div className="text-center text-sm">
         Already have an account?{" "}
-        <Link to="/login" className="underline underline-offset-4">
-          Login
+        <Link to="/sign-in" className="underline underline-offset-4">
+          Sign in
         </Link>
       </div>
     </div>

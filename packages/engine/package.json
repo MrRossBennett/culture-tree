@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
+    "@repo/db": "workspace:*",
     "@repo/schemas": "workspace:*",
     "ai": "catalog:",
+    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

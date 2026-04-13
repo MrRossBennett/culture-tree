@@ -3,6 +3,7 @@ export {
   CultureTreeSchema,
   NodeSource,
   NodeType,
+  normalizeCultureTreeOutput,
   SearchHintSchema,
   TreeNodeSchema,
   type ConnectionTypeValue,
@@ -15,6 +16,11 @@ export {
 
 export { TreeRequestSchema, type TreeRequest } from "./input";
 
-export { EnrichedMediaSchema, type EnrichedMedia } from "./enrichment";
+export {
+  EnrichedMediaSchema,
+  TreeEnrichmentsMapSchema,
+  type EnrichedMedia,
+  type TreeEnrichmentsMap,
+} from "./enrichment";
 
 export { RatedConnectionSchema, type RatedConnection } from "./quality";

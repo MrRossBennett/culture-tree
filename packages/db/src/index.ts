@@ -7,7 +7,23 @@ import { relations } from "./schema/relations";
 
 const { relations: authRelations, ...schema } = schemas;
 
-const client = postgres(process.env.DATABASE_URL as string);
+/** Node tries IPv6 for `localhost` first; Docker Postgres is usually IPv4-only → ECONNREFUSED. */
+function resolveDatabaseUrl(raw: string | undefined): string {
+  if (raw == null || raw.trim() === "") {
+    throw new Error("DATABASE_URL is missing. Set it in apps/web/.env (see .env.example).");
+  }
+  try {
+    const url = new URL(raw);
+    if (url.hostname === "localhost") {
+      url.hostname = "127.0.0.1";
+    }
+    return url.href;
+  } catch {
+    return raw;
+  }
+}
+
+const client = postgres(resolveDatabaseUrl(process.env.DATABASE_URL));
 
 export const db = drizzle({
   client,

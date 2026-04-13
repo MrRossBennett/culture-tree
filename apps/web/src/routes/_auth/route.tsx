@@ -3,7 +3,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 /**
  * This is the _auth layout, which enables 'protected routes'
- * for all child routes under _auth (e.g. _auth/app/*)
+ * for all child routes under _auth (e.g. _auth/settings/*)
  *
  * The returned context from beforeLoad is also available to all child routes & loaders.
  */
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/_auth")({
       revalidateIfStale: true,
     });
     if (!user) {
-      throw redirect({ to: "/login" });
+      throw redirect({ to: "/sign-in" });
     }
 
     // return context for use in child routes & loaders

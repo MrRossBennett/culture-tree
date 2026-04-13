@@ -14,6 +14,10 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
+import { AppFooter } from "~/components/app-footer";
+import { AppHeader } from "~/components/app-header";
+import { SignInDialogHost } from "~/components/sign-in-dialog-host";
+
 import appCss from "~/styles.css?url";
 
 interface MyRouterContext {
@@ -75,7 +79,17 @@ function RootDocument({ children }: { readonly children: React.ReactNode }) {
         </ScriptOnce>
 
         <ThemeProvider>
-          {children}
+          <SignInDialogHost>
+            <div className="flex min-h-svh flex-col bg-background text-foreground">
+              <div className="relative z-10 flex w-full justify-center">
+                <AppHeader />
+              </div>
+              <div className="relative z-2 flex min-h-0 flex-1 flex-col">{children}</div>
+              <div className="relative z-10 flex w-full justify-center">
+                <AppFooter />
+              </div>
+            </div>
+          </SignInDialogHost>
           <Toaster richColors />
         </ThemeProvider>
 

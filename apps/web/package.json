@@ -14,6 +14,8 @@
     "@icons-pack/react-simple-icons": "catalog:",
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/engine": "workspace:*",
+    "@repo/schemas": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tanstack/react-form-start": "catalog:",
     "@tanstack/react-query": "catalog:",

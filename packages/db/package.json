@@ -9,6 +9,7 @@
   },
   "scripts": {
     "db": "drizzle-kit",
+    "db:studio": "drizzle-kit studio",
     "auth:generate": "vpx https://pkg.pr.new/better-auth/better-auth/@better-auth/cli@6913 generate --config ../auth/src/auth.ts --y --output ./src/schema/auth.schema.ts"
   },
   "dependencies": {

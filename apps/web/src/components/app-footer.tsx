@@ -1,4 +1,4 @@
-export function HomeFooter() {
+export function AppFooter() {
   return (
     <footer className="relative z-10 mt-auto w-full max-w-3xl border-t border-border/60 px-4 py-10 sm:px-6 md:px-0 md:py-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">

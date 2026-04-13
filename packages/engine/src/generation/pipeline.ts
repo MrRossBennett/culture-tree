@@ -2,26 +2,41 @@ import { anthropic } from "@ai-sdk/anthropic";
 import {
   CultureTreeSchema,
   TreeRequestSchema,
+  normalizeCultureTreeOutput,
   type CultureTree,
   type TreeRequest,
 } from "@repo/schemas";
-import { generateText, Output } from "ai";
+import { Output, generateText } from "ai";
 
+import { mockCultureTreeForRequest } from "../fixtures/mock-tree";
 import { SYSTEM_PROMPT, buildPass1Prompt, buildPass2Prompt, buildPass3Prompt } from "./prompts";
 
 const model = anthropic("claude-sonnet-4-20250514");
 
-async function generatePass(system: string, prompt: string): Promise<CultureTree> {
+async function generatePass(
+  system: string,
+  prompt: string,
+  seedLabel: string,
+): Promise<CultureTree> {
   const result = await generateText({
     model,
-    output: Output.object({ schema: CultureTreeSchema }),
     system,
     prompt,
+    output: Output.object({
+      name: "CultureTree",
+      description:
+        "Culture connection tree: every node has searchHint.title (work title or primary label) and searchHint.creator (author/artist/etc.) as separate strings when the node type is a creative work.",
+      schema: CultureTreeSchema,
+    }),
   });
-  return result.output;
+  return normalizeCultureTreeOutput(result.output, seedLabel);
 }
 
 export async function generateTree(request: TreeRequest): Promise<CultureTree> {
+  if (process.env.MOCK_ENGINE === "true") {
+    return mockCultureTreeForRequest(request);
+  }
+
   const data = TreeRequestSchema.parse(request);
   const { query, depth, mediaFilter, tone } = data;
 
@@ -34,13 +49,14 @@ export async function generateTree(request: TreeRequest): Promise<CultureTree> {
   const pass1 = await generatePass(
     SYSTEM_PROMPT,
     buildPass1Prompt(query, depthConfig, mediaFilter, tone),
+    query,
   );
 
   if (depth === "shallow") return pass1;
 
-  const pass2 = await generatePass(SYSTEM_PROMPT, buildPass2Prompt(query, pass1, tone));
+  const pass2 = await generatePass(SYSTEM_PROMPT, buildPass2Prompt(query, pass1, tone), query);
 
   if (depth === "standard") return pass2;
 
-  return await generatePass(SYSTEM_PROMPT, buildPass3Prompt(query, pass2));
+  return await generatePass(SYSTEM_PROMPT, buildPass3Prompt(query, pass2), query);
 }

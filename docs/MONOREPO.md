@@ -351,9 +351,7 @@ BETTER_AUTH_SECRET=...
 # ADD for Culture Tree engine:
 MOCK_ENGINE=true                     # set false for real API calls
 ANTHROPIC_API_KEY=sk-ant-...
-TMDB_ACCESS_TOKEN=eyJ...             # includes trailer YouTube IDs in response
-SPOTIFY_CLIENT_ID=...
-SPOTIFY_CLIENT_SECRET=...
+TMDB_ACCESS_TOKEN=eyJ...             # film/TV; trailer fields come from TMDB videos payload (not YouTube API)
 GOOGLE_BOOKS_API_KEY=...
 
 # Phase 2
@@ -409,8 +407,8 @@ unless you need to customise:
 4. **Build the MVP page in `apps/web/`** — text input, generate button,
    tree rendered with shadcn cards using the fixture. All free.
 
-5. **Add enrichment** — books first (Google Books, simplest API). Then
-   films (TMDB). Then music (Spotify). Build the cache immediately.
+5. **Add enrichment** — books first (Google Books). Then films/TV (TMDB).
+   Then music (MusicBrainz + Cover Art Archive). Build the cache immediately.
 
 6. **Add DB tables** — trees, enrichment cache. Wire up saving.
 

@@ -10,11 +10,11 @@ import { toast } from "sonner";
 
 import { SignInSocialButton } from "~/components/sign-in-social-button";
 
-export const Route = createFileRoute("/_guest/login")({
-  component: LoginForm,
+export const Route = createFileRoute("/_guest/sign-in")({
+  component: SignInForm,
 });
 
-function LoginForm() {
+function SignInForm() {
   const { redirectUrl } = Route.useRouteContext();
 
   const { mutate: emailLoginMutate, isPending } = useMutation({
@@ -28,12 +28,6 @@ function LoginForm() {
           onError: ({ error }) => {
             toast.error(error.message || "An error occurred while signing in.");
           },
-          // better-auth seems to trigger a hard navigation on login,
-          // so we don't have to revalidate & navigate ourselves
-          // onSuccess: () => {
-          //   queryClient.removeQueries({ queryKey: authQueryOptions().queryKey });
-          //   navigate({ to: redirectUrl });
-          // },
         },
       ),
   });
@@ -60,9 +54,9 @@ function LoginForm() {
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEndIcon className="size-6" />
               </div>
-              <span className="sr-only">Acme Inc.</span>
+              <span className="sr-only">Culture Tree</span>
             </Link>
-            <h1 className="text-xl font-bold">Welcome back to Acme Inc.</h1>
+            <h1 className="text-xl font-bold">Welcome back to Culture Tree</h1>
           </div>
           <div className="flex flex-col gap-5">
             <div className="grid gap-2">
@@ -114,7 +108,7 @@ function LoginForm() {
 
       <div className="text-center text-sm">
         Don&apos;t have an account?{" "}
-        <Link to="/signup" className="underline underline-offset-4">
+        <Link to="/sign-up" className="underline underline-offset-4">
           Sign up
         </Link>
       </div>

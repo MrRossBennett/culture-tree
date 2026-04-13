@@ -6,7 +6,13 @@
       "~/*": ["./src/*"],
 
       // for shadcn CLI
-      "@repo/ui/*": ["../../packages/ui/*"]
+      "@repo/ui/*": ["../../packages/ui/*"],
+
+      "@repo/schemas": ["../../packages/schemas/src/index.ts"],
+      "@repo/schemas/*": ["../../packages/schemas/src/*"],
+
+      "@repo/engine": ["../../packages/engine/src/index.ts"],
+      "@repo/engine/*": ["../../packages/engine/src/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

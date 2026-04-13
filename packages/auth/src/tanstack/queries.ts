@@ -4,7 +4,7 @@ import { $getUser } from "./functions";
 
 /**
  * This query is mainly used in _auth/route.tsx, which is the _auth layout
- * that protects all child routes under it (e.g. _auth/app/*)
+ * that protects all child routes under it (e.g. _auth/settings/*)
  */
 export const authQueryOptions = () =>
   queryOptions({

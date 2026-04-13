@@ -13,7 +13,7 @@ const SUGGESTIONS = [
 
 export function HomeSuggestions() {
   return (
-    <section className="relative z-10 mx-auto w-full max-w-3xl space-y-4 px-4 pb-8 sm:px-6 md:px-0">
+    <section className="relative z-10 mx-auto w-full max-w-3xl space-y-4 px-4 sm:px-6 md:px-0">
       <p className="font-mono text-[0.65rem] tracking-[0.2em] text-muted-foreground uppercase">
         Try something
       </p>

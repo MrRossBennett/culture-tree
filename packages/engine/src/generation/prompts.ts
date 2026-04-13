@@ -75,19 +75,23 @@ Rules:
 - Deeper nodes (children of children) should get MORE obscure, not less.
   The second level is where you earn trust. The third level is where you
   blow minds.
-- "searchHint" must be precise enough to find the item via API search.
-  - For books: exact title + creator (author)
-  - For albums: exact title + creator (artist)
-  - For songs: exact title + creator (artist); include year if it disambiguates
-  - For artwork: work title + creator (artist); include medium or collection if needed to disambiguate
-  - For films/TV: exact title + year
-  - For places: name + location (city, country, address if notable)
+- "searchHint" must be precise enough to find the item via API search. Put the work title (or primary label) in searchHint.title ONLY — never "Title — Artist" in title. Put the creator in searchHint.creator (author for books, artist/band for music; for film/TV use creator when it helps search). "name" may stay a readable label like "Title — Creator" for humans, but searchHint must stay split.
+  - For books: searchHint.title = title, searchHint.creator = author
+  - For albums/songs: title + artist/band in separate fields
+  - For songs: include year on the node or in title only if needed to disambiguate
+  - For artwork: title + artist in separate fields; use extra search fields if needed to disambiguate
+  - For films/TV: title in searchHint.title; year on node or in title if needed; optional creator
+  - For places: name + location (city, country, address if notable); creator usually omitted
   - For events: name + wikiSlug (Wikipedia article slug) + dateRange
   - For people: full name + wikiSlug
   - For articles: article title + wikiSlug or URL
 - connectionType should accurately describe the relationship.
 - A great tree tells a STORY. The branches should feel like a curated
-  exhibition, not a random list.`;
+  exhibition, not a random list.
+
+Output:
+- Fill the structured CultureTree schema exactly (the runtime enforces it).
+  No markdown fences, no commentary before or after the object.`;
 
 export function buildPass1Prompt(
   query: string,

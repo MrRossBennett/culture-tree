@@ -5,9 +5,9 @@ export const EnrichedMediaSchema = z.object({
   thumbnailUrl: z.url().optional(),
 
   externalUrl: z.url().optional(),
-  spotifyUrl: z.url().optional(),
-  spotifyPreviewUrl: z.url().optional(),
+  /** Trailer ID from TMDB `videos` only — never from YouTube Data API. */
   youtubeVideoId: z.string().optional(),
+  /** Watch URL built from `youtubeVideoId`; not from YouTube API. */
   youtubeUrl: z.url().optional(),
   wikipediaUrl: z.url().optional(),
 
@@ -27,6 +27,15 @@ export const EnrichedMediaSchema = z.object({
 
   wikiExtract: z.string().optional(),
   eventDate: z.string().optional(),
+
+  /** Populated for song nodes when MusicBrainz resolves a release (often the studio album). */
+  musicAlbumTitle: z.string().optional(),
+  musicAlbumExternalUrl: z.url().optional(),
 });
 
 export type EnrichedMedia = z.infer<typeof EnrichedMediaSchema>;
+
+/** Per-tree enrichments keyed by branch node id from {@link flattenBranchNodes}. */
+export const TreeEnrichmentsMapSchema = z.record(z.string(), EnrichedMediaSchema);
+
+export type TreeEnrichmentsMap = z.infer<typeof TreeEnrichmentsMapSchema>;

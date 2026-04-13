@@ -1,10 +1,23 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
+import { loadEnv } from "vite";
 import { defineConfig } from "vite-plus";
+
+const webRoot = fileURLToPath(new URL(".", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const mode = process.env.NODE_ENV === "production" ? "production" : "development";
+for (const [key, value] of Object.entries(loadEnv(mode, webRoot, ""))) {
+  if (process.env[key] === undefined && value !== "") {
+    process.env[key] = value;
+  }
+}
 
 export default defineConfig({
   run: {
@@ -36,6 +49,10 @@ export default defineConfig({
 
   resolve: {
     tsconfigPaths: true,
+    alias: {
+      "@repo/schemas": resolve(repoRoot, "packages/schemas/src/index.ts"),
+      "@repo/engine": resolve(repoRoot, "packages/engine/src/index.ts"),
+    },
   },
   server: {
     port: 3000,

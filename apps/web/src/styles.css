@@ -1,8 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap");
+
 @import "@repo/ui/styles/base.css";
 @source "./";
 
 @import "@fontsource-variable/jetbrains-mono";
-@import "@fontsource/instrument-serif";
 @import "@fontsource/source-serif-4";
 
 @theme inline {

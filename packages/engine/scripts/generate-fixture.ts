@@ -41,6 +41,12 @@ function reorderNode(n: Record<string, unknown>): Record<string, unknown> {
 }
 
 export async function runFixture(query: string, fileName: string): Promise<void> {
+  if (process.env.MOCK_ENGINE === "true") {
+    console.error(
+      "MOCK_ENGINE must be false when capturing fixtures (otherwise generateTree returns mock data). Unset it or run with MOCK_ENGINE=false.",
+    );
+    process.exit(1);
+  }
   const raw = await generateTree({
     query,
     depth: "standard",
