@@ -84,7 +84,8 @@ Rules:
   - For places: name + location (city, country, address if notable); creator usually omitted
   - For events: name + wikiSlug (Wikipedia article slug) + dateRange
   - For people: full name + wikiSlug
-  - For articles: article title + wikiSlug or URL
+  - For articles: one-off written piece (essay, feature, famous blog post) — searchHint.title + wikiSlug or URL
+  - For publications: recurring periodical (magazine, zine, journal, newspaper) — publication name in title + wikiSlug (e.g. Punk_(magazine)); do NOT use "article" for magazines
 - connectionType should accurately describe the relationship.
 - A great tree tells a STORY. The branches should feel like a curated
   exhibition, not a random list.

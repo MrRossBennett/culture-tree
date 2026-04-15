@@ -15,6 +15,11 @@ export const $getUser = createServerFn({ method: "GET" }).handler(async () => {
   return user;
 });
 
+/** Bypass session cookie cache; use after mutations that change the user row (e.g. onboarding). */
+export const $getUserFresh = createServerFn({ method: "GET" }).handler(async () => {
+  return _getUser({ disableCookieCache: true });
+});
+
 interface GetUserServerQuery {
   disableCookieCache?: boolean | undefined;
   disableRefresh?: boolean | undefined;

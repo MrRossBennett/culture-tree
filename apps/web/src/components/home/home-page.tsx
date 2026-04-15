@@ -1,7 +1,7 @@
 import { HomeHero } from "~/components/home/home-hero";
-import { HomeRecentTrees } from "~/components/home/home-recent-trees";
 import { HomeSeedForm } from "~/components/home/home-seed-form";
 import { HomeSuggestions } from "~/components/home/home-suggestions";
+import { HomeYourTrees } from "~/components/your-trees-section";
 
 export function HomePage() {
   return (
@@ -10,7 +10,7 @@ export function HomePage() {
         <main className="flex w-full flex-1 flex-col items-center gap-8 md:p-8">
           <HomeHero />
           <HomeSeedForm />
-          <HomeRecentTrees />
+          <HomeYourTrees />
           <HomeSuggestions />
         </main>
       </div>

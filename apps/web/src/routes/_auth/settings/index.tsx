@@ -16,6 +16,11 @@ function SettingsIndex() {
       </p>
       <p className="font-mono text-xs text-muted-foreground">
         Signed in as {user?.email ?? user?.name}
+        {user?.username ? (
+          <>
+            <br />@{user.username}
+          </>
+        ) : null}
       </p>
     </div>
   );

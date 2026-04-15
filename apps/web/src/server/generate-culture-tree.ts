@@ -21,6 +21,7 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
       seedQuery: data.query,
       depth: data.depth,
       tone: data.tone,
+      isPublic: false,
     });
 
     if (process.env.MOCK_ENGINE !== "true") {

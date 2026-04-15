@@ -1,4 +1,5 @@
 import type { AuthQueryResult } from "@repo/auth/tanstack/queries";
+import { authQueryOptions } from "@repo/auth/tanstack/queries";
 import { Toaster } from "@repo/ui/components/sonner";
 import { ThemeProvider } from "@repo/ui/lib/theme-provider";
 import { a11yDevtoolsPlugin } from "@tanstack/devtools-a11y/react";
@@ -9,6 +10,7 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import {
   createRootRouteWithContext,
   HeadContent,
+  redirect,
   ScriptOnce,
   Scripts,
 } from "@tanstack/react-router";
@@ -26,11 +28,22 @@ interface MyRouterContext {
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
-  // Typically we don't need the user immediately in landing pages.
-  // For protected routes with loader data, see /_auth/route.tsx
-  // beforeLoad: ({ context }) => {
-  //   context.queryClient.prefetchQuery(authQueryOptions());
-  // },
+  beforeLoad: async ({ context, location }) => {
+    const user = await context.queryClient.ensureQueryData({
+      ...authQueryOptions(),
+      revalidateIfStale: true,
+    });
+    const path = location.pathname;
+    if (
+      user &&
+      !user.username &&
+      path !== "/onboarding" &&
+      !path.startsWith("/api/") &&
+      !path.startsWith("/tree/")
+    ) {
+      throw redirect({ to: "/onboarding" });
+    }
+  },
   head: () => ({
     meta: [
       {

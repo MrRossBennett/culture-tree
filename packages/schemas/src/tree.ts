@@ -13,6 +13,7 @@ export const NodeType = z.enum([
   "event",
   "person",
   "article",
+  "publication",
 ]);
 
 export const ConnectionType = z.enum([
@@ -103,6 +104,13 @@ export const CultureTreeSchema = z.object({
 
 export type CultureTree = z.infer<typeof CultureTreeSchema>;
 
+/** Total nodes in the tree (root and all descendants). */
+export function countCultureTreeNodes(tree: CultureTree): number {
+  const walk = (n: TreeNode | CultureTree): number =>
+    1 + n.children.reduce((sum, c) => sum + walk(c), 0);
+  return walk(tree);
+}
+
 const DEFAULT_CHILD_CONNECTION: ConnectionTypeValue = "thematic";
 
 /** Model typos vs schema enum */
@@ -184,6 +192,13 @@ function normalizeSearchHint(
   }
 
   return { title: defaultTitle.trim() || "Untitled" };
+}
+
+export function deriveSearchHintFromName(
+  name: string,
+  nodeType: NodeTypeValue | "root",
+): SearchHint {
+  return normalizeSearchHint(undefined, name, nodeType);
 }
 
 function finalizeSearchHints(tree: CultureTree): CultureTree {

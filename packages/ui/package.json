@@ -25,6 +25,7 @@
     "sonner": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:",
+    "vaul": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

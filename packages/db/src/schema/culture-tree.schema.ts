@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { user } from "./auth.schema";
 
@@ -15,6 +15,8 @@ export const cultureTree = pgTable(
     depth: text("depth").notNull(),
     tone: text("tone").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    /** When true, anyone can view `/tree/$id` without signing in. */
+    isPublic: boolean("is_public").default(false).notNull(),
     /** Map of branch node id (e.g. root-0-1) → {@link EnrichedMedia}. */
     enrichmentData: jsonb("enrichment_data"),
   },

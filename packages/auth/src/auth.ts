@@ -16,6 +16,21 @@ export const auth = betterAuth({
     schema,
   }),
 
+  user: {
+    additionalFields: {
+      username: {
+        type: "string",
+        required: false,
+        input: false,
+      },
+      bio: {
+        type: "string",
+        required: false,
+        input: false,
+      },
+    },
+  },
+
   // https://www.better-auth.com/docs/integrations/tanstack#usage-tips
   plugins: [tanstackStartCookies()],
 

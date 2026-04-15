@@ -18,9 +18,12 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as TreeTreeIdRouteImport } from './routes/tree/$treeId'
 import { Route as GuestSignUpRouteImport } from './routes/_guest/sign-up'
 import { Route as GuestSignInRouteImport } from './routes/_guest/sign-in'
+import { Route as AuthOnboardingRouteImport } from './routes/_auth/onboarding'
 import { Route as AuthSettingsRouteRouteImport } from './routes/_auth/settings/route'
 import { Route as AuthSettingsIndexRouteImport } from './routes/_auth/settings/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AuthSettingsProfileRouteImport } from './routes/_auth/settings/profile'
+import { Route as AuthCuratorUsernameRouteImport } from './routes/_auth/curator/$username'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -65,6 +68,11 @@ const GuestSignInRoute = GuestSignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => GuestRouteRoute,
 } as any)
+const AuthOnboardingRoute = AuthOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 const AuthSettingsRouteRoute = AuthSettingsRouteRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -80,6 +88,16 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSettingsProfileRoute = AuthSettingsProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthSettingsRouteRoute,
+} as any)
+const AuthCuratorUsernameRoute = AuthCuratorUsernameRouteImport.update({
+  id: '/curator/$username',
+  path: '/curator/$username',
+  getParentRoute: () => AuthRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -87,9 +105,12 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
+  '/onboarding': typeof AuthOnboardingRoute
   '/sign-in': typeof GuestSignInRoute
   '/sign-up': typeof GuestSignUpRoute
   '/tree/$treeId': typeof TreeTreeIdRoute
+  '/curator/$username': typeof AuthCuratorUsernameRoute
+  '/settings/profile': typeof AuthSettingsProfileRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/settings/': typeof AuthSettingsIndexRoute
 }
@@ -98,9 +119,12 @@ export interface FileRoutesByTo {
   '/app': typeof AppRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/onboarding': typeof AuthOnboardingRoute
   '/sign-in': typeof GuestSignInRoute
   '/sign-up': typeof GuestSignUpRoute
   '/tree/$treeId': typeof TreeTreeIdRoute
+  '/curator/$username': typeof AuthCuratorUsernameRoute
+  '/settings/profile': typeof AuthSettingsProfileRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/settings': typeof AuthSettingsIndexRoute
 }
@@ -113,9 +137,12 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
+  '/_auth/onboarding': typeof AuthOnboardingRoute
   '/_guest/sign-in': typeof GuestSignInRoute
   '/_guest/sign-up': typeof GuestSignUpRoute
   '/tree/$treeId': typeof TreeTreeIdRoute
+  '/_auth/curator/$username': typeof AuthCuratorUsernameRoute
+  '/_auth/settings/profile': typeof AuthSettingsProfileRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_auth/settings/': typeof AuthSettingsIndexRoute
 }
@@ -127,9 +154,12 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/settings'
+    | '/onboarding'
     | '/sign-in'
     | '/sign-up'
     | '/tree/$treeId'
+    | '/curator/$username'
+    | '/settings/profile'
     | '/api/auth/$'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
@@ -138,9 +168,12 @@ export interface FileRouteTypes {
     | '/app'
     | '/login'
     | '/signup'
+    | '/onboarding'
     | '/sign-in'
     | '/sign-up'
     | '/tree/$treeId'
+    | '/curator/$username'
+    | '/settings/profile'
     | '/api/auth/$'
     | '/settings'
   id:
@@ -152,9 +185,12 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_auth/settings'
+    | '/_auth/onboarding'
     | '/_guest/sign-in'
     | '/_guest/sign-up'
     | '/tree/$treeId'
+    | '/_auth/curator/$username'
+    | '/_auth/settings/profile'
     | '/api/auth/$'
     | '/_auth/settings/'
   fileRoutesById: FileRoutesById
@@ -235,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GuestSignInRouteImport
       parentRoute: typeof GuestRouteRoute
     }
+    '/_auth/onboarding': {
+      id: '/_auth/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthOnboardingRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
     '/_auth/settings': {
       id: '/_auth/settings'
       path: '/settings'
@@ -256,14 +299,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_auth/settings/profile': {
+      id: '/_auth/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthSettingsProfileRouteImport
+      parentRoute: typeof AuthSettingsRouteRoute
+    }
+    '/_auth/curator/$username': {
+      id: '/_auth/curator/$username'
+      path: '/curator/$username'
+      fullPath: '/curator/$username'
+      preLoaderRoute: typeof AuthCuratorUsernameRouteImport
+      parentRoute: typeof AuthRouteRoute
+    }
   }
 }
 
 interface AuthSettingsRouteRouteChildren {
+  AuthSettingsProfileRoute: typeof AuthSettingsProfileRoute
   AuthSettingsIndexRoute: typeof AuthSettingsIndexRoute
 }
 
 const AuthSettingsRouteRouteChildren: AuthSettingsRouteRouteChildren = {
+  AuthSettingsProfileRoute: AuthSettingsProfileRoute,
   AuthSettingsIndexRoute: AuthSettingsIndexRoute,
 }
 
@@ -272,10 +331,14 @@ const AuthSettingsRouteRouteWithChildren =
 
 interface AuthRouteRouteChildren {
   AuthSettingsRouteRoute: typeof AuthSettingsRouteRouteWithChildren
+  AuthOnboardingRoute: typeof AuthOnboardingRoute
+  AuthCuratorUsernameRoute: typeof AuthCuratorUsernameRoute
 }
 
 const AuthRouteRouteChildren: AuthRouteRouteChildren = {
   AuthSettingsRouteRoute: AuthSettingsRouteRouteWithChildren,
+  AuthOnboardingRoute: AuthOnboardingRoute,
+  AuthCuratorUsernameRoute: AuthCuratorUsernameRoute,
 }
 
 const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(

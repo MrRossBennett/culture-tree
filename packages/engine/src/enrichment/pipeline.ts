@@ -23,14 +23,8 @@ function bookNeedsCoverRetry(cached: EnrichedMedia): boolean {
   return noArt && Boolean(cached.externalUrl?.trim() || cached.description?.trim());
 }
 
-/** Artwork rows cached before artist-image fallback may have article text but no thumbnail — re-fetch. */
-function artworkNeedsImageRetry(cached: EnrichedMedia): boolean {
-  const noArt = !cached.coverUrl?.trim() && !cached.thumbnailUrl?.trim();
-  return noArt && Boolean(cached.wikipediaUrl?.trim() || cached.wikiExtract?.trim());
-}
-
-/** Song rows cached before artist image fallback may have text but no art — re-fetch. */
-function songNeedsImageRetry(cached: EnrichedMedia): boolean {
+/** Wikipedia-backed row with text/URL but no lead image yet — re-fetch (artwork, song, article, publication). */
+function wikiBackedButMissingImage(cached: EnrichedMedia): boolean {
   const noArt = !cached.coverUrl?.trim() && !cached.thumbnailUrl?.trim();
   return noArt && Boolean(cached.wikipediaUrl?.trim() || cached.wikiExtract?.trim());
 }
@@ -43,6 +37,10 @@ const enricherRegistry: Partial<Record<NodeTypeValue, Enricher>> = {
   song: fetchWikipediaSongEnrichment,
   person: fetchWikipediaEnrichment,
   artist: fetchWikipediaEnrichment,
+  /** Stand-alone piece (essay, feature, notable post) — Wikipedia when wikiSlug/title matches. */
+  article: fetchWikipediaEnrichment,
+  /** Periodical: magazine, zine, journal, newspaper — same Wikipedia enrichment as article. */
+  publication: fetchWikipediaEnrichment,
   artwork: fetchWikipediaArtworkEnrichment,
 };
 
@@ -60,8 +58,11 @@ async function enrichOneBranchNode(
     if (cached && hasEnrichmentData(cached)) {
       const stalePartial =
         (node.type === "book" && bookNeedsCoverRetry(cached)) ||
-        (node.type === "artwork" && artworkNeedsImageRetry(cached)) ||
-        (node.type === "song" && songNeedsImageRetry(cached));
+        ((node.type === "artwork" ||
+          node.type === "song" ||
+          node.type === "article" ||
+          node.type === "publication") &&
+          wikiBackedButMissingImage(cached));
       if (!stalePartial) {
         return { id: nodeId, media: cached };
       }

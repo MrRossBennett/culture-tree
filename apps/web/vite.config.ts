@@ -19,7 +19,15 @@ for (const [key, value] of Object.entries(loadEnv(mode, webRoot, ""))) {
   }
 }
 
+const isVitest = process.env.VITEST === "true";
+
 export default defineConfig({
+  // https://viteplus.dev/guide/test
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
+  },
+
   run: {
     // Vite Task
     // https://viteplus.dev/config/run
@@ -58,19 +66,23 @@ export default defineConfig({
     port: 3000,
   },
   plugins: [
-    devtools(),
-    tanstackStart(),
-    // https://tanstack.com/start/latest/docs/framework/react/guide/hosting
-    nitro({
-      // fixes SSR issues with Vite 8:
-      // https://discord.com/channels/719702312431386674/1490005967067414608/1490634230458224751
-      traceDeps: ["react", "react-dom"],
-    }),
-    viteReact(),
-    // https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#react-compiler
-    babel({
-      presets: [reactCompilerPreset()],
-    }),
-    tailwindcss(),
+    ...(isVitest
+      ? []
+      : [
+          devtools(),
+          tanstackStart(),
+          // https://tanstack.com/start/latest/docs/framework/react/guide/hosting
+          nitro({
+            // fixes SSR issues with Vite 8:
+            // https://discord.com/channels/719702312431386674/1490005967067414608/1490634230458224751
+            traceDeps: ["react", "react-dom"],
+          }),
+          viteReact(),
+          // https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#react-compiler
+          babel({
+            presets: [reactCompilerPreset()],
+          }),
+          tailwindcss(),
+        ]),
   ],
 });

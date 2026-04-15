@@ -1,6 +1,8 @@
 export {
   ConnectionType,
+  countCultureTreeNodes,
   CultureTreeSchema,
+  deriveSearchHintFromName,
   NodeSource,
   NodeType,
   normalizeCultureTreeOutput,
