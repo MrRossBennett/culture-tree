@@ -2,14 +2,11 @@ import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree } from "@repo/db/schema";
+import { searchExternalNodes } from "@repo/engine";
 import {
-  ConnectionType,
   countCultureTreeNodes,
   CultureTreeSchema,
-  deriveSearchHintFromName,
-  NodeType,
   TreeEnrichmentsMapSchema,
-  TreeNodeSchema,
   type CultureTree,
   type TreeNode,
   type TreeEnrichmentsMap,
@@ -17,6 +14,8 @@ import {
 import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+
+import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const name = tree.name?.trim();
@@ -33,13 +32,16 @@ function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): strin
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
   parentNodeId: z.string().min(1),
-  node: z.object({
-    name: z.string().trim().min(1),
-    type: NodeType,
-    connectionType: ConnectionType,
-    reason: z.string().trim().min(1),
-    year: z.number().int().optional(),
-  }),
+  node: AddCultureTreeNodeDraftSchema,
+});
+
+const DeleteCultureTreeNodeInputSchema = z.object({
+  treeId: z.string().min(1),
+  nodeId: z.string().min(1),
+});
+
+const SearchCultureTreeNodesInputSchema = z.object({
+  query: z.string().trim().min(1),
 });
 
 function parseTreeNodePath(nodeId: string): number[] {
@@ -96,19 +98,101 @@ function appendNodeToTree(
   };
 }
 
-function buildUserTreeNode(input: z.infer<typeof AddCultureTreeNodeInputSchema>["node"]): TreeNode {
-  const name = input.name.trim();
-  const reason = input.reason.trim();
-  return TreeNodeSchema.parse({
-    name,
-    type: input.type,
-    connectionType: input.connectionType,
-    reason,
-    year: input.year,
-    source: "user",
-    searchHint: deriveSearchHintFromName(name, input.type),
-    children: [],
+function pathStartsWith(path: readonly number[], prefix: readonly number[]): boolean {
+  return prefix.every((segment, index) => path[index] === segment);
+}
+
+function removeChildAtPath(
+  nodes: readonly TreeNode[],
+  path: readonly number[],
+): { nodes: TreeNode[]; removed: TreeNode } {
+  const [index, ...rest] = path;
+  if (index == null) {
+    throw new Error("Cannot delete root node.");
+  }
+
+  const target = nodes[index];
+  if (!target) {
+    throw new Error("Branch not found.");
+  }
+
+  if (rest.length === 0) {
+    return {
+      nodes: nodes.filter((_, currentIndex) => currentIndex !== index),
+      removed: target,
+    };
+  }
+
+  const next = removeChildAtPath(target.children, rest);
+  return {
+    nodes: nodes.map((node, currentIndex) =>
+      currentIndex === index ? { ...target, children: next.nodes } : node,
+    ),
+    removed: next.removed,
+  };
+}
+
+function removeNodeFromTree(
+  tree: CultureTree,
+  nodeId: string,
+): { tree: CultureTree; removed: TreeNode; path: number[] } {
+  const path = parseTreeNodePath(nodeId);
+  if (path.length === 0) {
+    throw new Error("Cannot delete root node.");
+  }
+
+  const next = removeChildAtPath(tree.children, path);
+  return {
+    tree: {
+      ...tree,
+      children: next.nodes,
+    },
+    removed: next.removed,
+    path,
+  };
+}
+
+function remapEnrichmentsAfterNodeDeletion(
+  enrichments: TreeEnrichmentsMap | null | undefined,
+  deletedPath: readonly number[],
+): TreeEnrichmentsMap | null {
+  if (!enrichments) {
+    return null;
+  }
+
+  const deletedIndex = deletedPath.at(-1);
+  if (deletedIndex == null) {
+    return enrichments;
+  }
+
+  const parentPath = deletedPath.slice(0, -1);
+  const nextEntries = Object.entries(enrichments).flatMap(([nodeId, media]) => {
+    let path: number[];
+    try {
+      path = parseTreeNodePath(nodeId);
+    } catch {
+      return [[nodeId, media] as const];
+    }
+
+    if (pathStartsWith(path, deletedPath)) {
+      return [];
+    }
+
+    if (
+      path.length > parentPath.length &&
+      pathStartsWith(path, parentPath) &&
+      path[parentPath.length]! > deletedIndex
+    ) {
+      const shiftedPath = [...path];
+      shiftedPath[parentPath.length] = shiftedPath[parentPath.length]! - 1;
+      const shiftedId = `root-${shiftedPath.join("-")}`;
+      return [[shiftedId, media] as const];
+    }
+
+    return [[nodeId, media] as const];
   });
+
+  return Object.fromEntries(nextEntries);
 }
 
 export const $getCultureTreeById = createServerFn({ method: "GET" })
@@ -176,6 +260,14 @@ export const $setCultureTreePublic = createServerFn({ method: "POST" })
     return { ok: true as const, isPublic: data.isPublic };
   });
 
+export const $searchCultureTreeNodes = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(SearchCultureTreeNodesInputSchema)
+  .handler(async ({ data }) => {
+    const results = await searchExternalNodes(data.query);
+    return { results };
+  });
+
 export const $addCultureTreeNode = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(AddCultureTreeNodeInputSchema)
@@ -194,10 +286,44 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
-    const nextNode = buildUserTreeNode(data.node);
+    const nextNode = buildCultureTreeNode(data.node);
     const nextTree = appendNodeToTree(tree, data.parentNodeId, nextNode);
 
     await db.update(cultureTree).set({ data: nextTree }).where(eq(cultureTree.id, data.treeId));
+
+    return { ok: true as const };
+  });
+
+export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(DeleteCultureTreeNodeInputSchema)
+  .handler(async ({ data, context }) => {
+    const [row] = await db
+      .select({
+        id: cultureTree.id,
+        userId: cultureTree.userId,
+        data: cultureTree.data,
+        enrichmentData: cultureTree.enrichmentData,
+      })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.treeId))
+      .limit(1);
+    if (!row || row.userId !== context.user.id) {
+      throw new Error("Tree not found");
+    }
+
+    const tree = CultureTreeSchema.parse(row.data);
+    const { tree: nextTree, path } = removeNodeFromTree(tree, data.nodeId);
+    const parsedEnrichments = TreeEnrichmentsMapSchema.safeParse(row.enrichmentData);
+    const nextEnrichments = remapEnrichmentsAfterNodeDeletion(
+      parsedEnrichments.success ? parsedEnrichments.data : null,
+      path,
+    );
+
+    await db
+      .update(cultureTree)
+      .set({ data: nextTree, enrichmentData: nextEnrichments })
+      .where(eq(cultureTree.id, data.treeId));
 
     return { ok: true as const };
   });

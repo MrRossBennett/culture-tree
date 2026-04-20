@@ -54,8 +54,8 @@ export function YourTreesSection({
             >
               <span className="min-w-0 text-foreground capitalize italic">{t.listTitle}</span>
               <span className="shrink-0 font-mono text-[0.65rem] tracking-[0.2em] text-muted-foreground not-italic tabular-nums">
-                {t.nodeCount} {t.nodeCount === 1 ? "node" : "nodes"} · {formatTreeAge(t.createdAt)}{" "}
-                · {t.isPublic ? "Public" : "Private"}
+                {t.nodeCount} {t.nodeCount === 1 ? "branch" : "branches"} ·{" "}
+                {formatTreeAge(t.createdAt)} · {t.isPublic ? "Public" : "Private"}
               </span>
             </Link>
           ))}

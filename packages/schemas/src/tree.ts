@@ -32,6 +32,7 @@ export const ConnectionType = z.enum([
 ]);
 
 export const NodeSource = z.enum(["ai", "ai-expanded", "user"]);
+export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "google-books"]);
 
 export const SearchHintSchema = z.object({
   title: z
@@ -66,7 +67,36 @@ export const SearchHintSchema = z.object({
 export type NodeTypeValue = z.infer<typeof NodeType>;
 export type ConnectionTypeValue = z.infer<typeof ConnectionType>;
 export type NodeSourceValue = z.infer<typeof NodeSource>;
+export type ExternalNodeSourceValue = z.infer<typeof ExternalNodeSource>;
 export type SearchHint = z.infer<typeof SearchHintSchema>;
+
+export const TreeNodeIdentitySchema = z.object({
+  source: ExternalNodeSource,
+  externalId: z.string().trim().min(1),
+});
+
+export const TreeNodeSnapshotSchema = z.object({
+  name: z.string().trim().min(1),
+  type: NodeType,
+  year: z.number().int().optional(),
+  image: z.url().optional(),
+});
+
+export const ExternalNodeSearchResultSchema = z.object({
+  identity: TreeNodeIdentitySchema,
+  snapshot: TreeNodeSnapshotSchema,
+  /**
+   * Compatibility-only lookup data for current enrichment flows.
+   * `identity` is canonical, `snapshot` is stable rendering, `searchHint` is lookup glue.
+   */
+  searchHint: SearchHintSchema,
+  meta: z.string().optional(),
+  externalUrl: z.url().optional(),
+});
+
+export type TreeNodeIdentity = z.infer<typeof TreeNodeIdentitySchema>;
+export type TreeNodeSnapshot = z.infer<typeof TreeNodeSnapshotSchema>;
+export type ExternalNodeSearchResult = z.infer<typeof ExternalNodeSearchResultSchema>;
 
 export interface TreeNode {
   name: string;
@@ -75,6 +105,8 @@ export interface TreeNode {
   reason: string;
   connectionType: ConnectionTypeValue;
   searchHint: SearchHint;
+  identity?: TreeNodeIdentity;
+  snapshot?: TreeNodeSnapshot;
   source: NodeSourceValue;
   children: TreeNode[];
 }
@@ -87,6 +119,8 @@ export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
     reason: z.string(),
     connectionType: ConnectionType,
     searchHint: SearchHintSchema,
+    identity: TreeNodeIdentitySchema.optional(),
+    snapshot: TreeNodeSnapshotSchema.optional(),
     source: NodeSource.default("ai"),
     children: z.array(TreeNodeSchema).default([]),
   }),
@@ -236,6 +270,8 @@ function normalizeTreeNode(raw: unknown): TreeNode {
     reason,
     connectionType,
     searchHint,
+    identity: o.identity,
+    snapshot: o.snapshot,
     source,
     children,
   });

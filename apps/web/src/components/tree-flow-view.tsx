@@ -39,6 +39,7 @@ type BranchFlowRfNode = Node<
     enrichments: TreeEnrichmentsMap;
     node: TreeNode;
     onAddChild?: (nodeId: string, node: TreeNode) => void;
+    onDeleteNode?: (nodeId: string, node: TreeNode) => void;
   },
   "branch"
 >;
@@ -56,7 +57,7 @@ function SeedFlowNode(props: NodeProps<SeedFlowRfNode>) {
 }
 
 function BranchFlowNode(props: NodeProps<BranchFlowRfNode>) {
-  const { nodeId, enrichments, node, onAddChild } = props.data;
+  const { nodeId, enrichments, node, onAddChild, onDeleteNode } = props.data;
   return (
     <div className="relative w-[min(22rem,calc(100vw-1.25rem))]">
       <Handle className={handleClass} id="in" position={Position.Top} type="target" />
@@ -68,6 +69,7 @@ function BranchFlowNode(props: NodeProps<BranchFlowRfNode>) {
         node={node}
         nodeId={nodeId}
         onAddChild={onAddChild}
+        onDeleteNode={onDeleteNode}
       />
     </div>
   );
@@ -121,12 +123,14 @@ function TreeFlowCanvas({
   treeKey,
   onAddBranch,
   onAddChild,
+  onDeleteNode,
 }: {
   readonly tree: CultureTree;
   readonly enrichments: TreeEnrichmentsMap;
   readonly treeKey: string;
   readonly onAddBranch?: () => void;
   readonly onAddChild?: (nodeId: string, node: TreeNode) => void;
+  readonly onDeleteNode?: (nodeId: string, node: TreeNode) => void;
 }) {
   const { initialNodes, initialEdges } = useMemo(() => {
     const graph = buildCultureTreeFlowGraph(tree);
@@ -147,7 +151,7 @@ function TreeFlowCanvas({
         id: meta.id,
         type: "branch",
         position,
-        data: { nodeId: meta.id, enrichments, node, onAddChild },
+        data: { nodeId: meta.id, enrichments, node, onAddChild, onDeleteNode },
       };
     });
 
@@ -162,7 +166,7 @@ function TreeFlowCanvas({
     }));
 
     return { initialNodes: nodes, initialEdges: edges };
-  }, [enrichments, onAddBranch, onAddChild, tree]);
+  }, [enrichments, onAddBranch, onAddChild, onDeleteNode, tree]);
 
   const [nodes, setNodes] = useState<Node[]>(() => initialNodes);
   const [edges, setEdges] = useState<Edge[]>(() => initialEdges);
@@ -237,12 +241,14 @@ export function TreeFlowView({
   treeKey,
   onAddBranch,
   onAddChild,
+  onDeleteNode,
 }: {
   readonly tree: CultureTree;
   readonly enrichments: TreeEnrichmentsMap;
   readonly treeKey: string;
   readonly onAddBranch?: () => void;
   readonly onAddChild?: (nodeId: string, node: TreeNode) => void;
+  readonly onDeleteNode?: (nodeId: string, node: TreeNode) => void;
 }) {
   return (
     <div className="relative min-h-0 flex-1 bg-muted/10">
@@ -253,6 +259,7 @@ export function TreeFlowView({
             enrichments={enrichments}
             onAddBranch={onAddBranch}
             onAddChild={onAddChild}
+            onDeleteNode={onDeleteNode}
             tree={tree}
             treeKey={treeKey}
           />

@@ -12,6 +12,7 @@ catalog:
   "@fontsource-variable/jetbrains-mono": ^5.2.8
   "@fontsource/instrument-serif": ^5.2.8
   "@fontsource/source-serif-4": ^5.2.9
+  "@headlessui/react": ^2.2.10
   "@icons-pack/react-simple-icons": ^13.13.0
   "@rolldown/plugin-babel": ^0.2.2
   "@tailwindcss/vite": ^4.2.2

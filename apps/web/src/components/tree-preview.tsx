@@ -14,6 +14,8 @@ import {
   BookOpenIcon,
   CalendarIcon,
   ClapperboardIcon,
+  ExternalLinkIcon,
+  Trash2Icon,
   Disc3Icon,
   ImageIcon,
   LibraryBigIcon,
@@ -213,7 +215,7 @@ export function CultureTreeSeedCard({
             className="font-mono text-xs"
             onClick={onAddBranch}
           >
-            Add top-level branch
+            Grow a new branch
           </Button>
         </div>
       ) : null}
@@ -235,6 +237,7 @@ export function CultureTreeBranchNodeCard({
   enrichments,
   layout = "list",
   onAddChild,
+  onDeleteNode,
 }: {
   readonly node: TreeNode;
   readonly depth: number;
@@ -242,35 +245,70 @@ export function CultureTreeBranchNodeCard({
   readonly enrichments: TreeEnrichmentsMap;
   readonly layout?: "list" | "flow";
   readonly onAddChild?: (nodeId: string, node: TreeNode) => void;
+  readonly onDeleteNode?: (nodeId: string, node: TreeNode) => void;
 }) {
   const indent = layout === "flow" ? 0 : Math.min(depth, 4) * 14;
   const media = enrichments[nodeId];
   const link = pickPrimaryLink(media);
   const nodeHeading = headingFromSearchHint(node.name, node.searchHint);
   const squareCoverThumb = node.type === "person" || node.type === "album" || node.type === "song";
-  const coverSrc = media?.coverUrl ?? media?.thumbnailUrl;
+  const coverSrc = media?.coverUrl ?? media?.thumbnailUrl ?? node.snapshot?.image;
 
   return (
     <>
       <div style={{ marginLeft: indent }}>
         <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 shadow-sm backdrop-blur-sm">
-          <div className="flex flex-wrap items-center gap-2 font-mono text-[0.65rem] tracking-widest text-muted-foreground uppercase">
-            <span className="flex items-center gap-1.5 text-foreground/90">
-              {nodeTypeIcon(node.type)}
-              {formatTypeLabel(node.type)}
-            </span>
-            <span
-              className="rounded-full border border-border/60 bg-secondary/60 px-2 py-px text-[0.6rem] tracking-wide text-secondary-foreground"
-              title="Relationship to seed branch"
-            >
-              {formatConnectionLabel(node.connectionType)}
-            </span>
-            {media?.rating != null ? (
-              <span className="inline-flex items-center gap-0.5 tracking-normal text-foreground/80 normal-case tabular-nums">
-                <StarIcon className="size-3.5 text-amber-500/90" aria-hidden />
-                {media.rating.toFixed(1)}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[0.65rem] tracking-widest text-muted-foreground uppercase">
+              <span className="flex items-center gap-1.5 text-foreground/90">
+                {nodeTypeIcon(node.type)}
+                {formatTypeLabel(node.type)}
               </span>
-            ) : null}
+              <span
+                className="rounded-full border border-border/60 bg-secondary/60 px-2 py-px text-[0.6rem] tracking-wide text-secondary-foreground"
+                title="Relationship to seed branch"
+              >
+                {formatConnectionLabel(node.connectionType)}
+              </span>
+              {media?.rating != null ? (
+                <span className="inline-flex items-center gap-0.5 tracking-normal text-foreground/80 normal-case tabular-nums">
+                  <StarIcon className="size-3.5 text-amber-500/90" aria-hidden />
+                  {media.rating.toFixed(1)}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {link ? (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground"
+                  render={
+                    <a
+                      href={link}
+                      rel="noreferrer"
+                      target="_blank"
+                      aria-label={`Open source for ${node.name}`}
+                    />
+                  }
+                  nativeButton={false}
+                >
+                  <ExternalLinkIcon className="size-3.5" aria-hidden />
+                </Button>
+              ) : null}
+              {onDeleteNode ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => onDeleteNode(nodeId, node)}
+                  aria-label={`Delete branch ${node.name}`}
+                >
+                  <Trash2Icon className="size-3.5" aria-hidden />
+                </Button>
+              ) : null}
+            </div>
           </div>
           <div className="mt-2.5 flex gap-3">
             {coverSrc ? (
@@ -346,18 +384,8 @@ export function CultureTreeBranchNodeCard({
                   {media.wikiExtract}
                 </p>
               ) : null}
-              {link || onAddChild ? (
+              {onAddChild ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {link ? (
-                    <a
-                      className="font-mono text-[0.7rem] tracking-wide text-primary uppercase hover:underline"
-                      href={link}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Open source
-                    </a>
-                  ) : null}
                   {onAddChild ? (
                     <Button
                       type="button"
@@ -366,7 +394,7 @@ export function CultureTreeBranchNodeCard({
                       className="font-mono text-xs"
                       onClick={() => onAddChild(nodeId, node)}
                     >
-                      Add child
+                      Where next?
                     </Button>
                   ) : null}
                 </div>
@@ -385,6 +413,7 @@ export function CultureTreeBranchNodeCard({
               node={child}
               nodeId={`${nodeId}-${i}`}
               onAddChild={onAddChild}
+              onDeleteNode={onDeleteNode}
             />
           ))
         : null}
@@ -397,11 +426,13 @@ export function TreePreview({
   enrichments = {},
   onAddBranch,
   onAddChild,
+  onDeleteNode,
 }: {
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
   readonly onAddBranch?: () => void;
   readonly onAddChild?: (nodeId: string, node: TreeNode) => void;
+  readonly onDeleteNode?: (nodeId: string, node: TreeNode) => void;
 }) {
   return (
     <div className="w-full max-w-3xl text-left">
@@ -421,6 +452,7 @@ export function TreePreview({
                 node={child}
                 nodeId={`root-${i}`}
                 onAddChild={onAddChild}
+                onDeleteNode={onDeleteNode}
               />
             ))}
           </div>

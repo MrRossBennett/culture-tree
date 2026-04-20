@@ -1,5 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import type { ConnectionTypeValue, NodeTypeValue, TreeNode } from "@repo/schemas";
+import type { TreeNode } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,13 +8,15 @@ import { LoaderCircleIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
 import { TreeFlowView } from "~/components/tree-flow-view";
-import { TreeNodeDrawer } from "~/components/tree-node-drawer";
+import { TreeNodeDrawer, type TreeNodeDrawerSubmitInput } from "~/components/tree-node-drawer";
 import { TreePreview } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import { useMinMd } from "~/lib/use-min-md";
 import {
   $addCultureTreeNode,
+  $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
 } from "~/server/culture-trees";
@@ -52,6 +54,11 @@ function TreePage() {
     parentNodeId: string;
     parentLabel: string;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    nodeId: string;
+    nodeLabel: string;
+    subtreeNodeCount: number;
+  } | null>(null);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -84,25 +91,31 @@ function TreePage() {
   });
 
   const addNode = useMutation({
-    mutationFn: (input: {
-      parentNodeId: string;
-      name: string;
-      type: NodeTypeValue;
-      connectionType: ConnectionTypeValue;
-      reason: string;
-      year?: number;
-    }) => {
-      const { parentNodeId, ...node } = input;
+    mutationFn: (input: { parentNodeId: string; node: TreeNodeDrawerSubmitInput }) => {
+      const { parentNodeId, node } = input;
       return $addCultureTreeNode({ data: { treeId, parentNodeId, node } });
     },
     onSuccess: async () => {
-      toast.success("Node added to your tree.");
+      toast.success("Branch added to your tree.");
       setDraftTarget(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Could not add that node.");
+      toast.error(err.message || "Could not add that branch.");
+    },
+  });
+
+  const deleteNode = useMutation({
+    mutationFn: (nodeId: string) => $deleteCultureTreeNode({ data: { treeId, nodeId } }),
+    onSuccess: async () => {
+      toast.success("Branch removed from your tree.");
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not delete that branch.");
     },
   });
 
@@ -117,6 +130,17 @@ function TreePage() {
     setDraftTarget({
       parentNodeId: nodeId,
       parentLabel: node.name,
+    });
+  }, []);
+
+  const openDeleteDialog = useCallback((nodeId: string, node: TreeNode) => {
+    const countSubtreeNodes = (target: TreeNode): number =>
+      1 + target.children.reduce((sum, child) => sum + countSubtreeNodes(child), 0);
+
+    setDeleteTarget({
+      nodeId,
+      nodeLabel: node.name,
+      subtreeNodeCount: countSubtreeNodes(node),
     });
   }, []);
 
@@ -221,6 +245,7 @@ function TreePage() {
               enrichments={enrichments}
               onAddBranch={isOwner ? openRootDrawer : undefined}
               onAddChild={isOwner ? openChildDrawer : undefined}
+              onDeleteNode={isOwner ? openDeleteDialog : undefined}
               tree={tree}
               treeKey={treeId}
             />
@@ -232,6 +257,7 @@ function TreePage() {
             enrichments={enrichments}
             onAddBranch={isOwner ? openRootDrawer : undefined}
             onAddChild={isOwner ? openChildDrawer : undefined}
+            onDeleteNode={isOwner ? openDeleteDialog : undefined}
             tree={tree}
           />
           {visitorCta}
@@ -258,8 +284,26 @@ function TreePage() {
           }
           addNode.mutate({
             parentNodeId: draftTarget.parentNodeId,
-            ...input,
+            node: input,
           });
+        }}
+      />
+
+      <DeleteTreeNodeDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+        branchLabel={deleteTarget?.nodeLabel ?? ""}
+        subtreeNodeCount={deleteTarget?.subtreeNodeCount ?? 1}
+        isPending={deleteNode.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) {
+            return;
+          }
+          deleteNode.mutate(deleteTarget.nodeId);
         }}
       />
     </div>

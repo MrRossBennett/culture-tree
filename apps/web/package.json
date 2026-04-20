@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource-variable/dm-sans": "catalog:",
     "@fontsource-variable/jetbrains-mono": "catalog:",
+    "@headlessui/react": "catalog:",
     "@icons-pack/react-simple-icons": "catalog:",
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
