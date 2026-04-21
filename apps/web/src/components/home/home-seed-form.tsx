@@ -84,7 +84,11 @@ function OptionRow<T extends string>({
   );
 }
 
-export function HomeSeedForm() {
+export function HomeSeedForm({
+  onSeedHover,
+}: {
+  readonly onSeedHover?: (hovered: boolean) => void;
+}) {
   const { openSignIn } = useOpenSignIn();
   const { data: user } = useQuery(authQueryOptions());
   const queryClient = useQueryClient();
@@ -119,77 +123,57 @@ export function HomeSeedForm() {
   });
 
   return (
-    <section className="relative z-10 mx-auto w-full max-w-3xl space-y-8 px-4 sm:px-6 md:px-0">
+    <section className="relative z-10 mx-auto w-full max-w-xl space-y-6 px-4 sm:px-6 md:px-0">
       <form
-        className="space-y-6"
+        className="space-y-5"
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (!loggedIn || !prompt.trim() || generate.isPending) {
+          if (!loggedIn) {
+            openSignIn();
             return;
           }
+          if (!prompt.trim() || generate.isPending) return;
           generate.mutate();
         }}
       >
-        <textarea
-          value={prompt}
-          onChange={(e) => writeSeedPrompt(e.target.value)}
-          rows={2}
-          placeholder="A film, a band, an era, a feeling..."
-          suppressHydrationWarning
-          className={cn(
-            "font-body w-full resize-y rounded-lg border border-border bg-card px-6 py-5 text-base text-foreground shadow-none outline-none",
-            "placeholder:text-muted-foreground/80",
-            "resize-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40",
-          )}
-        />
-
-        <div className="space-y-5">
-          <OptionRow
-            id="depth"
-            label="Depth"
-            options={DEPTH_OPTIONS}
-            value={depth}
-            onChange={setDepth}
+        <div className="relative">
+          <input
+            value={prompt}
+            onChange={(e) => writeSeedPrompt(e.target.value)}
+            placeholder="Enter an album, film, book, era..."
+            suppressHydrationWarning
+            maxLength={200}
+            className={cn(
+              "font-body w-full bg-transparent text-foreground outline-none",
+              "border-0 border-b border-border pr-32 pb-3 text-2xl",
+              "placeholder:text-muted-foreground",
+              "transition-colors focus:border-primary",
+              "caret-primary",
+            )}
           />
-          <OptionRow
-            id="tone"
-            label="Tone"
-            options={TONE_OPTIONS}
-            value={tone}
-            onChange={setTone}
-          />
+          <button
+            type="submit"
+            disabled={generate.isPending}
+            onMouseEnter={() => onSeedHover?.(true)}
+            onMouseLeave={() => onSeedHover?.(false)}
+            className={cn(
+              "absolute right-0 bottom-2 font-mono text-xs tracking-[0.08em] uppercase transition-colors",
+              "rounded-sm border border-border px-4 py-2",
+              prompt.trim()
+                ? "border-amber bg-amber text-amber-foreground hover:opacity-90"
+                : "border-border/40 text-muted-foreground/40",
+            )}
+          >
+            {generate.isPending ? (
+              <LoaderCircleIcon className="size-3.5 animate-spin" />
+            ) : (
+              "Plant Seed →"
+            )}
+          </button>
         </div>
 
-        {loggedIn ? (
-          <div className="space-y-2">
-            <Button
-              type="submit"
-              variant="secondary"
-              disabled={!prompt.trim() || generate.isPending}
-              className="font-body h-12 w-full rounded-lg text-base font-normal tracking-tight"
-            >
-              {generate.isPending ? (
-                <>
-                  <LoaderCircleIcon className="size-4 animate-spin" />
-                  Growing…
-                </>
-              ) : (
-                "Plant seed"
-              )}
-            </Button>
-            <SeedCountLine />
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            className="font-body h-12 w-full rounded-lg text-base font-normal tracking-tight"
-            onClick={openSignIn}
-          >
-            Sign in to plant your first seed
-          </Button>
-        )}
+        {loggedIn ? <SeedCountLine /> : null}
       </form>
     </section>
   );

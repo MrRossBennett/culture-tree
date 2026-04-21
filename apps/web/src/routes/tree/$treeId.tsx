@@ -53,6 +53,8 @@ function TreePage() {
   const [draftTarget, setDraftTarget] = useState<{
     parentNodeId: string;
     parentLabel: string;
+    parentType?: import("@repo/schemas").NodeTypeValue;
+    parentImageSrc?: string;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     nodeId: string;
@@ -126,12 +128,18 @@ function TreePage() {
     });
   }, [tree.name, tree.searchHint.title]);
 
-  const openChildDrawer = useCallback((nodeId: string, node: TreeNode) => {
-    setDraftTarget({
-      parentNodeId: nodeId,
-      parentLabel: node.name,
-    });
-  }, []);
+  const openChildDrawer = useCallback(
+    (nodeId: string, node: TreeNode) => {
+      const media = enrichments[nodeId];
+      setDraftTarget({
+        parentNodeId: nodeId,
+        parentLabel: node.name,
+        parentType: node.type,
+        parentImageSrc: media?.coverUrl ?? media?.thumbnailUrl ?? node.snapshot?.image,
+      });
+    },
+    [enrichments],
+  );
 
   const openDeleteDialog = useCallback((nodeId: string, node: TreeNode) => {
     const countSubtreeNodes = (target: TreeNode): number =>
@@ -145,19 +153,16 @@ function TreePage() {
   }, []);
 
   const viewToggle = isWide ? (
-    <div
-      className="inline-flex shrink-0 rounded-lg border border-border/80 bg-muted/50 p-0.5"
-      role="group"
-      aria-label="How to display this tree"
-    >
+    <div className="inline-flex shrink-0 gap-px" role="group" aria-label="How to display this tree">
       <button
         type="button"
         aria-pressed={view === "list"}
         className={cn(
-          "rounded-md px-3 py-1.5 font-mono text-[0.65rem] tracking-wide uppercase transition-colors",
+          "border px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.08em] uppercase transition-colors",
+          "rounded-l-sm",
           view === "list"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground/90",
+            ? "border-border/80 bg-foreground/10 text-foreground"
+            : "border-border/60 text-muted-foreground hover:text-foreground",
         )}
         onClick={() => setView("list")}
       >
@@ -167,10 +172,11 @@ function TreePage() {
         type="button"
         aria-pressed={view === "flow"}
         className={cn(
-          "rounded-md px-3 py-1.5 font-mono text-[0.65rem] tracking-wide uppercase transition-colors",
+          "border px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.08em] uppercase transition-colors",
+          "-ml-px rounded-r-sm",
           view === "flow"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground/90",
+            ? "border-border/80 bg-foreground/10 text-foreground"
+            : "border-border/60 text-muted-foreground hover:text-foreground",
         )}
         onClick={() => setView("flow")}
       >
@@ -180,12 +186,17 @@ function TreePage() {
   ) : null;
 
   const visitorCta = !isOwner ? (
-    <section className="rounded-lg border border-border/80 bg-muted/30 px-4 py-6 text-center">
-      <p className="font-heading text-lg text-foreground">Like what you see?</p>
-      <p className="font-body mt-2 text-sm text-muted-foreground">
+    <section className="rounded border border-border/60 bg-muted/20 px-4 py-6 text-center">
+      <p className="font-heading text-xl tracking-tight text-foreground">Like what you see?</p>
+      <p className="font-body mt-2 text-sm text-muted-foreground italic">
         Start from any album, film, book, or scene — get a branching map in minutes.
       </p>
-      <Button className="mt-4" variant="default" render={<Link to="/" />} nativeButton={false}>
+      <Button
+        className="mt-4 font-mono text-[0.65rem] tracking-[0.06em] uppercase"
+        variant="outline"
+        render={<Link to="/" />}
+        nativeButton={false}
+      >
         Plant your own seed
       </Button>
     </section>
@@ -195,19 +206,21 @@ function TreePage() {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
         disabled={enrich.isPending}
         onClick={() => enrich.mutate()}
-        className="inline-flex items-center gap-2 font-mono text-xs"
+        className="inline-flex items-center gap-2 font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase hover:text-foreground"
       >
         {enrich.isPending ? (
-          <LoaderCircleIcon className="size-4 shrink-0 animate-spin" aria-hidden />
+          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" aria-hidden />
         ) : null}
         {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
       </Button>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[0.65rem] text-muted-foreground">Link</span>
+        <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
+          Link
+        </span>
         <button
           type="button"
           role="switch"
@@ -215,10 +228,10 @@ function TreePage() {
           disabled={setPublic.isPending}
           onClick={() => setPublic.mutate(!isPublic)}
           className={cn(
-            "inline-flex items-center rounded-full border border-border/80 px-3 py-1 font-mono text-[0.65rem] tracking-wide transition-colors",
+            "inline-flex items-center rounded-sm border px-3 py-1 font-mono text-[0.6rem] tracking-[0.06em] uppercase transition-colors",
             isPublic
               ? "border-primary/50 bg-primary/15 text-foreground"
-              : "bg-muted/60 text-muted-foreground",
+              : "border-border/60 text-muted-foreground hover:text-foreground",
             setPublic.isPending && "opacity-60",
           )}
         >
@@ -252,7 +265,7 @@ function TreePage() {
           ) : null}
         </div>
       ) : (
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8">
+        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-4 py-8">
           <TreePreview
             enrichments={enrichments}
             onAddBranch={isOwner ? openRootDrawer : undefined}
@@ -277,6 +290,8 @@ function TreePage() {
         }}
         parentLabel={draftTarget?.parentLabel ?? tree.name}
         parentNodeId={draftTarget?.parentNodeId ?? "root"}
+        parentType={draftTarget?.parentType}
+        parentImageSrc={draftTarget?.parentImageSrc}
         isPending={addNode.isPending}
         onSubmit={(input) => {
           if (!draftTarget) {

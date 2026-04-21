@@ -10,24 +10,9 @@ import type {
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { cn } from "@repo/ui/lib/utils";
-import {
-  BookOpenIcon,
-  CalendarIcon,
-  ClapperboardIcon,
-  ExternalLinkIcon,
-  Trash2Icon,
-  Disc3Icon,
-  ImageIcon,
-  LibraryBigIcon,
-  MapPinIcon,
-  MusicIcon,
-  NewspaperIcon,
-  PodcastIcon,
-  SproutIcon,
-  StarIcon,
-  TvIcon,
-  UserIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, SproutIcon, StarIcon, Trash2Icon } from "lucide-react";
+
+import { NodeThumbnail, nodeTypeIcon } from "~/components/node-thumbnail";
 
 function countBranchNodes(nodes: readonly TreeNode[]): number {
   return nodes.reduce((acc, n) => acc + 1 + countBranchNodes(n.children), 0);
@@ -87,36 +72,6 @@ function headingFromSearchHint(
   return { primary: displayName };
 }
 
-function nodeTypeIcon(type: NodeTypeValue, iconClassName = "size-3.5 shrink-0 opacity-80") {
-  switch (type) {
-    case "album":
-      return <Disc3Icon className={iconClassName} aria-hidden />;
-    case "film":
-      return <ClapperboardIcon className={iconClassName} aria-hidden />;
-    case "book":
-      return <BookOpenIcon className={iconClassName} aria-hidden />;
-    case "song":
-      return <MusicIcon className={iconClassName} aria-hidden />;
-    case "tv":
-      return <TvIcon className={iconClassName} aria-hidden />;
-    case "artist":
-    case "person":
-      return <UserIcon className={iconClassName} aria-hidden />;
-    case "podcast":
-      return <PodcastIcon className={iconClassName} aria-hidden />;
-    case "artwork":
-      return <ImageIcon className={iconClassName} aria-hidden />;
-    case "place":
-      return <MapPinIcon className={iconClassName} aria-hidden />;
-    case "event":
-      return <CalendarIcon className={iconClassName} aria-hidden />;
-    case "article":
-      return <NewspaperIcon className={iconClassName} aria-hidden />;
-    case "publication":
-      return <LibraryBigIcon className={iconClassName} aria-hidden />;
-  }
-}
-
 export function CultureTreeSeedCard({
   tree,
   variant = "default",
@@ -134,26 +89,25 @@ export function CultureTreeSeedCard({
   return (
     <div
       className={cn(
-        "relative backdrop-blur-sm",
-        variant === "default" &&
-          "rounded-2xl border border-border/80 bg-card/90 px-5 py-4 shadow-sm",
+        "relative",
+        variant === "default" && "rounded border border-border/70 bg-card/90 px-5 py-5",
         variant === "flow" &&
           cn(
-            "rounded-3xl border border-primary/40 bg-card/95 px-7 py-6 md:px-10 md:py-8",
+            "rounded border border-primary/40 bg-card/95 px-7 py-6 md:px-10 md:py-8",
             "shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_38%,transparent),0_0_64px_-12px_color-mix(in_srgb,var(--primary)_45%,transparent)]",
           ),
       )}
     >
       <div
         className={cn(
-          "flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tracking-[0.12em] text-primary uppercase",
-          variant === "default" && "text-[0.65rem]",
+          "mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono tracking-[0.12em] text-primary uppercase",
+          variant === "default" && "text-[0.6rem]",
           variant === "flow" && "gap-x-2.5 gap-y-1.5 text-xs tracking-[0.14em] md:text-[0.8rem]",
         )}
       >
         <SproutIcon
           className={cn(
-            variant === "default" && "size-3.5",
+            variant === "default" && "size-3",
             variant === "flow" && "size-4 md:size-5",
           )}
           aria-hidden
@@ -168,29 +122,30 @@ export function CultureTreeSeedCard({
       </div>
       <h2
         className={cn(
-          "font-heading mt-3 leading-[1.08] text-card-foreground",
-          variant === "default" && "text-xl md:text-5xl",
-          variant === "flow" && "mt-4 text-3xl md:mt-5 md:text-6xl lg:text-7xl",
+          "font-heading leading-[1.08] text-card-foreground",
+          variant === "default" && "text-3xl tracking-tight md:text-5xl",
+          variant === "flow" && "text-3xl tracking-tight md:text-6xl lg:text-7xl",
+          seedHeading.secondary && "mb-1",
         )}
       >
-        <span className="block">{seedHeading.primary}</span>
-        {seedHeading.secondary ? (
-          <span
-            className={cn(
-              "font-body mt-1 block font-normal text-muted-foreground",
-              variant === "default" && "text-lg md:mt-2 md:text-3xl",
-              variant === "flow" && "mt-2 text-xl md:mt-3 md:text-4xl lg:text-5xl",
-            )}
-          >
-            {seedHeading.secondary}
-          </span>
-        ) : null}
+        {seedHeading.primary}
       </h2>
+      {seedHeading.secondary ? (
+        <p
+          className={cn(
+            "font-body font-normal text-muted-foreground",
+            variant === "default" && "text-base md:text-2xl",
+            variant === "flow" && "text-lg md:text-3xl lg:text-4xl",
+          )}
+        >
+          {seedHeading.secondary}
+        </p>
+      ) : null}
       {tree.reason ? (
         <p
           className={cn(
             "font-body leading-relaxed text-muted-foreground italic",
-            variant === "default" && "mt-2 text-sm",
+            variant === "default" && "mt-3 text-sm",
             variant === "flow" && "mt-3 text-base md:mt-4 md:text-lg",
           )}
         >
@@ -199,24 +154,22 @@ export function CultureTreeSeedCard({
       ) : null}
       <p
         className={cn(
-          "font-mono tracking-widest text-muted-foreground uppercase",
-          variant === "default" && "mt-4 text-[0.65rem]",
-          variant === "flow" && "mt-5 text-[0.7rem] md:text-xs md:tracking-[0.2em]",
+          "font-mono tracking-[0.08em] text-muted-foreground/70 uppercase",
+          variant === "default" && "mt-4 text-[0.6rem]",
+          variant === "flow" && "mt-5 text-[0.65rem] md:tracking-[0.12em]",
         )}
       >
         {branchCount} branches · {formatSourceFooter(sources)} · {formatTypesFooter(types)}
       </p>
       {onAddBranch ? (
         <div className={cn(variant === "default" && "mt-4", variant === "flow" && "mt-5")}>
-          <Button
+          <button
             type="button"
-            variant="outline"
-            size="sm"
-            className="font-mono text-xs"
             onClick={onAddBranch}
+            className="rounded-sm border border-border/70 px-3 py-1.5 font-mono text-[0.65rem] tracking-[0.04em] text-muted-foreground uppercase transition-colors hover:border-border hover:text-foreground"
           >
             Grow a new branch
-          </Button>
+          </button>
         </div>
       ) : null}
     </div>
@@ -251,21 +204,20 @@ export function CultureTreeBranchNodeCard({
   const media = enrichments[nodeId];
   const link = pickPrimaryLink(media);
   const nodeHeading = headingFromSearchHint(node.name, node.searchHint);
-  const squareCoverThumb = node.type === "person" || node.type === "album" || node.type === "song";
   const coverSrc = media?.coverUrl ?? media?.thumbnailUrl ?? node.snapshot?.image;
 
   return (
     <>
       <div style={{ marginLeft: indent }}>
-        <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 shadow-sm backdrop-blur-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 font-mono text-[0.65rem] tracking-widest text-muted-foreground uppercase">
-              <span className="flex items-center gap-1.5 text-foreground/90">
-                {nodeTypeIcon(node.type)}
+        <div className="overflow-hidden rounded border border-border/70 bg-card/80">
+          <div className="flex items-start justify-between gap-3 border-b border-border/50 px-3.5 py-2.5">
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[0.6rem] tracking-[0.08em] text-muted-foreground uppercase">
+              <span className="flex items-center gap-1.5 text-foreground/80">
+                {nodeTypeIcon(node.type, "size-3.5 shrink-0 opacity-80")}
                 {formatTypeLabel(node.type)}
               </span>
               <span
-                className="rounded-full border border-border/60 bg-secondary/60 px-2 py-px text-[0.6rem] tracking-wide text-secondary-foreground"
+                className="rounded-sm border border-border/60 px-1.5 py-px text-[0.58rem] tracking-wide"
                 title="Relationship to seed branch"
               >
                 {formatConnectionLabel(node.connectionType)}
@@ -310,50 +262,31 @@ export function CultureTreeBranchNodeCard({
               ) : null}
             </div>
           </div>
-          <div className="mt-2.5 flex gap-3">
-            {coverSrc ? (
-              <img
-                alt=""
-                className={
-                  squareCoverThumb
-                    ? `size-16 shrink-0 border border-border/60 object-cover md:size-20 ${
-                        node.type === "album" ? "rounded-none" : "rounded-md"
-                      }`
-                    : "max-h-40 w-16 shrink-0 self-start rounded border border-border/60 object-contain object-top-left md:max-h-48 md:w-20"
-                }
-                height={squareCoverThumb ? 80 : undefined}
-                referrerPolicy="no-referrer"
-                src={coverSrc}
-                width={squareCoverThumb ? 80 : undefined}
-              />
-            ) : (
-              <div
-                className={`flex size-16 shrink-0 items-center justify-center border border-border/60 bg-muted/35 text-muted-foreground md:size-20 ${
-                  node.type === "album" ? "rounded-none" : "rounded-md"
-                }`}
-                aria-hidden
-              >
-                {nodeTypeIcon(node.type, "size-7 shrink-0 opacity-80 md:size-8")}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <h3 className="font-mono text-card-foreground md:text-xl">
-                <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 leading-snug">
-                  <span>{nodeHeading.primary}</span>
-                  {node.year != null ? (
-                    <span className="inline-block shrink-0 rounded-sm border border-border/60 bg-secondary/80 px-1.5 py-0.5 font-mono text-[0.65rem] tracking-normal text-muted-foreground normal-case tabular-nums md:text-[0.7rem]">
-                      {node.year}
-                    </span>
-                  ) : null}
-                </span>
-                {nodeHeading.secondary ? (
-                  <span className="mt-1 block text-sm leading-snug font-normal text-muted-foreground md:text-base">
-                    {nodeHeading.secondary}
+          <div className="flex gap-0">
+            <NodeThumbnail
+              type={node.type}
+              src={coverSrc}
+              size="md"
+              className="border-r border-border/60"
+            />
+            <div className="min-w-0 flex-1 px-4 py-3.5">
+              <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h3 className="font-heading text-lg leading-snug tracking-tight text-card-foreground md:text-2xl">
+                  {nodeHeading.primary}
+                </h3>
+                {node.year != null ? (
+                  <span className="font-mono text-[0.65rem] text-muted-foreground tabular-nums">
+                    {node.year}
                   </span>
                 ) : null}
-              </h3>
+              </div>
+              {nodeHeading.secondary ? (
+                <p className="mb-2 font-mono text-[0.7rem] tracking-wide text-primary/80">
+                  {nodeHeading.secondary}
+                </p>
+              ) : null}
               {node.type === "song" && media?.musicAlbumTitle ? (
-                <p className="font-body mt-1.5 text-xs leading-snug tracking-normal text-muted-foreground normal-case">
+                <p className="font-body mt-1.5 text-xs leading-snug text-muted-foreground normal-case">
                   From the album{" "}
                   {media.musicAlbumExternalUrl ? (
                     <a
@@ -370,33 +303,29 @@ export function CultureTreeBranchNodeCard({
                 </p>
               ) : null}
               {node.reason ? (
-                <p className="font-body mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground italic">
+                <p className="font-body mt-2 line-clamp-3 text-sm leading-relaxed text-foreground/80 italic">
                   {node.reason}
                 </p>
               ) : null}
-              {media?.description ? (
-                <p className="font-body mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground/90">
+              {/* {media?.description ? (
+                <p className="font-body mt-1.5 line-clamp-2 text-[0.8rem] leading-relaxed text-muted-foreground">
                   {media.description}
                 </p>
               ) : null}
               {media?.wikiExtract && !media.description ? (
-                <p className="font-body mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground/90">
+                <p className="font-body mt-1.5 line-clamp-2 text-[0.8rem] leading-relaxed text-muted-foreground">
                   {media.wikiExtract}
                 </p>
-              ) : null}
+              ) : null} */}
               {onAddChild ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {onAddChild ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="font-mono text-xs"
-                      onClick={() => onAddChild(nodeId, node)}
-                    >
-                      Where next?
-                    </Button>
-                  ) : null}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => onAddChild(nodeId, node)}
+                    className="rounded-sm border border-border/70 px-2.5 py-1 font-mono text-[0.62rem] tracking-[0.04em] text-muted-foreground uppercase transition-colors hover:border-border hover:text-foreground"
+                  >
+                    Where next?
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -435,14 +364,10 @@ export function TreePreview({
   readonly onDeleteNode?: (nodeId: string, node: TreeNode) => void;
 }) {
   return (
-    <div className="w-full max-w-3xl text-left">
+    <div className="w-full max-w-4xl text-left">
       <CultureTreeSeedCard tree={tree} onAddBranch={onAddBranch} />
       {tree.children.length > 0 ? (
-        <div className="relative mt-8 pl-6 md:pl-8">
-          <div
-            className="pointer-events-none absolute top-0 bottom-6 left-[15px] w-px bg-border md:left-[19px]"
-            aria-hidden
-          />
+        <div className="relative mt-8">
           <div className="space-y-6">
             {tree.children.map((child, i) => (
               <CultureTreeBranchNodeCard

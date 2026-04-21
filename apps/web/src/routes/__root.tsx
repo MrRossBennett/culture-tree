@@ -98,9 +98,9 @@ function RootDocument({ children }: { readonly children: React.ReactNode }) {
                 <AppHeader />
               </div>
               <div className="relative z-2 flex min-h-0 flex-1 flex-col">{children}</div>
-              <div className="relative z-10 flex w-full justify-center">
+              {/* <div className="relative z-10 flex w-full justify-center">
                 <AppFooter />
-              </div>
+              </div> */}
             </div>
           </SignInDialogHost>
           <Toaster richColors />

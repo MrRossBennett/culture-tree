@@ -21,14 +21,16 @@ export function AppHeader() {
 
   return (
     <div className="mx-auto w-full border-b border-border/60">
-      <header className="relative z-10 mx-auto flex w-full max-w-3xl items-center justify-between gap-4 py-4 sm:px-6 md:px-0">
+      <header className="relative z-10 flex w-full items-center justify-between gap-4 py-2 sm:px-6">
         <Link
           to="/"
           className="flex min-w-0 items-baseline gap-2 rounded-sm ring-ring/50 outline-none focus-visible:ring-[3px]"
         >
-          <span className="font-heading text-xl text-foreground sm:text-3xl">Culture Tree</span>
-          <span className="font-mono text-[0.65rem] tracking-[0.14em] text-muted-foreground uppercase opacity-80">
-            Beta
+          <span className="font-heading text-xl tracking-tight text-foreground sm:text-2xl">
+            Culture Tree
+          </span>
+          <span className="font-body text-sm text-muted-foreground">
+            Cultural curation for the curious
           </span>
         </Link>
 
