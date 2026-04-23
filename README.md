@@ -4,19 +4,19 @@ Culture Tree is an AI-led recommendation engine and TanStack Start app that turn
 
 The repository includes the web app, shared UI primitives, auth, database schema/migrations, an AI-assisted recommendation engine, fixtures, and tests.
 
-## What It Shows
+## Goodies
 
-- **Full-stack product engineering:** TanStack Start, React, server functions, Drizzle ORM, PostgreSQL, Better Auth, and shared packages.
-- **AI application architecture:** structured generation prompts, schema validation with Zod, fixture-backed mock mode, and enrichment pipelines.
-- **Product polish:** authenticated user flows, public/private trees, node search, curated tree pages, responsive UI, and reusable `@repo/ui` components.
-- **Engineering hygiene:** pnpm workspace packages, Vite+ validation, typed database schema, migrations, docs, and focused tests.
+- **Full-stack product engineering:** TanStack Start, React, server functions, Drizzle ORM, PostgreSQL, Better Auth and shared packages.
+- **AI application architecture:** structured generation prompts, schema validation with Zod, fixture-backed mock mode and enrichment pipelines.
+- **Product polish:** authenticated user flows, public/private trees, node search, curated tree pages and reusable `@repo/ui` components.
+- **Engineering hygiene:** pnpm workspace packages, Vite+ validation, typed database schema, migrations, docs and focused tests.
 
-## Tech Stack
+## Stack
 
 - TypeScript, React, TanStack Start, TanStack Router, TanStack Query
 - Drizzle ORM, PostgreSQL, Better Auth
 - Vite+, pnpm workspaces, shadcn/ui-style shared components
-- AI SDK with Anthropic, plus TMDB, Google Books, and Wikipedia enrichment
+- AI SDK with Anthropic, plus TMDB, Google Books and Wikipedia enrichment
 
 ## Getting Started
 
