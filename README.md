@@ -20,6 +20,9 @@ The repository includes the web app, shared UI primitives, auth, database schema
 
 ## Getting Started
 
+> [!IMPORTANT]
+> This project requires [Vite+ `vp`](https://viteplus.dev/guide/#install-vp) and [pnpm](https://pnpm.io/installation) to be installed.
+
 ```bash
 pnpm install
 docker-compose up -d
