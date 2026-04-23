@@ -6,7 +6,7 @@ import {
   normalizeTmdbSearchResult,
   normalizeWikipediaSearchResult,
 } from "@repo/engine";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 describe("search result normalization", () => {
   it("encodes TMDB media kind into canonical-lite identity", () => {

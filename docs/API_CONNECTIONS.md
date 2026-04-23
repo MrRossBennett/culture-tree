@@ -1,6 +1,6 @@
 # Culture Tree — Enrichment API Reference
 
-**Not used:** Spotify Web API, YouTube Data API v3. **`album` / `song` nodes use Wikipedia** (same stack as people/artists). A **MusicBrainz + Cover Art** implementation lives in `packages/engine/src/enrichment/music.ts` for a future pipeline switch. Trailer `youtubeVideoId` / `youtubeUrl` on film/TV nodes come **only** from TMDB’s `videos` payload (embedded YouTube keys), not from Google.
+**Not used:** Spotify Web API, YouTube Data API v3, MusicBrainz, or Cover Art Archive. **`album` / `song` nodes use Wikipedia** (same stack as people/artists). Trailer `youtubeVideoId` / `youtubeUrl` on film/TV nodes come **only** from TMDB’s `videos` payload (embedded YouTube keys), not from Google.
 
 ## Node Type → API Mapping
 
@@ -105,50 +105,6 @@ with `zoom=2` in the URL for a larger image.
 
 ---
 
-### MusicBrainz + Cover Art Archive (alternate for albums, songs — not default)
-
-Implemented in `packages/engine/src/enrichment/music.ts`. To use it again, wire
-`album` / `song` in `packages/engine/src/enrichment/pipeline.ts` to
-`fetchAlbumEnrichment` / `fetchSongEnrichment` instead of Wikipedia.
-
-**Step 1 — Search MusicBrainz:**
-
-```
-GET https://musicbrainz.org/ws/2/release/?query=artist:{creator}+release:{title}&fmt=json&limit=1
-```
-
-**Required header:**
-
-```
-User-Agent: CultureTree/0.1 (your@email.com)
-```
-
-**No API key required.**
-
-**Step 2 — Get cover art:**
-
-```
-GET https://coverartarchive.org/release/{mbid}/front
-```
-
-This returns a 307 redirect to the actual image URL. Follow the
-redirect or use the final URL as the `coverUrl`.
-
-If the Cover Art Archive returns 404, the release has no cover art.
-The node renders without an image — this is fine.
-
-**For songs:** Search for the release (album) that contains the song,
-since cover art is per-release not per-track. Use the artist name
-and search for releases, then use the first result's MBID.
-
-**Fields to extract:**
-
-- MusicBrainz release ID → externalId
-- Cover Art Archive URL → coverUrl
-- `https://musicbrainz.org/release/{mbid}` → externalUrl
-
----
-
 ### Wikipedia REST API (artists, persons, artworks, albums, songs)
 
 Album and song nodes use the same flow below; search adds a trailing `album` or `song`
@@ -192,7 +148,7 @@ a node renders fine with none of them.
   thumbnailUrl?: string    // smaller version
 
   // Links
-  externalUrl?: string     // primary link (TMDB page, MusicBrainz, Google Books)
+  externalUrl?: string     // primary link (TMDB page, Google Books, Wikipedia)
   wikipediaUrl?: string    // Wikipedia article
   youtubeVideoId?: string  // trailer video ID (from TMDB, not YouTube API)
   youtubeUrl?: string      // full YouTube URL
@@ -200,7 +156,7 @@ a node renders fine with none of them.
   // Metadata
   rating?: number          // TMDB score, Google Books rating
   description?: string     // short blurb (max 200-300 chars)
-  externalId?: string      // TMDB ID, MusicBrainz ID, etc.
+  externalId?: string      // TMDB ID, Google Books volume ID, etc.
 }
 ```
 
@@ -231,17 +187,14 @@ on first generation and never hit the API again.
 
 ## Rate Limiting
 
-| API               | Limit                        | Approach                                   |
-| ----------------- | ---------------------------- | ------------------------------------------ |
-| TMDB              | No hard limit                | Concurrency control only (max 10 parallel) |
-| Google Books      | 100 requests per 100 seconds | Bottleneck limiter, 90/100s reservoir      |
-| MusicBrainz       | 1 request per second         | Bottleneck limiter, strict 1/s             |
-| Cover Art Archive | No hard limit                | Concurrency control (max 5 parallel)       |
-| Wikipedia         | No practical limit           | Concurrency control (max 5 parallel)       |
+| API          | Limit                        | Approach                                   |
+| ------------ | ---------------------------- | ------------------------------------------ |
+| TMDB         | No hard limit                | Concurrency control only (max 10 parallel) |
+| Google Books | 100 requests per 100 seconds | Bottleneck limiter, 90/100s reservoir      |
+| Wikipedia    | No practical limit           | Concurrency control (max 5 parallel)       |
 
-MusicBrainz is the strictest — they enforce 1 request per second
-per application. The Bottleneck limiter must respect this. All other
-APIs are generous enough that concurrency control is sufficient.
+The active enrichment APIs are generous enough that Google Books burst limiting
+and light concurrency control are sufficient.
 
 ---
 
@@ -256,7 +209,5 @@ GOOGLE_BOOKS_API_KEY=...     # only if you hit 1,000/day unauthenticated limit
 
 # No keys needed for:
 # - Google Books (works without key)
-# - MusicBrainz (open, just needs User-Agent)
-# - Cover Art Archive (fully open)
 # - Wikipedia (fully open)
 ```

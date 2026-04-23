@@ -28,7 +28,6 @@ export const EnrichedMediaSchema = z.object({
   wikiExtract: z.string().optional(),
   eventDate: z.string().optional(),
 
-  /** Populated for song nodes when MusicBrainz resolves a release (often the studio album). */
   musicAlbumTitle: z.string().optional(),
   musicAlbumExternalUrl: z.url().optional(),
 });

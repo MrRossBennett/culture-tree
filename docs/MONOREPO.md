@@ -84,7 +84,6 @@ culture-tree/                         ← tanstarter-plus base
 │   │   │   │   ├── limiters.ts       ← per-API rate limiters (Bottleneck)
 │   │   │   │   ├── books.ts
 │   │   │   │   ├── films.ts          ← TMDB, includes trailer IDs
-│   │   │   │   ├── music.ts
 │   │   │   │   ├── wikipedia.ts      ← P2
 │   │   │   │   └── places.ts         ← P2
 │   │   │   ├── __tests__/
@@ -407,8 +406,8 @@ unless you need to customise:
 4. **Build the MVP page in `apps/web/`** — text input, generate button,
    tree rendered with shadcn cards using the fixture. All free.
 
-5. **Add enrichment** — books first (Google Books). Then films/TV (TMDB).
-   Then music (MusicBrainz + Cover Art Archive). Build the cache immediately.
+5. **Add enrichment** — books first (Google Books), films/TV (TMDB), and
+   music/people/artwork through Wikipedia. Build the cache immediately.
 
 6. **Add DB tables** — trees, enrichment cache. Wire up saving.
 

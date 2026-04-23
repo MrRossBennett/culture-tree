@@ -19,9 +19,14 @@ coverage
 out/
 build
 dist
+.output
 .nitro
 .vercel
 .wrangler
+
+# Local agent/tool settings
+.claude/settings.local.json
+.cursor/settings.local.json
 
 # Debug
 npm-debug.log*

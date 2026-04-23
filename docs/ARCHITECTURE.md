@@ -59,8 +59,8 @@ Features are gated by phase, not by schema changes.
 └─────────────┘     └──────────────────┘     └─────────────────┘     └──────────────┘
                            │                        │
                      Claude API              P1: Google Books, TMDB,
-                     via anthropic               MusicBrainz + Cover Art,
-                     provider                    Wikipedia (people / artists)
+                     via anthropic               Wikipedia (music, people,
+                     provider                    artists, artworks)
                                              P2: Google Places, Wikidata
 ```
 
@@ -710,9 +710,8 @@ export async function enrichTV(node: TreeNode): Promise<EnrichedMedia> {
 }
 ```
 
-Album and song nodes use **MusicBrainz** (search + metadata) and the
-**Cover Art Archive** (images). No Spotify Web API. See
-`docs/API_CONNECTIONS.md` and `packages/engine/src/enrichment/music.ts`.
+Album and song nodes use **Wikipedia** for article images, extracts, and links.
+No Spotify, MusicBrainz, Cover Art Archive, or YouTube Data API is used.
 
 Trailer data comes bundled with TMDB's film/TV enrichment via
 `append_to_response=videos`. No separate YouTube API needed — the
@@ -1041,15 +1040,15 @@ enrichment data already attached.
 
 **Search routes by type:**
 
-| Type selected | API searched      | Returns                            |
-| ------------- | ----------------- | ---------------------------------- |
-| book          | Google Books      | title, author, cover, ISBN         |
-| album         | MusicBrainz + CAA | title, artist, cover, MB link      |
-| film          | TMDB              | title, year, poster, rating        |
-| tv            | TMDB              | title, year, poster, rating        |
-| place         | Google Places     | name, address, coordinates, photos |
-| event         | Wikipedia         | title, extract, thumbnail          |
-| artist        | Wikipedia         | name, image, bio                   |
+| Type selected | API searched  | Returns                            |
+| ------------- | ------------- | ---------------------------------- |
+| book          | Google Books  | title, author, cover, ISBN         |
+| album         | Wikipedia     | title, artist, image, article link |
+| film          | TMDB          | title, year, poster, rating        |
+| tv            | TMDB          | title, year, poster, rating        |
+| place         | Google Places | name, address, coordinates, photos |
+| event         | Wikipedia     | title, extract, thumbnail          |
+| artist        | Wikipedia     | name, image, bio                   |
 
 **Server function:**
 
@@ -1070,7 +1069,7 @@ export const searchForNode = createServerFn({ method: "GET" })
       case "book":
         return searchGoogleBooks(query); // returns title, author, cover, ISBN
       case "album":
-        return searchMusicBrainz(query); // returns title, artist, art, MB link
+        return searchWikipedia(query); // returns title, extract, thumbnail
       case "film":
       case "tv":
         return searchTMDB(query, type); // returns title, year, poster
@@ -1193,7 +1192,6 @@ is where things break — and not uniformly.
 | ----------------------- | -------------------------------- | ------------------------------------------- |
 | Google Books            | 1,000/day unauth, 100/100s burst | Medium — burst limit matters for deep trees |
 | TMDB                    | No hard limit (removed 2024)     | Low                                         |
-| MusicBrainz             | ~1 request/second per app        | High — strict; queue or serialize           |
 | Wikipedia               | No practical limit               | Low                                         |
 | Google Places (Phase 2) | Cost-limited, not rate-limited   | Cost risk, not rate risk                    |
 
@@ -1219,11 +1217,6 @@ export const limiters = {
     reservoirRefreshAmount: 90,
     reservoirRefreshInterval: 100 * 1000, // every 100s (burst limit)
     maxConcurrent: 10,
-  }),
-
-  musicbrainz: new Bottleneck({
-    maxConcurrent: 1,
-    minTime: 1100, // 1 req/s policy
   }),
 
   tmdb: new Bottleneck({
@@ -1273,8 +1266,8 @@ handles this: failed enrichments silently skip, the tree returns
 with partial media data.
 
 This is the critical UX point: **missing media must never break a
-node**. A MusicBrainz throttle or outage means the album node shows the AI's text
-content without an album cover. The recommendation itself is intact.
+node**. A Wikipedia miss or TMDB/Google Books outage means the node shows the
+AI's text content without cover art or external metadata. The recommendation itself is intact.
 The UI is designed from day one to handle nodes with no media.
 
 **Layer 4: Monitoring.** Log enrichment success rates per API.
@@ -1344,8 +1337,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Phase 1 APIs
 TMDB_ACCESS_TOKEN=eyJ...           # film/TV; trailer YouTube IDs from TMDB payload only
 GOOGLE_BOOKS_API_KEY=...           # optional, higher rate limits
-MUSICBRAINZ_USER_AGENT=CultureTree/0.1 (you@example.com)
-
 # Phase 2 APIs
 GOOGLE_PLACES_API_KEY=...
 # Wikipedia REST API — no key required
@@ -1748,7 +1739,6 @@ culture-tree/
 │   │   │   ├── cache.ts              ← Postgres enrichment cache
 │   │   │   ├── books.ts              ← P1
 │   │   │   ├── films.ts              ← P1
-│   │   │   ├── music.ts              ← P1
 │   │   │   ├── wikipedia.ts          ← P2
 │   │   │   └── places.ts             ← P2
 │   │   └── fixtures/                 ← real trees, generated once

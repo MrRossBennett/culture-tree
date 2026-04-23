@@ -4,17 +4,14 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 interface SocialLoginButtonProps {
-  provider: string;
+  provider: "google";
   icon: React.ReactNode;
   disabled?: boolean;
   callbackURL: string;
 }
 
 export function SignInSocialButton(props: SocialLoginButtonProps) {
-  const providerLabel =
-    props.provider === "github"
-      ? "GitHub"
-      : props.provider.charAt(0).toUpperCase() + props.provider.slice(1);
+  const providerLabel = "Google";
 
   const mutation = useMutation({
     mutationFn: async () =>
@@ -40,7 +37,7 @@ export function SignInSocialButton(props: SocialLoginButtonProps) {
       onClick={() => mutation.mutate()}
     >
       {props.icon}
-      Login with {providerLabel}
+      Continue with {providerLabel}
     </Button>
   );
 }

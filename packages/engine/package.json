@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vp test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
