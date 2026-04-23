@@ -47,3 +47,7 @@ pnpm --filter @repo/engine test
 - `docs/ARCHITECTURE.md` explains the product architecture and generation/enrichment flow.
 - `docs/API_CONNECTIONS.md` documents third-party API usage and credential expectations.
 - `docs/MONOREPO.md` describes the workspace layout and package responsibilities.
+
+## References
+
+[TanStarter Plus](https://github.com/mugnavo/tanstarter-plus)
