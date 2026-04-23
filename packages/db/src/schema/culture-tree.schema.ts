@@ -17,7 +17,7 @@ export const cultureTree = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     /** When true, anyone can view `/tree/$id` without signing in. */
     isPublic: boolean("is_public").default(false).notNull(),
-    /** Map of branch node id (e.g. root-0-1) → {@link EnrichedMedia}. */
+    /** Map of tree item id (e.g. item_001) → {@link EnrichedMedia}. */
     enrichmentData: jsonb("enrichment_data"),
   },
   (table) => [index("culture_tree_user_id_idx").on(table.userId)],

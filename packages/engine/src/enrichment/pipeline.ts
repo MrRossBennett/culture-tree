@@ -1,9 +1,8 @@
-import type { CultureTree, EnrichedMedia, NodeTypeValue, TreeNode } from "@repo/schemas";
+import type { CultureTree, EnrichedMedia, NodeTypeValue, TreeItem } from "@repo/schemas";
 
 import { fetchBookEnrichment } from "./books";
 import { getCachedEnrichment, setCachedEnrichment } from "./cache";
 import { fetchFilmEnrichment, fetchTvEnrichment } from "./films";
-import { flattenBranchNodes } from "./flatten";
 import {
   fetchWikipediaArtworkEnrichment,
   fetchWikipediaEnrichment,
@@ -11,7 +10,7 @@ import {
   fetchWikipediaSongEnrichment,
 } from "./wikipedia";
 
-type Enricher = (node: TreeNode) => Promise<EnrichedMedia>;
+type Enricher = (item: TreeItem) => Promise<EnrichedMedia>;
 
 function hasEnrichmentData(media: EnrichedMedia): boolean {
   return Object.keys(media).length > 0;
@@ -23,7 +22,7 @@ function bookNeedsCoverRetry(cached: EnrichedMedia): boolean {
   return noArt && Boolean(cached.externalUrl?.trim() || cached.description?.trim());
 }
 
-/** Wikipedia-backed row with text/URL but no lead image yet — re-fetch (artwork, song, article, publication). */
+/** Wikipedia-backed row with text/URL but no lead image yet — re-fetch (artwork, song, article). */
 function wikiBackedButMissingImage(cached: EnrichedMedia): boolean {
   const noArt = !cached.coverUrl?.trim() && !cached.thumbnailUrl?.trim();
   return noArt && Boolean(cached.wikipediaUrl?.trim() || cached.wikiExtract?.trim());
@@ -39,57 +38,48 @@ const enricherRegistry: Partial<Record<NodeTypeValue, Enricher>> = {
   artist: fetchWikipediaEnrichment,
   /** Stand-alone piece (essay, feature, notable post) — Wikipedia when wikiSlug/title matches. */
   article: fetchWikipediaEnrichment,
-  /** Periodical: magazine, zine, journal, newspaper — same Wikipedia enrichment as article. */
-  publication: fetchWikipediaEnrichment,
   artwork: fetchWikipediaArtworkEnrichment,
 };
 
-async function enrichOneBranchNode(
-  nodeId: string,
-  node: TreeNode,
-): Promise<{ id: string; media: EnrichedMedia }> {
-  const enricher = enricherRegistry[node.type];
+async function enrichOneItem(item: TreeItem): Promise<{ id: string; media: EnrichedMedia }> {
+  const enricher = enricherRegistry[item.type];
   if (!enricher) {
-    return { id: nodeId, media: {} };
+    return { id: item.id, media: {} };
   }
 
   try {
-    const cached = await getCachedEnrichment(node.type, node.searchHint);
+    const cached = await getCachedEnrichment(item.type, item.searchHint);
     if (cached && hasEnrichmentData(cached)) {
       const stalePartial =
-        (node.type === "book" && bookNeedsCoverRetry(cached)) ||
-        ((node.type === "artwork" ||
-          node.type === "song" ||
-          node.type === "article" ||
-          node.type === "publication") &&
+        (item.type === "book" && bookNeedsCoverRetry(cached)) ||
+        ((item.type === "artwork" || item.type === "song" || item.type === "article") &&
           wikiBackedButMissingImage(cached));
       if (!stalePartial) {
-        return { id: nodeId, media: cached };
+        return { id: item.id, media: cached };
       }
     }
 
-    const media = await enricher(node);
+    const media = await enricher(item);
     if (hasEnrichmentData(media)) {
-      await setCachedEnrichment(node.type, node.searchHint, media);
+      await setCachedEnrichment(item.type, item.searchHint, media);
     }
-    return { id: nodeId, media };
+    return { id: item.id, media };
   } catch {
-    return { id: nodeId, media: {} };
+    return { id: item.id, media: {} };
   }
 }
 
-/** Parallel enrichment with Postgres-backed cache; failures degrade to empty media per node. */
+/** Parallel enrichment with Postgres-backed cache; failures degrade to empty media per item. */
 export async function enrichTree(tree: CultureTree): Promise<Map<string, EnrichedMedia>> {
-  const flat = flattenBranchNodes(tree);
-  const results = await Promise.allSettled(
-    flat.map(({ id, node }) => enrichOneBranchNode(id, node)),
-  );
-
   const enrichments = new Map<string, EnrichedMedia>();
+
+  const results = await Promise.allSettled(tree.items.map(async (item) => enrichOneItem(item)));
+
   for (const result of results) {
     if (result.status === "fulfilled") {
       enrichments.set(result.value.id, result.value.media);
     }
   }
+
   return enrichments;
 }

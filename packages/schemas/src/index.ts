@@ -9,8 +9,8 @@ export {
   NodeType,
   normalizeCultureTreeOutput,
   SearchHintSchema,
+  TreeItemSchema,
   TreeNodeIdentitySchema,
-  TreeNodeSchema,
   TreeNodeSnapshotSchema,
   type ConnectionTypeValue,
   type CultureTree,
@@ -19,7 +19,7 @@ export {
   type NodeSourceValue,
   type NodeTypeValue,
   type SearchHint,
-  type TreeNode,
+  type TreeItem,
   type TreeNodeIdentity,
   type TreeNodeSnapshot,
 } from "./tree";

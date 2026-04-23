@@ -1,4 +1,4 @@
-import type { EnrichedMedia, TreeNode } from "@repo/schemas";
+import type { EnrichedMedia, TreeItem } from "@repo/schemas";
 
 const WIKI_REST = "https://en.wikipedia.org/api/rest_v1";
 const WIKI_API = "https://en.wikipedia.org/w/api.php";
@@ -157,13 +157,13 @@ async function mergeSongWithArtistImageIfNeeded(
   };
 }
 
-export async function fetchWikipediaEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const slug = node.searchHint.wikiSlug?.trim();
+export async function fetchWikipediaEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
   if (slug) {
     return fetchSummaryByTitle(slug);
   }
   const q =
-    [node.searchHint.title, node.searchHint.creator?.trim()].filter(Boolean).join(" ") || node.name;
+    [item.searchHint.title, item.searchHint.creator?.trim()].filter(Boolean).join(" ") || item.name;
   return wikipediaFromSearchQuery(q);
 }
 
@@ -171,19 +171,19 @@ export async function fetchWikipediaEnrichment(node: TreeNode): Promise<Enriched
  * Artwork nodes: Wikipedia for the work first; many artwork articles have no lead image,
  * so we reuse the artist's page image when the work summary has no thumbnail.
  */
-export async function fetchWikipediaArtworkEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const slug = node.searchHint.wikiSlug?.trim();
+export async function fetchWikipediaArtworkEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
   let primary: EnrichedMedia;
   if (slug) {
     primary = await fetchSummaryByTitle(slug);
   } else {
     const q =
-      [node.searchHint.title, node.searchHint.creator?.trim()].filter(Boolean).join(" ") ||
-      node.name;
+      [item.searchHint.title, item.searchHint.creator?.trim()].filter(Boolean).join(" ") ||
+      item.name;
     primary = await wikipediaFromSearchQuery(q);
   }
 
-  const creator = node.searchHint.creator?.trim();
+  const creator = item.searchHint.creator?.trim();
   if (!creator || hasWikipediaImage(primary)) {
     return primary;
   }
@@ -201,13 +201,13 @@ export async function fetchWikipediaArtworkEnrichment(node: TreeNode): Promise<E
 }
 
 /** Album nodes: Wikipedia search with an album disambiguation suffix. */
-export async function fetchWikipediaMusicEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const slug = node.searchHint.wikiSlug?.trim();
+export async function fetchWikipediaMusicEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
   if (slug) {
     return fetchSummaryByTitle(slug);
   }
   const base =
-    [node.searchHint.title, node.searchHint.creator?.trim()].filter(Boolean).join(" ") || node.name;
+    [item.searchHint.title, item.searchHint.creator?.trim()].filter(Boolean).join(" ") || item.name;
   return wikipediaFromSearchQuery(`${base} album`);
 }
 
@@ -216,11 +216,11 @@ export async function fetchWikipediaMusicEnrichment(node: TreeNode): Promise<Enr
  * (e.g. band "Suicide") do not resolve to unrelated topics (e.g. Manet's *Le Suicidé*).
  * Images: song article when trusted; otherwise artist page (band-disambiguated search).
  */
-export async function fetchWikipediaSongEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const slug = node.searchHint.wikiSlug?.trim();
-  const creator = node.searchHint.creator?.trim();
+export async function fetchWikipediaSongEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
+  const creator = item.searchHint.creator?.trim();
   const title =
-    node.searchHint.title?.trim() || stripTrailingAuthorFromTitle(node.name) || node.name.trim();
+    item.searchHint.title?.trim() || stripTrailingAuthorFromTitle(item.name) || item.name.trim();
 
   if (slug) {
     const direct = await fetchSummaryByTitle(slug);
@@ -239,7 +239,7 @@ export async function fetchWikipediaSongEnrichment(node: TreeNode): Promise<Enri
   }
   queries.push(`${title} song`);
   queries.push(
-    `${[node.searchHint.title?.trim(), creator].filter(Boolean).join(" ") || node.name} song`,
+    `${[item.searchHint.title?.trim(), creator].filter(Boolean).join(" ") || item.name} song`,
   );
 
   for (const q of queries) {

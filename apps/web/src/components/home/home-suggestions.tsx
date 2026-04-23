@@ -1,8 +1,6 @@
 import { cn } from "@repo/ui/lib/utils";
 import { useState } from "react";
 
-import { writeSeedPrompt } from "~/components/home/seed-prompt-storage";
-
 const SUGGESTIONS = [
   "Grimy New York 1970s",
   "Boards of Canada",
@@ -76,9 +74,11 @@ function MiniTree({ active }: { readonly active: boolean }) {
 function SeedPill({
   label,
   treePosition,
+  setPrompt,
 }: {
   readonly label: string;
   readonly treePosition: "top" | "bottom";
+  readonly setPrompt: (value: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -112,7 +112,7 @@ function SeedPill({
       {treePosition === "top" && treeEl}
       <button
         type="button"
-        onClick={() => writeSeedPrompt(label)}
+        onClick={() => setPrompt(label)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={cn(
@@ -135,12 +135,17 @@ function SeedPill({
   );
 }
 
-export function HomeSuggestions() {
+export function HomeSuggestions({ setPrompt }: { readonly setPrompt: (value: string) => void }) {
   return (
     <section className="relative z-10 mx-auto w-full max-w-xl px-4 sm:px-6 md:px-0">
       <div className="flex flex-wrap justify-center gap-2">
         {SUGGESTIONS.map((label, i) => (
-          <SeedPill key={label} label={label} treePosition={i < 4 ? "top" : "bottom"} />
+          <SeedPill
+            key={label}
+            label={label}
+            treePosition={i < 4 ? "top" : "bottom"}
+            setPrompt={setPrompt}
+          />
         ))}
       </div>
     </section>

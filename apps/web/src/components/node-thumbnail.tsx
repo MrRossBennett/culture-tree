@@ -6,7 +6,6 @@ import {
   ClapperboardIcon,
   Disc3Icon,
   ImageIcon,
-  LibraryBigIcon,
   MapPinIcon,
   MusicIcon,
   NewspaperIcon,
@@ -40,8 +39,6 @@ export function nodeTypeIcon(type: NodeTypeValue, className: string) {
       return <CalendarIcon className={className} aria-hidden />;
     case "article":
       return <NewspaperIcon className={className} aria-hidden />;
-    case "publication":
-      return <LibraryBigIcon className={className} aria-hidden />;
   }
 }
 
@@ -70,7 +67,7 @@ export function NodeThumbnail({
           src={src}
           className={cn(
             "shrink-0 object-cover",
-            isSquare ? cn("size-10", !isAlbum && "rounded") : "max-h-20 w-12 self-start object-top",
+            isSquare ? cn("size-10", !isAlbum) : "max-h-20 w-12 self-start object-top",
             className,
           )}
         />
@@ -81,7 +78,7 @@ export function NodeThumbnail({
         aria-hidden
         className={cn(
           "flex size-10 shrink-0 items-center justify-center bg-muted/20 text-muted-foreground",
-          !isAlbum && "rounded-sm",
+          !isAlbum,
           className,
         )}
       >
@@ -100,8 +97,8 @@ export function NodeThumbnail({
         className={cn(
           "shrink-0",
           isSquare
-            ? cn("size-[5.5rem] object-cover md:size-24", !isAlbum && "rounded-sm")
-            : "max-h-40 w-[5.5rem] self-start object-contain object-top md:max-h-48 md:w-24",
+            ? cn("size-22 object-cover md:size-24", !isAlbum)
+            : "max-h-40 w-22 self-start object-contain object-top md:max-h-48 md:w-24",
           className,
         )}
       />
@@ -112,8 +109,8 @@ export function NodeThumbnail({
     <div
       aria-hidden
       className={cn(
-        "flex size-[5.5rem] shrink-0 items-center justify-center bg-muted/20 text-muted-foreground md:size-24",
-        !isAlbum && "rounded-sm",
+        "flex size-22 shrink-0 items-center justify-center bg-muted/20 text-muted-foreground md:size-24",
+        !isAlbum,
         className,
       )}
     >

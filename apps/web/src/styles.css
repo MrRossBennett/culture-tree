@@ -3,9 +3,6 @@
 @import "@repo/ui/styles/base.css";
 @source "./";
 
-/* After Tailwind — https://reactflow.dev/learn/troubleshooting/common-errors#styles */
-@import "@xyflow/react/dist/style.css";
-
 @import "@fontsource-variable/jetbrains-mono";
 
 @theme inline {

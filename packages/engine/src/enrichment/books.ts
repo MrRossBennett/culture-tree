@@ -1,4 +1,4 @@
-import type { EnrichedMedia, TreeNode } from "@repo/schemas";
+import type { EnrichedMedia, TreeItem } from "@repo/schemas";
 
 import { fetchWikipediaBookCoverImages } from "./wikipedia";
 
@@ -212,10 +212,10 @@ function googleBooksEditionUrl(
   return httpsify(infoLink);
 }
 
-async function fetchFromGoogleBooks(node: TreeNode): Promise<EnrichedMedia> {
-  const rawTitle = node.searchHint.title;
+async function fetchFromGoogleBooks(item: TreeItem): Promise<EnrichedMedia> {
+  const rawTitle = item.searchHint.title;
   const titleForScore = cleanBookTitleForQuery(rawTitle);
-  const q = buildQuery(rawTitle, node.searchHint.creator, node.searchHint.isbn);
+  const q = buildQuery(rawTitle, item.searchHint.creator, item.searchHint.isbn);
 
   const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
   const url = new URL(GOOGLE_BOOKS_BASE);
@@ -230,7 +230,7 @@ async function fetchFromGoogleBooks(node: TreeNode): Promise<EnrichedMedia> {
     return {};
   }
   const data = (await res.json()) as { items?: GbVolumeItem[] };
-  const picked = pickBestItem(data.items, titleForScore, node.searchHint.creator?.trim());
+  const picked = pickBestItem(data.items, titleForScore, item.searchHint.creator?.trim());
   const book = picked?.volumeInfo;
   if (!book) {
     return {};
@@ -254,13 +254,13 @@ async function fetchFromGoogleBooks(node: TreeNode): Promise<EnrichedMedia> {
   };
 }
 
-export async function fetchBookEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const gb = await fetchFromGoogleBooks(node);
+export async function fetchBookEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const gb = await fetchFromGoogleBooks(item);
   if (!gb.coverUrl && !gb.thumbnailUrl) {
     const wiki = await fetchWikipediaBookCoverImages({
-      title: node.searchHint.title,
-      creator: node.searchHint.creator,
-      wikiSlug: node.searchHint.wikiSlug,
+      title: item.searchHint.title,
+      creator: item.searchHint.creator,
+      wikiSlug: item.searchHint.wikiSlug,
     });
     if (wiki.coverUrl) {
       gb.coverUrl = httpsify(wiki.coverUrl);

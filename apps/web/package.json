@@ -24,7 +24,6 @@
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-ssr-query": "catalog:",
     "@tanstack/react-start": "catalog:",
-    "@xyflow/react": "catalog:",
     "date-fns": "catalog:",
     "drizzle-orm": "catalog:",
     "lucide-react": "catalog:",

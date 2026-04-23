@@ -1,99 +1,91 @@
 {
-  "name": "Grimy New York 70s",
-  "type": "root",
-  "source": "ai",
-  "reason": "",
-  "searchHint": {
-    "title": "New York City 1970s urban decay"
-  },
-  "children": [
+  "seed": "Grimy New York 70s",
+  "seedType": "root",
+  "items": [
     {
+      "id": "item_001",
       "name": "Taxi Driver",
       "type": "film",
-      "source": "ai",
       "year": 1976,
-      "reason": "Scorsese's masterpiece captures the psychological rot beneath the city's decay—Travis Bickle as the embodiment of urban alienation stalking through neon-lit squalor.",
+      "reason": "Scorsese's fever dream captures the psychic rot beneath the city's neon decay, where alienation stops being mood and becomes the weather itself.",
       "connectionType": "thematic",
       "searchHint": {
         "title": "Taxi Driver",
         "creator": "Martin Scorsese"
       },
-      "children": [
-        {
-          "name": "The Friends of Eddie Coyle",
-          "type": "film",
-          "source": "ai",
-          "year": 1973,
-          "reason": "Peter Yates' Boston crime film shares Taxi Driver's vision of urban decay eating away at working-class masculinity—both films understand that the city doesn't just contain violence, it creates it.",
-          "connectionType": "spiritual-kin",
-          "searchHint": {
-            "title": "The Friends of Eddie Coyle",
-            "creator": "Peter Yates"
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
     },
     {
+      "id": "item_002",
+      "name": "The Friends of Eddie Coyle",
+      "type": "film",
+      "year": 1973,
+      "reason": "Peter Yates's crime film shares the same exhausted masculinity and urban corrosion, showing a city that does not contain violence so much as manufacture it.",
+      "connectionType": "spiritual-kin",
+      "searchHint": {
+        "title": "The Friends of Eddie Coyle",
+        "creator": "Peter Yates"
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_003",
       "name": "Suicide",
       "type": "artist",
-      "source": "ai",
-      "reason": "Alan Vega and Martin Rev's two-man electronic assault unit channeled the city's industrial violence into sound—their drum machines and synthesizers were the heartbeat of a dying metropolis, not music but urban life support.",
+      "reason": "Alan Vega and Martin Rev turned cheap electronics into downtown menace, making music that sounded less performed than exhaled by the city itself.",
       "connectionType": "thematic",
       "searchHint": {
         "title": "Suicide band New York"
       },
-      "children": [
-        {
-          "name": "Frankie Teardrop",
-          "type": "song",
-          "source": "ai",
-          "year": 1977,
-          "reason": "Ten minutes of electronic terror that follows a factory worker's descent into madness and murder—the sound of what happens when the American Dream meets New York reality and explodes.",
-          "connectionType": "catalyst",
-          "searchHint": {
-            "title": "Frankie Teardrop",
-            "creator": "Suicide"
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
     },
     {
+      "id": "item_004",
+      "name": "Frankie Teardrop",
+      "type": "song",
+      "year": 1977,
+      "reason": "Ten minutes of factory-floor panic and domestic collapse, like the sound of the American Dream cracking open in a Lower East Side hallway.",
+      "connectionType": "catalyst",
+      "searchHint": {
+        "title": "Frankie Teardrop",
+        "creator": "Suicide"
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_005",
       "name": "The Power Broker",
       "type": "book",
-      "source": "ai",
       "year": 1974,
-      "reason": "Robert Caro's biography of Robert Moses reveals how one man's vision created the infrastructure that would decay into 70s New York—the highways that carved up neighborhoods, the housing projects that became vertical ghettos.",
+      "reason": "Caro shows how Robert Moses built the physical systems that later decayed into 70s New York, turning policy into a hidden prehistory of urban ruin.",
       "connectionType": "catalyst",
       "searchHint": {
         "title": "The Power Broker",
         "creator": "Robert Caro"
       },
-      "children": [
-        {
-          "name": "Co-op City",
-          "type": "place",
-          "source": "ai",
-          "reason": "The Bronx housing complex that Caro wrote about—35 brutalist towers housing 60,000 people, Moses' utopian vision turned dystopian reality, where middle-class families found themselves trapped in what critics called 'vertical suburbs of despair.'",
-          "connectionType": "catalyst",
-          "searchHint": {
-            "title": "Co-op City",
-            "location": {
-              "city": "Bronx",
-              "country": "United States"
-            }
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
     },
     {
+      "id": "item_006",
+      "name": "Co-op City",
+      "type": "place",
+      "reason": "This Bronx megaproject embodies the era's busted utopianism, a vertical suburb where planning ambition hardened into concrete estrangement.",
+      "connectionType": "catalyst",
+      "searchHint": {
+        "title": "Co-op City",
+        "location": {
+          "city": "Bronx",
+          "country": "United States"
+        }
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_007",
       "name": "New York Dolls at the Mercer Arts Center Collapse",
       "type": "event",
-      "source": "ai",
       "year": 1973,
-      "reason": "The night the decrepit Broadway hotel housing the city's premier glam rock venue literally fell down, crushing four people—a perfect metaphor for how the city's cultural renaissance was built on rotting foundations.",
+      "reason": "A glam-rock venue literally caving in feels like the perfect emblem of the period, when every cultural breakthrough seemed balanced on rotten infrastructure.",
       "connectionType": "thematic",
       "searchHint": {
         "title": "Mercer Arts Center collapse",
@@ -102,25 +94,24 @@
           "end": "1973-08-03"
         }
       },
-      "children": [
-        {
-          "name": "Oscar Wilde Room",
-          "type": "place",
-          "source": "ai",
-          "reason": "The tiny basement venue within the Mercer Arts Center where the New York Dolls, Television, and dozens of other bands played to crowds of 50—the primordial scene before CBGB, where glam and punk were still indistinguishable.",
-          "connectionType": "birthplace",
-          "searchHint": {
-            "title": "Oscar Wilde Room Mercer Arts Center"
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
     },
     {
+      "id": "item_008",
+      "name": "Oscar Wilde Room",
+      "type": "place",
+      "reason": "This tiny Mercer basement was the larval stage of punk, a room where glam collapse and downtown reinvention still looked like the same scene.",
+      "connectionType": "birthplace",
+      "searchHint": {
+        "title": "Oscar Wilde Room Mercer Arts Center"
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_009",
       "name": "Alphabet City",
       "type": "place",
-      "source": "ai",
-      "reason": "The Lower East Side neighborhood east of Avenue A where buildings sold for $1000 and junkies nodded off in doorways—the city's designated sacrifice zone, where artists and criminals shared the same abandoned tenements.",
+      "reason": "The neighborhood east of Avenue A became the city's sacrifice zone, where artists, junkies, and families all learned to live inside abandonment.",
       "connectionType": "frequented",
       "searchHint": {
         "title": "Alphabet City",
@@ -129,45 +120,43 @@
           "country": "United States"
         }
       },
-      "children": [
-        {
-          "name": "Loisaida",
-          "type": "place",
-          "source": "ai",
-          "reason": "The Puerto Rican name for the Lower East Side that became a rallying cry—poet Bittman Roth's Spanish-English portmanteau capturing how Latino families held onto community even as their neighborhood crumbled around them.",
-          "connectionType": "thematic",
-          "searchHint": {
-            "title": "Loisaida Lower East Side"
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
     },
     {
+      "id": "item_010",
+      "name": "Loisaida",
+      "type": "place",
+      "reason": "The Puerto Rican name for the Lower East Side preserves the community imagination that survived even as the neighborhood around it was left to crumble.",
+      "connectionType": "thematic",
+      "searchHint": {
+        "title": "Loisaida Lower East Side"
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_011",
       "name": "Colson Whitehead",
       "type": "person",
-      "source": "ai",
-      "reason": "The novelist who grew up in 70s Manhattan and later wrote about how the city's decay shaped his childhood imagination—his memoir 'The Colossus of New York' maps the psychological geography of a kid navigating urban collapse.",
+      "reason": "Whitehead grew up inside the afterimage of this city and later wrote its decay as a mental map, not just a historical condition.",
       "connectionType": "documented-by",
       "searchHint": {
         "title": "Colson Whitehead",
         "wikiSlug": "Colson_Whitehead"
       },
-      "children": [
-        {
-          "name": "The Colossus of New York",
-          "type": "book",
-          "source": "ai",
-          "year": 2003,
-          "reason": "Whitehead's love letter to the city is also an elegy for the dangerous, broke New York of his youth—each essay captures a different piece of urban architecture and the memories embedded in concrete and steel.",
-          "connectionType": "documented-by",
-          "searchHint": {
-            "title": "The Colossus of New York",
-            "creator": "Colson Whitehead"
-          },
-          "children": []
-        }
-      ]
+      "source": "ai"
+    },
+    {
+      "id": "item_012",
+      "name": "The Colossus of New York",
+      "type": "book",
+      "year": 2003,
+      "reason": "Whitehead's essay-book turns sidewalks, subways, and towers into memory devices, proving the ruined city never stopped shaping the people who survived it.",
+      "connectionType": "documented-by",
+      "searchHint": {
+        "title": "The Colossus of New York",
+        "creator": "Colson Whitehead"
+      },
+      "source": "ai"
     }
   ]
 }

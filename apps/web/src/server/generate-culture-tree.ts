@@ -2,10 +2,17 @@ import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree } from "@repo/db/schema";
 import { enrichTree, generateTree } from "@repo/engine";
-import { CultureTreeSchema, TreeEnrichmentsMapSchema, TreeRequestSchema } from "@repo/schemas";
+import {
+  CultureTreeSchema,
+  TreeEnrichmentsMapSchema,
+  TreeItemSchema,
+  type TreeEnrichmentsMap,
+  TreeRequestSchema,
+} from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 
 export const $generateCultureTree = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -24,9 +31,10 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
       isPublic: false,
     });
 
+    let enrichments: TreeEnrichmentsMap = {};
     if (process.env.MOCK_ENGINE !== "true") {
       const map = await enrichTree(tree);
-      const enrichments = Object.fromEntries(map);
+      enrichments = Object.fromEntries(map);
       TreeEnrichmentsMapSchema.parse(enrichments);
       await db
         .update(cultureTree)
@@ -34,5 +42,16 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
         .where(eq(cultureTree.id, id));
     }
 
-    return { treeId: id, tree };
+    return { treeId: id, tree, enrichments };
+  });
+
+export const $seedTreeFromItem = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(z.object({ item: TreeItemSchema }))
+  .handler(async ({ data }) => {
+    const query = data.item.year ? `${data.item.name} (${data.item.year})` : data.item.name;
+
+    return $generateCultureTree({
+      data: { query, depth: "standard", tone: "mixed" },
+    });
   });

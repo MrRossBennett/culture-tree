@@ -3,9 +3,10 @@ import {
   deriveSearchHintFromName,
   ExternalNodeSearchResultSchema,
   NodeType,
-  TreeNodeSchema,
-  type TreeNode,
+  TreeItemSchema,
+  type TreeItem,
 } from "@repo/schemas";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
 export const ConceptNodeDraftSchema = z.object({
@@ -13,7 +14,7 @@ export const ConceptNodeDraftSchema = z.object({
   name: z.string().trim().min(1),
   type: NodeType,
   connectionType: ConnectionType,
-  reason: z.string().trim().min(1),
+  reason: z.string().trim(),
   year: z.number().int().optional(),
 });
 
@@ -21,7 +22,7 @@ export const SearchSelectedNodeDraftSchema = z.object({
   kind: z.literal("search-result"),
   result: ExternalNodeSearchResultSchema,
   connectionType: ConnectionType,
-  reason: z.string().trim().min(1),
+  reason: z.string().trim(),
 });
 
 export const AddCultureTreeNodeDraftSchema = z.discriminatedUnion("kind", [
@@ -35,12 +36,13 @@ export type AddCultureTreeNodeDraft = z.infer<typeof AddCultureTreeNodeDraftSche
  * Precedence for selected results:
  * `identity` is canonical, `snapshot` is stable rendering, `searchHint` is enrichment glue.
  */
-export function buildCultureTreeNode(input: AddCultureTreeNodeDraft): TreeNode {
+export function buildCultureTreeNode(input: AddCultureTreeNodeDraft): TreeItem {
   const reason = input.reason.trim();
 
   if (input.kind === "concept") {
     const name = input.name.trim();
-    return TreeNodeSchema.parse({
+    return TreeItemSchema.parse({
+      id: nanoid(),
       name,
       type: input.type,
       connectionType: input.connectionType,
@@ -48,12 +50,12 @@ export function buildCultureTreeNode(input: AddCultureTreeNodeDraft): TreeNode {
       year: input.year,
       source: "user",
       searchHint: deriveSearchHintFromName(name, input.type),
-      children: [],
     });
   }
 
   const { identity, searchHint, snapshot } = input.result;
-  return TreeNodeSchema.parse({
+  return TreeItemSchema.parse({
+    id: nanoid(),
     name: snapshot.name,
     type: snapshot.type,
     year: snapshot.year,
@@ -63,6 +65,5 @@ export function buildCultureTreeNode(input: AddCultureTreeNodeDraft): TreeNode {
     identity,
     snapshot,
     source: "user",
-    children: [],
   });
 }

@@ -25,7 +25,7 @@ async function generatePass(
     output: Output.object({
       name: "CultureTree",
       description:
-        "Culture connection tree: every node has searchHint.title (work title or primary label) and searchHint.creator (author/artist/etc.) as separate strings when the node type is a creative work.",
+        "Culture connection tree: every item has searchHint.title (work title or primary label) and searchHint.creator (author/artist/etc.) as separate strings when the item type is a creative work.",
       schema: CultureTreeSchema,
     }),
   });
@@ -41,9 +41,9 @@ export async function generateTree(request: TreeRequest): Promise<CultureTree> {
   const { query, depth, mediaFilter, tone } = data;
 
   const depthConfig = {
-    shallow: { branches: "3-4", children: "1" },
-    standard: { branches: "4-6", children: "1-2" },
-    deep: { branches: "5-7", children: "2-3" },
+    shallow: { count: "6-8" },
+    standard: { count: "10-14" },
+    deep: { count: "16-20" },
   }[depth];
 
   const pass1 = await generatePass(

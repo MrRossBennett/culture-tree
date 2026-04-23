@@ -5,6 +5,25 @@ const TMDB_IMG = "https://image.tmdb.org/t/p";
 const GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1/volumes";
 const WIKI_REST = "https://en.wikipedia.org/api/rest_v1";
 const WIKI_API = "https://en.wikipedia.org/w/api.php";
+const TMDB_CANDIDATE_LIMIT = 20;
+const GOOGLE_BOOKS_CANDIDATE_LIMIT = 6;
+const WIKIPEDIA_CANDIDATE_LIMIT = 8;
+const FINAL_RESULT_LIMIT = 12;
+const DIVERSIFIED_HEAD_LIMIT = 3;
+const DIVERSIFIED_TYPE_ORDER: readonly NodeTypeValue[] = [
+  "artist",
+  "album",
+  "song",
+  "book",
+  "film",
+  "tv",
+  "person",
+  "article",
+  "artwork",
+  "podcast",
+  "event",
+  "place",
+];
 
 type RankedSearchResult = ExternalNodeSearchResult & { score: number };
 
@@ -16,6 +35,7 @@ type TmdbSearchItem = {
   first_air_date?: string;
   poster_path?: string | null;
   overview?: string;
+  vote_count?: number;
 };
 
 type GoogleBooksItem = {
@@ -28,6 +48,8 @@ type WikipediaSearchItem = {
   pageid?: number;
   snippet?: string;
 };
+
+const SCREEN_NODE_TYPES = new Set<NodeTypeValue>(["film", "tv"]);
 
 function hasTmdbCredentials(): boolean {
   return Boolean(process.env.TMDB_ACCESS_TOKEN?.trim() || process.env.TMDB_API_KEY?.trim());
@@ -43,6 +65,23 @@ function tmdbFetchInit(url: URL): RequestInit {
     url.searchParams.set("api_key", apiKey);
   }
   return { headers: {} };
+}
+
+export function buildTmdbSearchQueries(query: string): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const normalized = normalizeText(trimmed);
+  const queries = [trimmed];
+
+  // TMDB can miss leading-article titles for short ambiguous queries like "queen".
+  if (normalized && !/^(the|a|an)\s/.test(normalized) && normalized.split(" ").length <= 3) {
+    queries.push(`the ${trimmed}`);
+  }
+
+  return queries;
 }
 
 function normalizeText(value: string): string {
@@ -72,29 +111,126 @@ function pickMetadata(parts: Array<string | undefined>): string | undefined {
   return values.length > 0 ? values.join(" • ") : undefined;
 }
 
+function tmdbVoteCountBoost(voteCount: number | undefined): number {
+  if (!Number.isFinite(voteCount) || voteCount == null || voteCount <= 0) {
+    return 0;
+  }
+
+  return Math.min(24, Math.log10(voteCount + 1) * 8);
+}
+
+function stripLeadingArticle(value: string): string {
+  return value.replace(/^(the|a|an)\s+/i, "").trim();
+}
+
 function baseMatchScore(name: string, query: string): number {
   const normalizedName = normalizeText(name);
   const normalizedQuery = normalizeText(query);
+  const articleInsensitiveName = normalizeText(stripLeadingArticle(name));
   if (!normalizedName || !normalizedQuery) {
     return 0;
   }
   if (normalizedName === normalizedQuery) {
     return 120;
   }
+  if (articleInsensitiveName && articleInsensitiveName === normalizedQuery) {
+    return 108;
+  }
   let score = 0;
   if (normalizedName.startsWith(normalizedQuery)) {
     score += 90;
   } else if (normalizedName.includes(normalizedQuery)) {
     score += 70;
+  } else if (articleInsensitiveName.startsWith(normalizedQuery)) {
+    score += 84;
+  } else if (articleInsensitiveName.includes(normalizedQuery)) {
+    score += 66;
   }
   const queryTokens = normalizedQuery.split(" ").filter((token) => token.length >= 2);
   const nameTokens = new Set(normalizedName.split(" "));
+  const articleInsensitiveTokens = new Set(articleInsensitiveName.split(" ").filter(Boolean));
   for (const token of queryTokens) {
-    if (nameTokens.has(token)) {
+    if (nameTokens.has(token) || articleInsensitiveTokens.has(token)) {
       score += 12;
     }
   }
   return score;
+}
+
+function isExactTitleMatch(name: string, query: string): boolean {
+  const normalizedName = normalizeText(name);
+  const normalizedQuery = normalizeText(query);
+  return Boolean(normalizedName && normalizedName === normalizedQuery);
+}
+
+function isArticleInsensitiveExactMatch(name: string, query: string): boolean {
+  return Boolean(normalizeText(stripLeadingArticle(name)) === normalizeText(query.trim()));
+}
+
+function isComparableExactTitleMatch(name: string, query: string): boolean {
+  return Boolean(normalizeText(stripTrailingDisambiguator(name)) === normalizeText(query.trim()));
+}
+
+function isWikipediaDisambiguation(summary: { description?: string; extract?: string }): boolean {
+  const blob = normalizeText(`${summary.description ?? ""} ${summary.extract ?? ""}`);
+  return (
+    blob === "topics referred to by the same term" ||
+    blob === "topics referred to by this term" ||
+    blob.includes("topics referred to by the same term") ||
+    blob.includes("topics referred to by this term") ||
+    blob.includes("may refer to")
+  );
+}
+
+function exactMatchTypeBoost(type: NodeTypeValue, exactMatch: boolean): number {
+  if (!exactMatch) {
+    return 0;
+  }
+
+  switch (type) {
+    case "artist":
+      return 28;
+    case "album":
+      return 18;
+    case "song":
+      return 14;
+    case "book":
+      return 12;
+    case "person":
+      return 10;
+    default:
+      return 0;
+  }
+}
+
+function stripTrailingDisambiguator(value: string): string {
+  return value.replace(/\s*\([^()]+\)\s*$/i, "").trim();
+}
+
+function comparableExactMatch(name: string, query: string): boolean {
+  return Boolean(normalizeText(stripTrailingDisambiguator(name)) === normalizeText(query.trim()));
+}
+
+function disambiguatedMatchTypeBoost(type: NodeTypeValue, name: string, query: string): number {
+  const hasDisambiguator = stripTrailingDisambiguator(name) !== name.trim();
+  if (!hasDisambiguator || !comparableExactMatch(name, query)) {
+    return 0;
+  }
+
+  switch (type) {
+    case "artist":
+      return 36;
+    case "album":
+      return 20;
+    case "song":
+      return 16;
+    case "book":
+      return 14;
+    case "person":
+      return 12;
+    default:
+      return 0;
+  }
 }
 
 function httpsify(url: string | undefined): string | undefined {
@@ -129,6 +265,150 @@ function googleBooksEditionUrl(
 
 function normalizedWikipediaKey(title: string): string {
   return title.trim().replace(/\s+/g, "_");
+}
+
+function normalizeComparableTitle(value: string): string {
+  return normalizeText(
+    value.replace(/\s*\((film|tv series|television series|miniseries|soundtrack)\)\s*$/i, ""),
+  );
+}
+
+function inferredScreenType(result: ExternalNodeSearchResult): "film" | "tv" | null {
+  if (result.snapshot.type === "film" || result.snapshot.type === "tv") {
+    return result.snapshot.type;
+  }
+
+  const blob = `${result.snapshot.name} ${result.meta ?? ""} ${result.externalUrl ?? ""}`;
+  const normalized = normalizeText(blob);
+
+  if (
+    normalized.includes(" tv series ") ||
+    normalized.includes(" television series ") ||
+    normalized.includes(" miniseries ") ||
+    normalized.includes("/tv/")
+  ) {
+    return "tv";
+  }
+
+  if (normalized.includes(" film ") || normalized.includes("/movie/")) {
+    return "film";
+  }
+
+  return null;
+}
+
+function isSameCreativeWork(
+  left: ExternalNodeSearchResult,
+  right: ExternalNodeSearchResult,
+): boolean {
+  const leftScreenType = inferredScreenType(left);
+  const rightScreenType = inferredScreenType(right);
+  if (!leftScreenType || leftScreenType !== rightScreenType) {
+    return false;
+  }
+
+  if (
+    SCREEN_NODE_TYPES.has(left.snapshot.type) ||
+    SCREEN_NODE_TYPES.has(right.snapshot.type) ||
+    left.identity.source === "wikipedia" ||
+    right.identity.source === "wikipedia"
+  ) {
+    const leftName = normalizeComparableTitle(left.snapshot.name);
+    const rightName = normalizeComparableTitle(right.snapshot.name);
+    if (!leftName || leftName !== rightName) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  const leftYear = left.snapshot.year;
+  const rightYear = right.snapshot.year;
+  if (leftYear != null && rightYear != null && leftYear !== rightYear) {
+    return false;
+  }
+
+  return true;
+}
+
+function sourcePriority(result: ExternalNodeSearchResult): number {
+  switch (result.identity.source) {
+    case "tmdb":
+      return 3;
+    case "google-books":
+      return 2;
+    case "wikipedia":
+      return 1;
+  }
+}
+
+export function dedupeExternalSearchResults(
+  results: ExternalNodeSearchResult[],
+): ExternalNodeSearchResult[] {
+  const deduped: ExternalNodeSearchResult[] = [];
+
+  for (const result of results) {
+    const existingIndex = deduped.findIndex((candidate) => isSameCreativeWork(candidate, result));
+    if (existingIndex === -1) {
+      deduped.push(result);
+      continue;
+    }
+
+    if (sourcePriority(result) > sourcePriority(deduped[existingIndex])) {
+      deduped[existingIndex] = result;
+    }
+  }
+
+  return deduped;
+}
+
+function isStrongHeadMatch(result: ExternalNodeSearchResult, query: string): boolean {
+  return (
+    isExactTitleMatch(result.snapshot.name, query) ||
+    isArticleInsensitiveExactMatch(result.snapshot.name, query) ||
+    isComparableExactTitleMatch(result.snapshot.name, query)
+  );
+}
+
+export function diversifySearchResults(
+  results: ExternalNodeSearchResult[],
+  query: string,
+): ExternalNodeSearchResult[] {
+  const strongMatches = results.filter((result) => isStrongHeadMatch(result, query));
+  if (strongMatches.length <= 1) {
+    return results;
+  }
+
+  const selected = new Set<string>();
+  const head: ExternalNodeSearchResult[] = [];
+
+  for (const type of DIVERSIFIED_TYPE_ORDER) {
+    const match = strongMatches.find(
+      (result) =>
+        result.snapshot.type === type &&
+        !selected.has(`${result.identity.source}:${result.identity.externalId}`),
+    );
+    if (!match) {
+      continue;
+    }
+
+    head.push(match);
+    selected.add(`${match.identity.source}:${match.identity.externalId}`);
+    if (head.length >= DIVERSIFIED_HEAD_LIMIT) {
+      break;
+    }
+  }
+
+  if (head.length === 0) {
+    return results;
+  }
+
+  return [
+    ...head,
+    ...results.filter(
+      (result) => !selected.has(`${result.identity.source}:${result.identity.externalId}`),
+    ),
+  ];
 }
 
 function creatorFromWikipediaDescription(description: string | undefined): string | undefined {
@@ -178,7 +458,7 @@ function inferWikipediaType(blob: string): NodeTypeValue | null {
     normalized.includes(" journal ") ||
     normalized.includes(" zine ")
   ) {
-    return "publication";
+    return "article";
   }
   if (
     normalized.includes(" painting ") ||
@@ -210,7 +490,16 @@ export function normalizeTmdbSearchResult(
   }
   const year = parseYear(mediaType === "movie" ? item.release_date : item.first_air_date);
   const image = item.poster_path ? `${TMDB_IMG}/w185${item.poster_path}` : undefined;
-  const score = baseMatchScore(name, query) + (year != null ? 8 : 0) + (image ? 4 : 0) - rank * 2;
+  const exactMatch = isExactTitleMatch(name, query);
+  const articleInsensitiveExactMatch = isArticleInsensitiveExactMatch(name, query);
+  const score =
+    baseMatchScore(name, query) +
+    (year != null ? 8 : 0) +
+    (image ? 4 : 0) +
+    tmdbVoteCountBoost(item.vote_count) +
+    (articleInsensitiveExactMatch && !exactMatch ? 10 : 0) +
+    (exactMatch ? -8 : 0) -
+    rank * 2;
   return {
     identity: {
       source: "tmdb",
@@ -306,6 +595,9 @@ export function normalizeWikipediaSearchResult(input: {
   if (!title) {
     return null;
   }
+  if (isWikipediaDisambiguation(input.summary)) {
+    return null;
+  }
   const blob = [input.summary.description, input.summary.extract, input.search.snippet]
     .filter(Boolean)
     .join(" ");
@@ -316,10 +608,13 @@ export function normalizeWikipediaSearchResult(input: {
   const year = parseYear(blob);
   const image = input.summary.thumbnail?.source ?? input.summary.originalimage?.source;
   const normalizedKey = normalizedWikipediaKey(title);
+  const exactMatch = isExactTitleMatch(title, input.query);
   const score =
     baseMatchScore(title, input.query) +
     (input.summary.description ? 10 : 0) +
     (year != null ? 6 : 0) +
+    exactMatchTypeBoost(type, exactMatch) +
+    disambiguatedMatchTypeBoost(type, title, input.query) +
     (image ? 4 : 0) -
     input.rank * 2;
   const creator =
@@ -358,28 +653,44 @@ async function searchTmdb(query: string): Promise<RankedSearchResult[]> {
     return [];
   }
 
-  async function fetchList(mediaType: "movie" | "tv"): Promise<RankedSearchResult[]> {
+  async function fetchList(
+    mediaType: "movie" | "tv",
+    tmdbQuery: string,
+  ): Promise<RankedSearchResult[]> {
     const url = new URL(`${TMDB_BASE}/search/${mediaType}`);
-    url.searchParams.set("query", query);
+    url.searchParams.set("query", tmdbQuery);
     const response = await fetch(url, tmdbFetchInit(url));
     if (!response.ok) {
       return [];
     }
     const data = (await response.json()) as { results?: TmdbSearchItem[] };
     return (data.results ?? [])
-      .slice(0, 5)
+      .slice(0, TMDB_CANDIDATE_LIMIT)
       .map((item, index) => normalizeTmdbSearchResult(item, mediaType, query, index))
       .filter((item): item is RankedSearchResult => item != null);
   }
 
-  const [movies, shows] = await Promise.all([fetchList("movie"), fetchList("tv")]);
-  return [...movies, ...shows];
+  const tmdbQueries = buildTmdbSearchQueries(query);
+  const settled = await Promise.all(
+    tmdbQueries.flatMap((tmdbQuery) => [fetchList("movie", tmdbQuery), fetchList("tv", tmdbQuery)]),
+  );
+
+  const deduped = new Map<string, RankedSearchResult>();
+  for (const result of settled.flat()) {
+    const key = `${result.identity.source}:${result.identity.externalId}`;
+    const existing = deduped.get(key);
+    if (!existing || result.score > existing.score) {
+      deduped.set(key, result);
+    }
+  }
+
+  return Array.from(deduped.values());
 }
 
 async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
   const url = new URL(GOOGLE_BOOKS_BASE);
   url.searchParams.set("q", query);
-  url.searchParams.set("maxResults", "6");
+  url.searchParams.set("maxResults", String(GOOGLE_BOOKS_CANDIDATE_LIMIT));
   const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
   if (key) {
     url.searchParams.set("key", key);
@@ -390,7 +701,7 @@ async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
   }
   const data = (await response.json()) as { items?: GoogleBooksItem[] };
   return (data.items ?? [])
-    .slice(0, 6)
+    .slice(0, GOOGLE_BOOKS_CANDIDATE_LIMIT)
     .map((item, index) => normalizeGoogleBooksSearchResult(item, query, index))
     .filter((item): item is RankedSearchResult => item != null);
 }
@@ -415,7 +726,7 @@ async function searchWikipedia(query: string): Promise<RankedSearchResult[]> {
   url.searchParams.set("action", "query");
   url.searchParams.set("list", "search");
   url.searchParams.set("format", "json");
-  url.searchParams.set("srlimit", "8");
+  url.searchParams.set("srlimit", String(WIKIPEDIA_CANDIDATE_LIMIT));
   url.searchParams.set("srsearch", query);
 
   const response = await fetch(url);
@@ -425,7 +736,7 @@ async function searchWikipedia(query: string): Promise<RankedSearchResult[]> {
   const data = (await response.json()) as {
     query?: { search?: WikipediaSearchItem[] };
   };
-  const candidates = data.query?.search?.slice(0, 8) ?? [];
+  const candidates = data.query?.search?.slice(0, WIKIPEDIA_CANDIDATE_LIMIT) ?? [];
   const summaries = await Promise.all(
     candidates.map(async (candidate) => ({
       candidate,
@@ -460,9 +771,13 @@ export async function searchExternalNodes(query: string): Promise<ExternalNodeSe
     searchWikipedia(trimmed),
   ]);
 
-  return settled
+  const rankedResults = settled
     .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
     .sort((left, right) => right.score - left.score)
-    .slice(0, 12)
     .map(({ score: _score, ...result }) => result);
+
+  return diversifySearchResults(dedupeExternalSearchResults(rankedResults), trimmed).slice(
+    0,
+    FINAL_RESULT_LIMIT,
+  );
 }

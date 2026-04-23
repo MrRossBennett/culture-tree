@@ -22,8 +22,10 @@ describe("buildCultureTreeNode", () => {
       source: "user",
       searchHint: { title: "Downtown cool" },
     });
+    expect(node.id).toEqual(expect.any(String));
     expect(node.identity).toBeUndefined();
     expect(node.snapshot).toBeUndefined();
+    expect("children" in node).toBe(false);
   });
 
   it("builds canonical-lite nodes from selected results", () => {
@@ -61,5 +63,38 @@ describe("buildCultureTreeNode", () => {
       },
       searchHint: { title: "Fight Club" },
     });
+    expect(node.id).toEqual(expect.any(String));
+    expect("children" in node).toBe(false);
+  });
+
+  it("allows empty reasons for quick adds", () => {
+    const concept = buildCultureTreeNode({
+      kind: "concept",
+      name: "Downtown cool",
+      type: "article",
+      connectionType: "thematic",
+      reason: "",
+    });
+
+    const selected = buildCultureTreeNode({
+      kind: "search-result",
+      connectionType: "thematic",
+      reason: "",
+      result: {
+        identity: { source: "tmdb", externalId: "movie:550" },
+        snapshot: {
+          name: "Fight Club",
+          type: "film",
+          year: 1999,
+          image: "https://image.tmdb.org/t/p/w185/poster.jpg",
+        },
+        searchHint: { title: "Fight Club" },
+        meta: "1999",
+        externalUrl: "https://www.themoviedb.org/movie/550",
+      },
+    });
+
+    expect(concept.reason).toBe("");
+    expect(selected.reason).toBe("");
   });
 });

@@ -3,7 +3,7 @@
  * Song enrichment uses Wikipedia only (`fetchWikipediaSongEnrichment` in `./wikipedia`).
  * Re-enable MB for songs later by wiring a combined enricher in `pipeline.ts`.
  */
-import type { EnrichedMedia, TreeNode } from "@repo/schemas";
+import type { EnrichedMedia, TreeItem } from "@repo/schemas";
 
 const MB_BASE = "https://musicbrainz.org/ws/2";
 const COVER_BASE = "https://coverartarchive.org/release";
@@ -50,8 +50,8 @@ async function coverForReleaseMbid(mbid: string): Promise<string | undefined> {
 }
 
 /** Optional: swap album enricher in `pipeline.ts` to this for MB + Cover Art Archive. */
-export async function fetchAlbumEnrichment(node: TreeNode): Promise<EnrichedMedia> {
-  const { title, creator } = node.searchHint;
+export async function fetchAlbumEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const { title, creator } = item.searchHint;
   const parts = [luceneTerm("release", title)];
   if (creator?.trim()) {
     parts.push(luceneTerm("artist", creator.trim()));

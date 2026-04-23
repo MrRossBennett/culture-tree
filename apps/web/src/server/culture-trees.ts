@@ -1,15 +1,15 @@
 import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
-import { cultureTree } from "@repo/db/schema";
+import { cultureTree, user as authUser } from "@repo/db/schema";
 import { searchExternalNodes } from "@repo/engine";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
   TreeEnrichmentsMapSchema,
   type CultureTree,
-  type TreeNode,
   type TreeEnrichmentsMap,
+  type TreeItem,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
@@ -18,13 +18,10 @@ import { z } from "zod";
 import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
-  const name = tree.name?.trim();
-  const creator = tree.searchHint.creator?.trim();
-  if (name && creator) return `${name} — ${creator}`;
-  if (name) return name;
-  const title = tree.searchHint.title?.trim();
-  if (title && creator) return `${title} — ${creator}`;
-  if (title) return title;
+  const seed = tree.seed?.trim();
+  if (seed) {
+    return seed;
+  }
   const q = seedQuery.trim();
   return q.length > 0 ? q : "Untitled tree";
 }
@@ -44,155 +41,40 @@ const SearchCultureTreeNodesInputSchema = z.object({
   query: z.string().trim().min(1),
 });
 
-function parseTreeNodePath(nodeId: string): number[] {
-  if (nodeId === "root") {
-    return [];
-  }
-  if (!/^root(?:-\d+)+$/.test(nodeId)) {
-    throw new Error("Invalid branch target.");
-  }
-  return nodeId
-    .split("-")
-    .slice(1)
-    .map((segment) => {
-      const index = Number(segment);
-      if (!Number.isInteger(index) || index < 0) {
-        throw new Error("Invalid branch target.");
-      }
-      return index;
-    });
-}
-
-function appendChildAtPath(
-  nodes: readonly TreeNode[],
-  path: readonly number[],
-  nextNode: TreeNode,
-): TreeNode[] {
-  const [index, ...rest] = path;
-  if (index == null) {
-    return [...nodes, nextNode];
-  }
-
-  const target = nodes[index];
-  if (!target) {
-    throw new Error("Branch not found.");
-  }
-
-  const updatedTarget: TreeNode =
-    rest.length === 0
-      ? { ...target, children: [...target.children, nextNode] }
-      : { ...target, children: appendChildAtPath(target.children, rest, nextNode) };
-
-  return nodes.map((node, currentIndex) => (currentIndex === index ? updatedTarget : node));
-}
-
-function appendNodeToTree(
-  tree: CultureTree,
-  parentNodeId: string,
-  nextNode: TreeNode,
-): CultureTree {
-  const path = parseTreeNodePath(parentNodeId);
+function appendItemToTree(tree: CultureTree, nextItem: TreeItem): CultureTree {
   return {
     ...tree,
-    children: appendChildAtPath(tree.children, path, nextNode),
+    items: [...tree.items, nextItem],
   };
 }
 
-function pathStartsWith(path: readonly number[], prefix: readonly number[]): boolean {
-  return prefix.every((segment, index) => path[index] === segment);
-}
-
-function removeChildAtPath(
-  nodes: readonly TreeNode[],
-  path: readonly number[],
-): { nodes: TreeNode[]; removed: TreeNode } {
-  const [index, ...rest] = path;
-  if (index == null) {
-    throw new Error("Cannot delete root node.");
-  }
-
-  const target = nodes[index];
-  if (!target) {
-    throw new Error("Branch not found.");
-  }
-
-  if (rest.length === 0) {
-    return {
-      nodes: nodes.filter((_, currentIndex) => currentIndex !== index),
-      removed: target,
-    };
-  }
-
-  const next = removeChildAtPath(target.children, rest);
-  return {
-    nodes: nodes.map((node, currentIndex) =>
-      currentIndex === index ? { ...target, children: next.nodes } : node,
-    ),
-    removed: next.removed,
-  };
-}
-
-function removeNodeFromTree(
+function removeItemFromTree(
   tree: CultureTree,
-  nodeId: string,
-): { tree: CultureTree; removed: TreeNode; path: number[] } {
-  const path = parseTreeNodePath(nodeId);
-  if (path.length === 0) {
-    throw new Error("Cannot delete root node.");
+  itemId: string,
+): { tree: CultureTree; removed: TreeItem } {
+  const removed = tree.items.find((item) => item.id === itemId);
+  if (!removed) {
+    throw new Error("Item not found.");
   }
 
-  const next = removeChildAtPath(tree.children, path);
   return {
     tree: {
       ...tree,
-      children: next.nodes,
+      items: tree.items.filter((item) => item.id !== itemId),
     },
-    removed: next.removed,
-    path,
+    removed,
   };
 }
 
-function remapEnrichmentsAfterNodeDeletion(
+function removeEnrichmentForItem(
   enrichments: TreeEnrichmentsMap | null | undefined,
-  deletedPath: readonly number[],
+  itemId: string,
 ): TreeEnrichmentsMap | null {
   if (!enrichments) {
     return null;
   }
 
-  const deletedIndex = deletedPath.at(-1);
-  if (deletedIndex == null) {
-    return enrichments;
-  }
-
-  const parentPath = deletedPath.slice(0, -1);
-  const nextEntries = Object.entries(enrichments).flatMap(([nodeId, media]) => {
-    let path: number[];
-    try {
-      path = parseTreeNodePath(nodeId);
-    } catch {
-      return [[nodeId, media] as const];
-    }
-
-    if (pathStartsWith(path, deletedPath)) {
-      return [];
-    }
-
-    if (
-      path.length > parentPath.length &&
-      pathStartsWith(path, parentPath) &&
-      path[parentPath.length]! > deletedIndex
-    ) {
-      const shiftedPath = [...path];
-      shiftedPath[parentPath.length] = shiftedPath[parentPath.length]! - 1;
-      const shiftedId = `root-${shiftedPath.join("-")}`;
-      return [[shiftedId, media] as const];
-    }
-
-    return [[nodeId, media] as const];
-  });
-
-  return Object.fromEntries(nextEntries);
+  return Object.fromEntries(Object.entries(enrichments).filter(([id]) => id !== itemId));
 }
 
 export const $getCultureTreeById = createServerFn({ method: "GET" })
@@ -203,12 +85,14 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
       .select({
         id: cultureTree.id,
         userId: cultureTree.userId,
+        username: authUser.username,
         data: cultureTree.data,
         enrichmentData: cultureTree.enrichmentData,
         createdAt: cultureTree.createdAt,
         isPublic: cultureTree.isPublic,
       })
       .from(cultureTree)
+      .leftJoin(authUser, eq(authUser.id, cultureTree.userId))
       .where(eq(cultureTree.id, treeId))
       .limit(1);
     if (!row) {
@@ -229,6 +113,7 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
     return {
       treeId: row.id,
       userId: row.userId,
+      username: row.username,
       tree,
       enrichments,
       createdAt: row.createdAt,
@@ -287,7 +172,7 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
 
     const tree = CultureTreeSchema.parse(row.data);
     const nextNode = buildCultureTreeNode(data.node);
-    const nextTree = appendNodeToTree(tree, data.parentNodeId, nextNode);
+    const nextTree = appendItemToTree(tree, nextNode);
 
     await db.update(cultureTree).set({ data: nextTree }).where(eq(cultureTree.id, data.treeId));
 
@@ -313,11 +198,11 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
-    const { tree: nextTree, path } = removeNodeFromTree(tree, data.nodeId);
+    const { tree: nextTree, removed } = removeItemFromTree(tree, data.nodeId);
     const parsedEnrichments = TreeEnrichmentsMapSchema.safeParse(row.enrichmentData);
-    const nextEnrichments = remapEnrichmentsAfterNodeDeletion(
+    const nextEnrichments = removeEnrichmentForItem(
       parsedEnrichments.success ? parsedEnrichments.data : null,
-      path,
+      removed.id,
     );
 
     await db

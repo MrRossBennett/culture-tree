@@ -1,6 +1,7 @@
 import type { AuthQueryResult } from "@repo/auth/tanstack/queries";
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
 import { Toaster } from "@repo/ui/components/sonner";
+import { TooltipProvider } from "@repo/ui/components/tooltip";
 import { ThemeProvider } from "@repo/ui/lib/theme-provider";
 import { a11yDevtoolsPlugin } from "@tanstack/devtools-a11y/react";
 import { TanStackDevtools } from "@tanstack/react-devtools";
@@ -16,7 +17,6 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
-import { AppFooter } from "~/components/app-footer";
 import { AppHeader } from "~/components/app-header";
 import { SignInDialogHost } from "~/components/sign-in-dialog-host";
 
@@ -92,18 +92,17 @@ function RootDocument({ children }: { readonly children: React.ReactNode }) {
         </ScriptOnce>
 
         <ThemeProvider>
-          <SignInDialogHost>
-            <div className="flex min-h-svh flex-col bg-background text-foreground">
-              <div className="relative z-10 flex w-full justify-center">
-                <AppHeader />
+          <TooltipProvider>
+            <SignInDialogHost>
+              <div className="flex min-h-svh flex-col bg-background text-foreground">
+                <div className="relative z-10 flex w-full justify-center">
+                  <AppHeader />
+                </div>
+                <div className="relative z-2 flex min-h-0 flex-1 flex-col">{children}</div>
               </div>
-              <div className="relative z-2 flex min-h-0 flex-1 flex-col">{children}</div>
-              {/* <div className="relative z-10 flex w-full justify-center">
-                <AppFooter />
-              </div> */}
-            </div>
-          </SignInDialogHost>
-          <Toaster richColors />
+            </SignInDialogHost>
+            <Toaster richColors />
+          </TooltipProvider>
         </ThemeProvider>
 
         <TanStackDevtools

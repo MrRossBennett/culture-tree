@@ -1,4 +1,4 @@
-import type { EnrichedMedia, TreeNode } from "@repo/schemas";
+import type { EnrichedMedia, TreeItem } from "@repo/schemas";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG = "https://image.tmdb.org/t/p";
@@ -77,12 +77,12 @@ function pickTrailer(videos: unknown): TmdbVideo | undefined {
   );
 }
 
-export async function fetchFilmEnrichment(node: TreeNode): Promise<EnrichedMedia> {
+export async function fetchFilmEnrichment(item: TreeItem): Promise<EnrichedMedia> {
   if (!hasTmdbCredentials()) {
     return {};
   }
-  const { title: rawTitle } = node.searchHint;
-  const { title, year } = parseTmdbTitleAndYear(rawTitle, node.year);
+  const { title: rawTitle } = item.searchHint;
+  const { title, year } = parseTmdbTitleAndYear(rawTitle, item.year);
   const url = new URL(`${TMDB_BASE}/search/movie`);
   url.searchParams.set("query", title);
   if (year != null) {
@@ -141,12 +141,12 @@ export async function fetchFilmEnrichment(node: TreeNode): Promise<EnrichedMedia
   };
 }
 
-export async function fetchTvEnrichment(node: TreeNode): Promise<EnrichedMedia> {
+export async function fetchTvEnrichment(item: TreeItem): Promise<EnrichedMedia> {
   if (!hasTmdbCredentials()) {
     return {};
   }
-  const { title: rawTitle } = node.searchHint;
-  const { title, year } = parseTmdbTitleAndYear(rawTitle, node.year);
+  const { title: rawTitle } = item.searchHint;
+  const { title, year } = parseTmdbTitleAndYear(rawTitle, item.year);
   const url = new URL(`${TMDB_BASE}/search/tv`);
   url.searchParams.set("query", title);
   if (year != null) {

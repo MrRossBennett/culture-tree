@@ -62,33 +62,39 @@ Television's Marquee Moon alongside the fiscal crisis.
 ${FEW_SHOT_EXAMPLES}
 
 Rules:
-- The root object must use "type": "root". The query's medium belongs in name  and searchHint, not on the root type field.
-- On the root and every node, include "source": "ai" (string) so provenance is
-  explicit in the JSON.
+- The root object must use "seedType": "root". The query's medium belongs in
+  "seed", not in seedType.
+- Every item must include a stable string "id". Use short readable ids like
+  "item_001", "item_002", etc.
+- On every item, include "source": "ai" (string) so provenance is explicit in
+  the JSON.
 - Every connection needs a SPECIFIC, insightful reason. Never generic.
   Bad: "Both are considered classics of their genre."
   Good: "Both use unreliable narrators to explore how memory distorts grief."
-- Mix node types. Blend creative works with places and events.
+- Keep every "reason" tight: one sentence, 30 words max. Aim for the punchy,
+  high-signal feel of a short magazine blurb, not a mini-essay.
+- Mix item types. Blend creative works with places and events.
 - Include 1-2 "anchor" recommendations that most knowledgeable people would
   agree with, but make the rest surprising. The ratio is: 20% anchors,
   80% deep cuts and lateral leaps.
-- Deeper nodes (children of children) should get MORE obscure, not less.
-  The second level is where you earn trust. The third level is where you
-  blow minds.
-- "searchHint" must be precise enough to find the item via API search. Put the work title (or primary label) in searchHint.title ONLY — never "Title — Artist" in title. Put the creator in searchHint.creator (author for books, artist/band for music; for film/TV use creator when it helps search). "name" may stay a readable label like "Title — Creator" for humans, but searchHint must stay split.
+- "searchHint" must be precise enough to find the item via API search. Put the
+  work title (or primary label) in searchHint.title ONLY — never "Title —
+  Artist" in title. Put the creator in searchHint.creator (author for books,
+  artist/band for music; for film/TV use creator when it helps search). "name"
+  may stay a readable label like "Title — Creator" for humans, but searchHint
+  must stay split.
   - For books: searchHint.title = title, searchHint.creator = author
   - For albums/songs: title + artist/band in separate fields
-  - For songs: include year on the node or in title only if needed to disambiguate
-  - For artwork: title + artist in separate fields; use extra search fields if needed to disambiguate
-  - For films/TV: title in searchHint.title; year on node or in title if needed; optional creator
+  - For songs: include year on the item or in title only if needed to disambiguate
+  - For artwork: title + artist in separate fields; use extra search fields if needed
+  - For films/TV: title in searchHint.title; year on item or in title if needed; optional creator
   - For places: name + location (city, country, address if notable); creator usually omitted
   - For events: name + wikiSlug (Wikipedia article slug) + dateRange
   - For people: full name + wikiSlug
   - For articles: one-off written piece (essay, feature, famous blog post) — searchHint.title + wikiSlug or URL
-  - For publications: recurring periodical (magazine, zine, journal, newspaper) — publication name in title + wikiSlug (e.g. Punk_(magazine)); do NOT use "article" for magazines
 - connectionType should accurately describe the relationship.
-- A great tree tells a STORY. The branches should feel like a curated
-  exhibition, not a random list.
+- A great tree tells a STORY. The items should feel like a curated exhibition,
+  not a random list.
 
 Output:
 - Fill the structured CultureTree schema exactly (the runtime enforces it).
@@ -96,24 +102,24 @@ Output:
 
 export function buildPass1Prompt(
   query: string,
-  config: { branches: string; children: string },
+  config: { count: string },
   mediaFilter?: string[],
   tone?: string,
 ): string {
   let prompt = `Generate a culture tree for: "${query}"
 
-Return ${config.branches} first-level branches, each with ${config.children} children.
+Return ${config.count} items in a single flat list.
 
 Remember: 20% anchors (the connections an expert would expect), 80% deep cuts
 and lateral leaps (the connections that surprise even an expert).`;
 
   if (mediaFilter?.length) {
-    prompt += `\nOnly include these node types: ${mediaFilter.join(", ")}`;
+    prompt += `\nOnly include these item types: ${mediaFilter.join(", ")}`;
   }
 
   if (tone === "deep-cuts") {
     prompt += `\nGo fully obscure. Assume the user has already seen/read/heard
-the obvious stuff. Zero anchors. Every recommendation should be a discovery.`;
+the obvious stuff. Zero anchors. Every item should be a discovery.`;
   } else if (tone === "accessible") {
     prompt += `\nThe user is exploring. 40% anchors, 60% interesting-but-findable
 recommendations. Nothing too obscure — but nothing boring either.`;
@@ -123,11 +129,8 @@ recommendations. Nothing too obscure — but nothing boring either.`;
 }
 
 export function buildPass2Prompt(query: string, pass1Tree: CultureTree, tone?: string): string {
-  const pass1Summary = pass1Tree.children
-    .map((child) => {
-      const kids = child.children?.map((k) => `    - ${k.name} [${k.type}]`).join("\n") || "";
-      return `  - ${child.name} [${child.type}]: "${child.reason}"${kids ? "\n" + kids : ""}`;
-    })
+  const pass1Summary = pass1Tree.items
+    .map((item) => `  - ${item.name} [${item.type}]: "${item.reason}"`)
     .join("\n");
 
   return `You previously generated this culture tree for "${query}":
@@ -137,47 +140,47 @@ ${pass1Summary}
 Now improve it. Apply these rules strictly:
 
 HARD RULES (violations must be fixed):
-- NEVER repeat the same creator across branches. If two branches feature
-  the same director, author, artist, or band, one MUST be replaced.
-- Maximum 1-2 anchors (recommendations most knowledgeable people would
-  name). Count how many branches are "obvious" — if more than 2 are,
-  replace the weakest ones.
-- Every branch must be a DIFFERENT node type where possible. If you have
-  three films, replace one with a book, album, place, or event.
+- NEVER repeat the same creator across items. If two items feature the same
+  director, author, artist, or band, one MUST be replaced.
+- Maximum 1-2 anchors (recommendations most knowledgeable people would name).
+  Count how many items are "obvious" — if more than 2 are, replace the weakest ones.
+- Keep the full list varied. If you have too many items of the same type,
+  replace some with a book, album, place, event, or person.
 
 QUALITY RULES (push harder):
 1. KEEP any recommendation that is genuinely surprising or insightful.
 2. REPLACE any recommendation that would appear in the first page of
    a Google search for "${query}". Those are too obvious.
-3. At least one branch must be something the user has almost certainly
+3. At least one item must be something the user has almost certainly
    never heard of — a genuine discovery.
-4. For each child node (second level), push even further into obscurity.
-   This is where the user discovers something they've never heard of.
+4. Replace shallow picks across the full flat list, not just the most obvious ones.
 5. Make sure every "reason" is vivid and specific — it should make the
    user immediately understand WHY these two things are connected and
    want to go explore.
+6. Tighten every "reason" to one sentence and 30 words max. Cut setup,
+   hedging, and filler. Keep only the most vivid connective tissue.
 
 Before returning, review your tree and ask yourself: "Would a deeply
 knowledgeable person be surprised and delighted by at least 4 of
-these 6 branches?" If not, you haven't pushed far enough.
+these items?" If not, you haven't pushed far enough.
 
 Return the complete improved tree in the same JSON format.
 ${tone === "deep-cuts" ? '\nBe ruthless. If a recommendation would appear in a typical "if you liked X" list, replace it.' : ""}`;
 }
 
 export function buildPass3Prompt(query: string, pass2Tree: CultureTree): string {
-  const branchNames = pass2Tree.children.map((c) => c.name).join(", ");
+  const itemNames = pass2Tree.items.map((item) => item.name).join(", ");
 
   return `Here is the current culture tree for "${query}".
 
-Current branches: ${branchNames}
+Current items: ${itemNames}
 
-Add ONE more first-level branch that is a genuine lateral leap — something
-that connects to the original query in a way that none of the existing
-branches cover. This should be the recommendation that makes someone
-screenshot the tree and share it because it's so unexpected yet perfect.
+Add ONE more item that is a genuine lateral leap — something that connects to
+the original query in a way that none of the existing items cover. This should
+be the recommendation that makes someone screenshot the tree and share it
+because it's so unexpected yet perfect.
 
-It can be any node type. It should have 1-2 children of its own.
+It can be any item type.
 
-Return the COMPLETE tree (all existing branches plus the new one).`;
+Return the COMPLETE tree (all existing items plus the new one).`;
 }

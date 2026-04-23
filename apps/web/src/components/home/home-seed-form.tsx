@@ -1,19 +1,11 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import { Button } from "@repo/ui/components/button";
-import { Label } from "@repo/ui/components/label";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { LoaderCircleIcon } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  getSeedPromptServerSnapshot,
-  getSeedPromptSnapshot,
-  subscribeSeedPrompt,
-  writeSeedPrompt,
-} from "~/components/home/seed-prompt-storage";
 import { useOpenSignIn } from "~/components/sign-in-dialog-host";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import { $generateCultureTree } from "~/server/generate-culture-tree";
@@ -36,70 +28,21 @@ type DepthOption = (typeof DEPTH_OPTIONS)[number];
 const TONE_OPTIONS = ["accessible", "mixed", "deep-cuts"] as const;
 type ToneOption = (typeof TONE_OPTIONS)[number];
 
-function OptionRow<T extends string>({
-  id,
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  readonly id: string;
-  readonly label: string;
-  readonly options: readonly T[];
-  readonly value: T;
-  readonly onChange: (next: T) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label
-        id={`${id}-label`}
-        className="font-mono text-[0.65rem] font-normal tracking-[0.16em] text-muted-foreground uppercase"
-      >
-        {label}
-      </Label>
-      <div className="flex flex-wrap gap-2" role="group" aria-labelledby={`${id}-label`}>
-        {options.map((opt) => {
-          const isActive = opt === value;
-          return (
-            <Button
-              key={opt}
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-pressed={isActive}
-              onClick={() => onChange(opt)}
-              className={cn(
-                "rounded-lg border px-4 font-mono text-xs tracking-wide capitalize",
-                isActive &&
-                  "border-primary bg-primary/10 text-primary hover:bg-primary/15 dark:bg-primary/15",
-                !isActive && "text-muted-foreground opacity-90",
-              )}
-            >
-              {opt}
-            </Button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function HomeSeedForm({
+  prompt,
+  setPrompt,
   onSeedHover,
 }: {
+  readonly prompt: string;
+  readonly setPrompt: (value: string) => void;
   readonly onSeedHover?: (hovered: boolean) => void;
 }) {
   const { openSignIn } = useOpenSignIn();
   const { data: user } = useQuery(authQueryOptions());
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [depth, setDepth] = useState<DepthOption>("standard");
-  const [tone, setTone] = useState<ToneOption>("mixed");
-  const prompt = useSyncExternalStore(
-    subscribeSeedPrompt,
-    getSeedPromptSnapshot,
-    getSeedPromptServerSnapshot,
-  );
+  const [depth] = useState<DepthOption>("standard");
+  const [tone] = useState<ToneOption>("mixed");
   const loggedIn = Boolean(user);
 
   const generate = useMutation({
@@ -140,9 +83,8 @@ export function HomeSeedForm({
         <div className="relative">
           <input
             value={prompt}
-            onChange={(e) => writeSeedPrompt(e.target.value)}
+            onChange={(e) => setPrompt(e.target.value)}
             placeholder="Enter an album, film, book, era..."
-            suppressHydrationWarning
             maxLength={200}
             className={cn(
               "font-body w-full bg-transparent text-foreground outline-none",

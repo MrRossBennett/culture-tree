@@ -17,23 +17,23 @@ import { generateTree } from "../src/index.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const keyOrder = [
-  "name",
-  "type",
-  "source",
-  "year",
-  "reason",
-  "connectionType",
-  "searchHint",
-  "children",
-] as const;
+const keyOrder = ["seed", "seedType", "items"] as const;
 
 function reorderNode(n: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of keyOrder) {
-    if (k === "children" && Array.isArray(n.children)) {
-      out.children = (n.children as Record<string, unknown>[]).map(reorderNode);
-    } else if (k !== "children" && k in n) {
+    if (k === "items" && Array.isArray(n.items)) {
+      out.items = (n.items as Record<string, unknown>[]).map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        year: item.year,
+        reason: item.reason,
+        connectionType: item.connectionType,
+        searchHint: item.searchHint,
+        source: item.source,
+      }));
+    } else if (k !== "items" && k in n) {
       out[k] = n[k];
     }
   }

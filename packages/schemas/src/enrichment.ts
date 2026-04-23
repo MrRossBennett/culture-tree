@@ -35,7 +35,7 @@ export const EnrichedMediaSchema = z.object({
 
 export type EnrichedMedia = z.infer<typeof EnrichedMediaSchema>;
 
-/** Per-tree enrichments keyed by branch node id from {@link flattenBranchNodes}. */
+/** Per-tree enrichments keyed by tree item id. */
 export const TreeEnrichmentsMapSchema = z.record(z.string(), EnrichedMediaSchema);
 
 export type TreeEnrichmentsMap = z.infer<typeof TreeEnrichmentsMapSchema>;
