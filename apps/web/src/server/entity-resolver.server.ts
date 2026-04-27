@@ -21,6 +21,7 @@ import { and, count, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 const ENTITY_RESOLVER_BATCH_LIMIT = 5;
+const ENTITY_RESOLVER_KICK_MAX_JOBS = 25;
 const MAX_JOB_ATTEMPTS = 3;
 const MUSICBRAINZ_BASE = "https://musicbrainz.org/ws/2";
 const COVER_ART_ARCHIVE_BASE = "https://coverartarchive.org";
@@ -235,6 +236,23 @@ function normalizeWikipediaKey(titleOrUrl: string): string | undefined {
   }
 }
 
+function isLikelyGoogleBooksPlaceholderUrl(url: string | undefined): boolean {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === "books.google.com" &&
+      parsed.pathname.includes("/books/content") &&
+      !parsed.searchParams.has("edge") &&
+      !parsed.searchParams.has("imgtk")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function tmdbFetchInit(url: URL): RequestInit {
   const token = process.env.TMDB_ACCESS_TOKEN?.trim();
   const apiKey = process.env.TMDB_API_KEY?.trim();
@@ -317,6 +335,16 @@ function candidateFromKnownIdentity(
         externalType: tmdbType,
         externalId: media.externalId.trim(),
         externalUrl: `https://www.themoviedb.org/${tmdbType}/${media.externalId.trim()}`,
+        ...displayFromItem(item, media),
+      };
+    }
+    const musicBrainzExternalType = musicBrainzExternalTypeForNode(item.type);
+    if (musicBrainzExternalType && media?.externalId?.trim()) {
+      return {
+        source: "musicbrainz",
+        externalType: musicBrainzExternalType,
+        externalId: media.externalId.trim(),
+        externalUrl: musicBrainzUrlForNode(item.type, media.externalId.trim()),
         ...displayFromItem(item, media),
       };
     }
@@ -833,6 +861,9 @@ async function resolveGoogleBooks(item: TreeItem): Promise<ResolverCandidate | n
     ? `${match.volumeInfo.title}: ${match.volumeInfo.subtitle}`
     : match.volumeInfo.title;
   const creatorName = item.searchHint.creator?.trim() || match.volumeInfo.authors?.[0];
+  const rawImageUrl =
+    match.volumeInfo.imageLinks?.thumbnail ?? match.volumeInfo.imageLinks?.smallThumbnail;
+  const imageUrl = isLikelyGoogleBooksPlaceholderUrl(rawImageUrl) ? undefined : rawImageUrl;
   return {
     source: "google-books",
     externalType: "volume",
@@ -843,7 +874,7 @@ async function resolveGoogleBooks(item: TreeItem): Promise<ResolverCandidate | n
     creatorName,
     creatorRole: creatorName ? "author" : undefined,
     year: parseYear(match.volumeInfo.publishedDate),
-    imageUrl: match.volumeInfo.imageLinks?.thumbnail ?? match.volumeInfo.imageLinks?.smallThumbnail,
+    imageUrl,
     description: match.volumeInfo.description?.slice(0, 500),
     metadata: { searchHint: item.searchHint, authors: match.volumeInfo.authors },
   };
@@ -1089,7 +1120,16 @@ export async function enqueueTreeForResolution(input: {
 }
 
 export function kickEntityResolutionRunner(): void {
-  void processEntityResolutionJobs({ limit: ENTITY_RESOLVER_BATCH_LIMIT }).catch((error) => {
+  void (async () => {
+    let processed = 0;
+    while (processed < ENTITY_RESOLVER_KICK_MAX_JOBS) {
+      const result = await processEntityResolutionJobs({ limit: ENTITY_RESOLVER_BATCH_LIMIT });
+      processed += result.processed;
+      if (result.processed < ENTITY_RESOLVER_BATCH_LIMIT) {
+        return;
+      }
+    }
+  })().catch((error) => {
     console.error("Entity resolution runner failed", error);
   });
 }

@@ -89,7 +89,10 @@ function hasCoverThumbnail(volumeInfo: Record<string, unknown>): boolean {
     return false;
   }
   const o = imgs as Record<string, unknown>;
-  return typeof o.thumbnail === "string" || typeof o.smallThumbnail === "string";
+  return (
+    isPossiblyUsableGoogleBooksImage(o.thumbnail) ||
+    isPossiblyUsableGoogleBooksImage(o.smallThumbnail)
+  );
 }
 
 function scoreVolume(
@@ -169,6 +172,25 @@ function pickBestItem(
   return best;
 }
 
+function rankedItems(
+  items: GbVolumeItem[] | undefined,
+  wantTitle: string,
+  wantAuthor: string | undefined,
+): Array<GbVolumeItem & { volumeInfo: Record<string, unknown> }> {
+  if (!items?.length) {
+    return [];
+  }
+  return items
+    .filter((it): it is GbVolumeItem & { volumeInfo: Record<string, unknown> } =>
+      Boolean(it.volumeInfo),
+    )
+    .sort(
+      (left, right) =>
+        scoreVolume(right.volumeInfo, wantTitle, wantAuthor) -
+        scoreVolume(left.volumeInfo, wantTitle, wantAuthor),
+    );
+}
+
 function buildQuery(title: string, creator: string | undefined, isbn: string | undefined): string {
   const t = escapePhrase(cleanBookTitleForQuery(title));
   if (isbn?.trim()) {
@@ -212,6 +234,105 @@ function googleBooksEditionUrl(
   return httpsify(infoLink);
 }
 
+function googleBooksImageUrl(url: unknown): string | undefined {
+  return typeof url === "string" ? httpsify(url) : undefined;
+}
+
+function isGoogleBooksContentImage(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "books.google.com" && parsed.pathname.includes("/books/content");
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyGoogleBooksPlaceholderUrl(url: string | undefined): boolean {
+  if (!url || !isGoogleBooksContentImage(url)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return !parsed.searchParams.has("edge") && !parsed.searchParams.has("imgtk");
+  } catch {
+    return false;
+  }
+}
+
+function isPossiblyUsableGoogleBooksImage(url: unknown): boolean {
+  const imageUrl = googleBooksImageUrl(url);
+  return Boolean(imageUrl && !isLikelyGoogleBooksPlaceholderUrl(imageUrl));
+}
+
+async function isUsableGoogleBooksImage(url: string | undefined): Promise<boolean> {
+  if (!url) {
+    return false;
+  }
+  if (!isGoogleBooksContentImage(url)) {
+    return true;
+  }
+  if (isLikelyGoogleBooksPlaceholderUrl(url)) {
+    return false;
+  }
+
+  const response = await fetch(url, {
+    method: "HEAD",
+    signal: AbortSignal.timeout(3_000),
+  }).catch(() => null);
+
+  if (response?.ok) {
+    const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(contentLength)) {
+      return contentLength > 2_500;
+    }
+    return true;
+  }
+
+  const imageResponse = await fetch(url, { signal: AbortSignal.timeout(3_000) }).catch(() => null);
+  if (!imageResponse?.ok) {
+    return false;
+  }
+  const bytes = await imageResponse.arrayBuffer();
+  return bytes.byteLength > 2_500;
+}
+
+async function usableImageLinks(
+  imageLinks: Record<string, string> | undefined,
+): Promise<{ coverUrl?: string; thumbnailUrl?: string }> {
+  const thumbnail = googleBooksImageUrl(imageLinks?.thumbnail);
+  const smallThumbnail = googleBooksImageUrl(imageLinks?.smallThumbnail);
+  const coverUrl = thumbnail ? thumbnail.replace("zoom=1", "zoom=2") : undefined;
+  const thumbnailUrl = smallThumbnail;
+
+  const [coverOk, thumbnailOk] = await Promise.all([
+    isUsableGoogleBooksImage(coverUrl),
+    isUsableGoogleBooksImage(thumbnailUrl),
+  ]);
+
+  return {
+    coverUrl: coverOk ? coverUrl : undefined,
+    thumbnailUrl: thumbnailOk ? thumbnailUrl : undefined,
+  };
+}
+
+async function mediaFromGoogleBooksItem(
+  picked: GbVolumeItem & { volumeInfo: Record<string, unknown> },
+): Promise<EnrichedMedia> {
+  const book = picked.volumeInfo;
+  const imageLinks = book.imageLinks as Record<string, string> | undefined;
+  const { coverUrl, thumbnailUrl } = await usableImageLinks(imageLinks);
+  const infoLink = typeof book.infoLink === "string" ? book.infoLink : undefined;
+  const resolvedId = picked.id?.trim() || volumeIdFromGoogleBooksUrl(infoLink);
+
+  return {
+    coverUrl,
+    thumbnailUrl,
+    externalUrl: googleBooksEditionUrl(resolvedId, infoLink),
+    description: typeof book.description === "string" ? book.description.slice(0, 500) : undefined,
+    rating: typeof book.averageRating === "number" ? book.averageRating : undefined,
+  };
+}
+
 async function fetchFromGoogleBooks(item: TreeItem): Promise<EnrichedMedia> {
   const rawTitle = item.searchHint.title;
   const titleForScore = cleanBookTitleForQuery(rawTitle);
@@ -230,28 +351,20 @@ async function fetchFromGoogleBooks(item: TreeItem): Promise<EnrichedMedia> {
     return {};
   }
   const data = (await res.json()) as { items?: GbVolumeItem[] };
-  const picked = pickBestItem(data.items, titleForScore, item.searchHint.creator?.trim());
-  const book = picked?.volumeInfo;
-  if (!book) {
-    return {};
+  let fallback: EnrichedMedia = {};
+
+  for (const picked of rankedItems(data.items, titleForScore, item.searchHint.creator?.trim())) {
+    const media = await mediaFromGoogleBooksItem(picked);
+    if (!fallback.externalUrl) {
+      fallback = media;
+    }
+    if (media.coverUrl || media.thumbnailUrl) {
+      return media;
+    }
   }
 
-  const imageLinks = book.imageLinks as Record<string, string> | undefined;
-  const thumb = imageLinks?.thumbnail;
-  const small = imageLinks?.smallThumbnail;
-  const coverUrl = httpsify(thumb?.replace("zoom=1", "zoom=2") ?? thumb);
-  const thumbnailUrl = httpsify(small);
-  const infoLink = typeof book.infoLink === "string" ? book.infoLink : undefined;
-
-  const resolvedId = picked.id?.trim() || volumeIdFromGoogleBooksUrl(infoLink);
-
-  return {
-    coverUrl,
-    thumbnailUrl,
-    externalUrl: googleBooksEditionUrl(resolvedId, infoLink),
-    description: typeof book.description === "string" ? book.description.slice(0, 500) : undefined,
-    rating: typeof book.averageRating === "number" ? book.averageRating : undefined,
-  };
+  const picked = pickBestItem(data.items, titleForScore, item.searchHint.creator?.trim());
+  return picked ? fallback : {};
 }
 
 export async function fetchBookEnrichment(item: TreeItem): Promise<EnrichedMedia> {

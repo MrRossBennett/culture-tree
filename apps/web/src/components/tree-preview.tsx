@@ -8,14 +8,7 @@ import type {
 import { Button } from "@repo/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import {
-  ClipboardIcon,
-  HeartIcon,
-  LoaderCircleIcon,
-  SparklesIcon,
-  StarIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ClipboardIcon, HeartIcon, LoaderCircleIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
@@ -175,7 +168,12 @@ export function CultureTreeItemCard({
 }) {
   const media = enrichments[item.id];
   const itemHeading = headingFromSearchHint(item.name, item.searchHint);
-  const coverSrc = media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image;
+  const coverSrc =
+    media?.coverUrl ??
+    media?.thumbnailUrl ??
+    item.snapshot?.image ??
+    resolvedEntity?.imageUrl ??
+    undefined;
 
   return (
     <article
@@ -200,12 +198,6 @@ export function CultureTreeItemCard({
               {formatConnectionLabel(item.connectionType)}
             </span>
           )}
-          {media?.rating != null ? (
-            <span className="inline-flex items-center gap-0.5 tracking-normal text-foreground/80 normal-case tabular-nums">
-              <StarIcon className="size-3.5 text-amber-500/90" aria-hidden />
-              {media.rating.toFixed(1)}
-            </span>
-          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {resolvedEntity && !isLoading ? (

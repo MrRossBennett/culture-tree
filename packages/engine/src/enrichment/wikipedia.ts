@@ -348,3 +348,36 @@ export async function fetchWikipediaBookCoverImages(input: {
   }
   return {};
 }
+
+/**
+ * Cover / thumbnail only for albums when MusicBrainz/Cover Art Archive knows the release group
+ * but has no usable artwork.
+ */
+export async function fetchWikipediaAlbumCoverImages(input: {
+  title: string;
+  creator?: string;
+  wikiSlug?: string;
+}): Promise<{ coverUrl?: string; thumbnailUrl?: string }> {
+  const slug = input.wikiSlug?.trim();
+  if (slug) {
+    return pickCoverThumb(await fetchSummaryByTitle(slug));
+  }
+
+  const baseTitle = stripTrailingAuthorFromTitle(input.title);
+  const c = input.creator?.trim();
+  const queries = [
+    c ? `${baseTitle} ${c} album` : "",
+    `${baseTitle} album`,
+    c ? `${baseTitle} ${c}` : "",
+    baseTitle,
+  ].filter((q) => q.length >= 3);
+
+  for (const q of queries) {
+    const media = await wikipediaFromSearchQuery(q);
+    const out = pickCoverThumb(media);
+    if (out.coverUrl || out.thumbnailUrl) {
+      return out;
+    }
+  }
+  return {};
+}

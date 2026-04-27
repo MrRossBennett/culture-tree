@@ -242,6 +242,23 @@ function httpsify(url: string | undefined): string | undefined {
   return url;
 }
 
+function isLikelyGoogleBooksPlaceholderUrl(url: string | undefined): boolean {
+  if (!url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === "books.google.com" &&
+      parsed.pathname.includes("/books/content") &&
+      !parsed.searchParams.has("edge") &&
+      !parsed.searchParams.has("imgtk")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function volumeDisplayTitle(volumeInfo: Record<string, unknown>): string {
   const title = typeof volumeInfo.title === "string" ? volumeInfo.title.trim() : "";
   const subtitle = typeof volumeInfo.subtitle === "string" ? volumeInfo.subtitle.trim() : "";
@@ -533,13 +550,14 @@ export function normalizeGoogleBooksSearchResult(
     volumeInfo.imageLinks && typeof volumeInfo.imageLinks === "object"
       ? (volumeInfo.imageLinks as Record<string, unknown>)
       : undefined;
-  const image = httpsify(
+  const rawImage = httpsify(
     typeof imageLinks?.thumbnail === "string"
       ? imageLinks.thumbnail
       : typeof imageLinks?.smallThumbnail === "string"
         ? imageLinks.smallThumbnail
         : undefined,
   );
+  const image = isLikelyGoogleBooksPlaceholderUrl(rawImage) ? undefined : rawImage;
   const infoLink = typeof volumeInfo.infoLink === "string" ? volumeInfo.infoLink : undefined;
   const score =
     baseMatchScore(name, query) +

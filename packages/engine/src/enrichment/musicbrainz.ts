@@ -1,5 +1,7 @@
 import type { EnrichedMedia, TreeItem } from "@repo/schemas";
 
+import { fetchWikipediaAlbumCoverImages } from "./wikipedia";
+
 const MUSICBRAINZ_BASE = "https://musicbrainz.org/ws/2";
 const COVER_ART_ARCHIVE_BASE = "https://coverartarchive.org";
 
@@ -50,6 +52,16 @@ function musicBrainzAlbumQuery(title: string, item: TreeItem): string {
     .join(" AND ");
 }
 
+function musicBrainzReleaseQuery(title: string, item: TreeItem): string {
+  const creator = item.searchHint.creator?.trim();
+  return [
+    `release:"${title.replaceAll('"', "")}"`,
+    creator ? `artistname:"${creator.replaceAll('"', "")}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" AND ");
+}
+
 async function fetchReleaseGroupCoverArt(
   releaseGroupMbid: string,
 ): Promise<{ coverUrl?: string; thumbnailUrl?: string }> {
@@ -73,9 +85,31 @@ async function fetchReleaseGroupCoverArt(
     }>;
   };
   const front = data.images?.find((image) => image.front) ?? data.images?.[0];
-  return {
+  const cover = {
     coverUrl: front?.thumbnails?.large ?? front?.image,
     thumbnailUrl: front?.thumbnails?.small ?? front?.thumbnails?.large,
+  };
+  return cover;
+}
+
+async function albumMediaFromReleaseGroup(input: {
+  item: TreeItem;
+  title: string;
+  releaseGroupMbid: string;
+  matchTitle?: string;
+}): Promise<EnrichedMedia> {
+  let cover = await fetchReleaseGroupCoverArt(input.releaseGroupMbid);
+  if (!cover.coverUrl && !cover.thumbnailUrl) {
+    cover = await fetchWikipediaAlbumCoverImages({
+      title: input.item.searchHint.title || input.item.name,
+      creator: input.item.searchHint.creator,
+      wikiSlug: input.item.searchHint.wikiSlug,
+    });
+  }
+  return {
+    ...cover,
+    externalUrl: `https://musicbrainz.org/release-group/${input.releaseGroupMbid}`,
+    externalId: input.releaseGroupMbid,
   };
 }
 
@@ -110,12 +144,51 @@ export async function fetchMusicBrainzAlbumEnrichment(item: TreeItem): Promise<E
       continue;
     }
 
-    const cover = await fetchReleaseGroupCoverArt(match.id);
-    return {
-      ...cover,
-      externalUrl: `https://musicbrainz.org/release-group/${match.id}`,
-      externalId: match.id,
+    return albumMediaFromReleaseGroup({
+      item,
+      title,
+      releaseGroupMbid: match.id,
+      matchTitle: match.title,
+    });
+  }
+
+  for (const title of titleVariants) {
+    const url = new URL(`${MUSICBRAINZ_BASE}/release`);
+    url.searchParams.set("query", musicBrainzReleaseQuery(title, item));
+    url.searchParams.set("fmt", "json");
+    url.searchParams.set("limit", "5");
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": userAgent(),
+      },
+    });
+    if (!response.ok) {
+      continue;
+    }
+
+    const data = (await response.json()) as {
+      releases?: Array<{
+        id?: string;
+        title?: string;
+        date?: string;
+        "release-group"?: { id?: string; title?: string };
+      }>;
     };
+
+    const match = data.releases?.find((row) => titleLooksConfident(row.title, title));
+    const releaseGroupMbid = match?.["release-group"]?.id;
+    if (!releaseGroupMbid) {
+      continue;
+    }
+
+    return albumMediaFromReleaseGroup({
+      item,
+      title,
+      releaseGroupMbid,
+      matchTitle: match.title ?? match["release-group"]?.title,
+    });
   }
 
   return {};
