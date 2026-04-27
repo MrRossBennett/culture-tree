@@ -11,8 +11,8 @@ import {
 } from "@repo/ui/components/dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
-import { LoaderCircleIcon, SproutIcon } from "lucide-react";
-import { useState } from "react";
+import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
@@ -32,7 +32,11 @@ import {
 } from "~/server/culture-trees";
 import { $enrichExistingCultureTree } from "~/server/enrich-culture-tree";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
-import { $seedTreeFromItem } from "~/server/generate-culture-tree";
+import { $retryCultureTreeGeneration, $seedTreeFromItem } from "~/server/generate-culture-tree";
+import {
+  isGenerationActive,
+  isGenerationTerminal,
+} from "~/server/progressive-tree-generation-lifecycle";
 
 export const Route = createFileRoute("/tree/$treeId")({
   loader: async ({ params, context }) => {
@@ -52,10 +56,96 @@ export const Route = createFileRoute("/tree/$treeId")({
       resolvedEntities: row.resolvedEntities,
       isOwner: user?.id === row.userId,
       isPublic: row.isPublic,
+      generation: row.generation,
     };
   },
   component: TreePage,
 });
+
+function ProgressiveGenerationPanel({
+  status,
+  stage,
+  error,
+  branchCount,
+  isRetryPending,
+  onRetry,
+}: {
+  readonly status: string;
+  readonly stage?: string | null;
+  readonly error?: string | null;
+  readonly branchCount: number;
+  readonly isRetryPending: boolean;
+  readonly onRetry: () => void;
+}) {
+  const failed = status === "failed";
+  const title = failed ? "This tree paused before it finished." : (stage ?? "Growing the tree");
+  const detail = failed
+    ? (error ?? "The draft is still here and can be tried again.")
+    : branchCount > 0
+      ? "New branches are being checked and added."
+      : "The first branches are being shaped now.";
+
+  return (
+    <section className="mx-auto w-full max-w-3xl rounded border border-border/70 bg-muted/20 px-4 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          {failed ? (
+            <RefreshCwIcon className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          ) : (
+            <LoaderCircleIcon
+              className="mt-1 size-4 shrink-0 animate-spin text-primary"
+              aria-hidden
+            />
+          )}
+          <div className="min-w-0">
+            <p className="font-heading text-lg leading-tight text-foreground">{title}</p>
+            <p className="font-body mt-1 text-sm leading-relaxed text-muted-foreground">{detail}</p>
+          </div>
+        </div>
+        {failed ? (
+          <Button
+            type="button"
+            variant="amber"
+            size="sm"
+            disabled={isRetryPending}
+            onClick={onRetry}
+            className="shrink-0 rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+          >
+            {isRetryPending ? (
+              <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              "Try again"
+            )}
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function LoadingBranchCards() {
+  return (
+    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+      {[0, 1].map((index) => (
+        <div
+          key={index}
+          className="min-h-44 rounded-[1.4rem] border border-border/60 bg-card/70 px-4 py-4"
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <LoaderCircleIcon className="size-4 animate-spin text-primary" aria-hidden />
+            <div className="h-2 w-28 animate-pulse rounded-full bg-muted" />
+          </div>
+          <div className="space-y-3">
+            <div className="h-4 w-3/5 animate-pulse rounded-full bg-muted" />
+            <div className="h-2 w-full animate-pulse rounded-full bg-muted" />
+            <div className="h-2 w-5/6 animate-pulse rounded-full bg-muted" />
+            <div className="h-2 w-2/3 animate-pulse rounded-full bg-muted" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function CultureTreeSeedCard({
   tree,
@@ -124,7 +214,7 @@ function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { tree, username, enrichments, resolvedEntities, isOwner, treeId, isPublic } =
+  const { tree, username, enrichments, resolvedEntities, isOwner, treeId, isPublic, generation } =
     Route.useLoaderData();
   const [generatingItem, setGeneratingItem] = useState<TreeItem | null>(null);
   const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
@@ -132,6 +222,7 @@ function TreePage() {
   ]);
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
   const [pendingItems, setPendingItems] = useState<TreeItem[]>([]);
+  const treeIsReady = generation.status === "ready";
 
   const enrich = useMutation({
     mutationFn: () => $enrichExistingCultureTree({ data: { treeId } }),
@@ -141,6 +232,18 @@ function TreePage() {
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not enrich this tree.");
+    },
+  });
+
+  const retryGeneration = useMutation({
+    mutationFn: () => $retryCultureTreeGeneration({ data: { treeId } }),
+    onSuccess: async () => {
+      toast.success("Tree generation resumed.");
+      await router.invalidate();
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not retry this tree.");
     },
   });
 
@@ -183,7 +286,7 @@ function TreePage() {
     onSuccess: async ({ treeId: nextTreeId }) => {
       setGeneratingItem(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
-      toast.success("New tree generated.");
+      toast.success("New tree started.");
       void navigate({ to: "/tree/$treeId", params: { treeId: nextTreeId } });
     },
     onError: (err: Error) => {
@@ -238,68 +341,82 @@ function TreePage() {
     </section>
   ) : null;
 
-  const ownerToolbar = isOwner ? (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={enrich.isPending}
-        onClick={() => enrich.mutate()}
-        className="inline-flex items-center gap-2 font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase hover:text-foreground"
-      >
-        {enrich.isPending ? (
-          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" aria-hidden />
-        ) : null}
-        {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
-      </Button>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
-          Link
-        </span>
-        <ButtonGroup aria-label="Tree link visibility" className="rounded">
-          <Button
-            type="button"
-            size="xs"
-            variant={isPublic ? "outline" : "default"}
-            aria-pressed={!isPublic}
-            disabled={setPublic.isPending}
-            onClick={() => {
-              if (!isPublic) {
-                return;
-              }
-              setPublic.mutate(false);
-            }}
-            className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-          >
-            Private
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant={isPublic ? "default" : "outline"}
-            aria-pressed={isPublic}
-            disabled={setPublic.isPending}
-            onClick={() => {
-              if (isPublic) {
-                return;
-              }
-              setPublic.mutate(true);
-            }}
-            className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-          >
-            Public
-          </Button>
-        </ButtonGroup>
+  const ownerToolbar =
+    isOwner && treeIsReady ? (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={enrich.isPending}
+          onClick={() => enrich.mutate()}
+          className="inline-flex items-center gap-2 font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase hover:text-foreground"
+        >
+          {enrich.isPending ? (
+            <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" aria-hidden />
+          ) : null}
+          {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
+        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
+            Link
+          </span>
+          <ButtonGroup aria-label="Tree link visibility" className="rounded">
+            <Button
+              type="button"
+              size="xs"
+              variant={isPublic ? "outline" : "default"}
+              aria-pressed={!isPublic}
+              disabled={setPublic.isPending}
+              onClick={() => {
+                if (!isPublic) {
+                  return;
+                }
+                setPublic.mutate(false);
+              }}
+              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+            >
+              Private
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant={isPublic ? "default" : "outline"}
+              aria-pressed={isPublic}
+              disabled={setPublic.isPending}
+              onClick={() => {
+                if (isPublic) {
+                  return;
+                }
+                setPublic.mutate(true);
+              }}
+              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+            >
+              Public
+            </Button>
+          </ButtonGroup>
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   const previewTree =
     pendingItems.length > 0 ? { ...tree, items: [...tree.items, ...pendingItems] } : tree;
   const pendingItemIds = pendingItems.map((item) => item.id);
   const allGenerationTypesSelected =
     selectedGenerationTypes.length === CULTURE_TREE_NODE_TYPES.length;
+  const generationIsActive = isGenerationActive(generation.status);
+  const generationIsTerminal = isGenerationTerminal(generation.status);
+
+  useEffect(() => {
+    if (!generationIsActive) {
+      return;
+    }
+
+    const id = window.setInterval(() => {
+      void router.invalidate();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [generationIsActive, router]);
 
   const handleAddItem = async (parentItemId: string, node: TreeNodePopoverSubmitInput) => {
     const pendingItem = pendingTreeItemFromInput(node);
@@ -332,24 +449,48 @@ function TreePage() {
           tree={tree}
           ownerUsername={username}
           isAddItemPending={addItem.isPending}
-          onAddItem={async (parentItemId, node) => {
-            await handleAddItem(parentItemId, node);
-          }}
+          onAddItem={
+            isOwner && treeIsReady
+              ? async (parentItemId, node) => {
+                  await handleAddItem(parentItemId, node);
+                }
+              : undefined
+          }
         />
-        <TreePreview
-          enrichments={enrichments}
-          loadingItemIds={pendingItemIds}
-          isGeneratingNewTree={seedFromItem.isPending}
-          resolvedEntities={resolvedEntities}
-          onToggleLike={async (entityId, liked) => {
-            await toggleLike.mutateAsync({ entityId, liked });
-          }}
-          onGenerateNewTree={async (item) => {
-            setGeneratingItem(item);
-          }}
-          onDeleteItem={isOwner ? (item) => setDeleteTarget(item) : undefined}
-          tree={previewTree}
-        />
+        {!treeIsReady ? (
+          <ProgressiveGenerationPanel
+            status={generation.status}
+            stage={generation.stage}
+            error={generation.error}
+            branchCount={tree.items.length}
+            isRetryPending={retryGeneration.isPending}
+            onRetry={() => retryGeneration.mutate()}
+          />
+        ) : null}
+        {previewTree.items.length > 0 ? (
+          <TreePreview
+            enrichments={enrichments}
+            loadingItemIds={pendingItemIds}
+            isGeneratingNewTree={seedFromItem.isPending}
+            resolvedEntities={resolvedEntities}
+            onToggleLike={async (entityId, liked) => {
+              await toggleLike.mutateAsync({ entityId, liked });
+            }}
+            onGenerateNewTree={
+              generationIsTerminal
+                ? async (item) => {
+                    setGeneratingItem(item);
+                  }
+                : undefined
+            }
+            onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            tree={previewTree}
+          />
+        ) : !treeIsReady ? (
+          <LoadingBranchCards />
+        ) : (
+          <TreePreview tree={previewTree} />
+        )}
         {visitorCta}
       </div>
 

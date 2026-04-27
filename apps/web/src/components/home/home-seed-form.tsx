@@ -70,7 +70,7 @@ export function HomeSeedForm({
     },
     onSuccess: ({ treeId }) => {
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
-      toast.success("Your culture tree is ready.");
+      toast.success("Your culture tree is growing.");
       void navigate({ to: "/tree/$treeId", params: { treeId } });
     },
     onError: (err: Error) => {

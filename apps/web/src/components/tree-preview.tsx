@@ -9,6 +9,7 @@ import { Button } from "@repo/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
 import { ClipboardIcon, HeartIcon, LoaderCircleIcon, SparklesIcon, Trash2Icon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
@@ -18,6 +19,7 @@ import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 type TreeRow = {
   capacity: number;
   items: TreeItem[];
+  startIndex: number;
 };
 
 function splitItemsIntoTreeRows(items: readonly TreeItem[]): TreeRow[] {
@@ -29,6 +31,7 @@ function splitItemsIntoTreeRows(items: readonly TreeItem[]): TreeRow[] {
     rows.push({
       capacity,
       items: items.slice(index, index + capacity),
+      startIndex: index,
     });
     index += capacity;
     capacity = Math.min(capacity + 1, 4);
@@ -154,6 +157,7 @@ export function CultureTreeItemCard({
   onGenerateNewTree,
   onToggleLike,
   resolvedEntity,
+  revealIndex = 0,
   style,
 }: {
   readonly item: TreeItem;
@@ -163,6 +167,7 @@ export function CultureTreeItemCard({
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
+  readonly revealIndex?: number;
   readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
   readonly style?: CSSProperties;
 }) {
@@ -176,8 +181,24 @@ export function CultureTreeItemCard({
     undefined;
 
   return (
-    <article
-      className="group relative overflow-hidden rounded-[1.4rem] border border-border/70 bg-card/92 shadow-[0_24px_70px_-46px_rgba(30,22,10,0.55)] transition-transform duration-200 hover:-translate-y-0.5"
+    <motion.article
+      layout="position"
+      initial={{ opacity: 0, y: 18, scale: 0.982, filter: "blur(10px)" }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, y: -8, scale: 0.99, filter: "blur(6px)" }}
+      whileHover={{ y: -2 }}
+      transition={{
+        layout: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
+        opacity: { duration: 0.5, delay: Math.min(revealIndex, 6) * 0.035 },
+        y: { duration: 0.58, delay: Math.min(revealIndex, 6) * 0.035, ease: [0.22, 1, 0.36, 1] },
+        scale: {
+          duration: 0.58,
+          delay: Math.min(revealIndex, 6) * 0.035,
+          ease: [0.22, 1, 0.36, 1],
+        },
+        filter: { duration: 0.44, delay: Math.min(revealIndex, 6) * 0.035, ease: "easeOut" },
+      }}
+      className="group relative overflow-hidden rounded-[1.4rem] border border-border/70 bg-card/92 shadow-[0_24px_70px_-46px_rgba(30,22,10,0.55)] will-change-transform"
       style={style}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.1),transparent_52%)]" />
@@ -334,7 +355,7 @@ export function CultureTreeItemCard({
           ) : null}
         </div>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
@@ -365,31 +386,36 @@ export function TreePreview({
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[24rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_42%)]" />
       {itemRows.length > 0 ? (
         <div className="relative">
-          <div className="space-y-4 md:space-y-5">
+          <motion.div layout className="space-y-4 md:space-y-5">
             {itemRows.map((row, rowIndex) =>
               row.capacity >= 4 && row.items.length < 4 ? (
-                <div
+                <motion.div
+                  layout
                   key={`tree-row-${rowIndex}`}
                   className="mx-auto flex max-w-6xl flex-wrap justify-center gap-4 md:gap-5"
                   style={{ maxWidth: rowMaxWidth(row.capacity) }}
                 >
-                  {row.items.map((item) => (
-                    <CultureTreeItemCard
-                      key={item.id}
-                      enrichments={enrichments}
-                      isLoading={loadingItemIdSet.has(item.id)}
-                      isGeneratingNewTree={isGeneratingNewTree}
-                      item={item}
-                      onDeleteItem={onDeleteItem}
-                      onGenerateNewTree={onGenerateNewTree}
-                      onToggleLike={onToggleLike}
-                      resolvedEntity={resolvedEntities[item.id]}
-                      style={partialFourUpCardStyle()}
-                    />
-                  ))}
-                </div>
+                  <AnimatePresence>
+                    {row.items.map((item, itemIndex) => (
+                      <CultureTreeItemCard
+                        key={item.id}
+                        enrichments={enrichments}
+                        isLoading={loadingItemIdSet.has(item.id)}
+                        isGeneratingNewTree={isGeneratingNewTree}
+                        item={item}
+                        onDeleteItem={onDeleteItem}
+                        onGenerateNewTree={onGenerateNewTree}
+                        onToggleLike={onToggleLike}
+                        revealIndex={row.startIndex + itemIndex}
+                        resolvedEntity={resolvedEntities[item.id]}
+                        style={partialFourUpCardStyle()}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
               ) : (
-                <div
+                <motion.div
+                  layout
                   key={`tree-row-${rowIndex}`}
                   className="mx-auto grid grid-cols-1 gap-4 md:gap-5"
                   style={{
@@ -402,24 +428,27 @@ export function TreePreview({
                     maxWidth: rowMaxWidth(row.capacity),
                   }}
                 >
-                  {row.items.map((item, itemIndex) => (
-                    <CultureTreeItemCard
-                      key={item.id}
-                      enrichments={enrichments}
-                      isLoading={loadingItemIdSet.has(item.id)}
-                      isGeneratingNewTree={isGeneratingNewTree}
-                      item={item}
-                      onDeleteItem={onDeleteItem}
-                      onGenerateNewTree={onGenerateNewTree}
-                      onToggleLike={onToggleLike}
-                      resolvedEntity={resolvedEntities[item.id]}
-                      style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
-                    />
-                  ))}
-                </div>
+                  <AnimatePresence>
+                    {row.items.map((item, itemIndex) => (
+                      <CultureTreeItemCard
+                        key={item.id}
+                        enrichments={enrichments}
+                        isLoading={loadingItemIdSet.has(item.id)}
+                        isGeneratingNewTree={isGeneratingNewTree}
+                        item={item}
+                        onDeleteItem={onDeleteItem}
+                        onGenerateNewTree={onGenerateNewTree}
+                        onToggleLike={onToggleLike}
+                        revealIndex={row.startIndex + itemIndex}
+                        resolvedEntity={resolvedEntities[item.id]}
+                        style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
               ),
             )}
-          </div>
+          </motion.div>
         </div>
       ) : (
         <p className="font-body mt-4 text-center text-sm text-muted-foreground">No items yet.</p>

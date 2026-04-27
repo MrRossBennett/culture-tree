@@ -8,6 +8,7 @@ import {
   CultureTreeSchema,
   TreeEnrichmentsMapSchema,
   type CultureTree,
+  type NodeTypeValue,
   type TreeEnrichmentsMap,
   type TreeItem,
 } from "@repo/schemas";
@@ -21,6 +22,7 @@ import {
   kickEntityResolutionRunner,
   resolveImmediateTreeItems,
 } from "./entity-resolver.server";
+import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -29,6 +31,24 @@ function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): strin
   }
   const q = seedQuery.trim();
   return q.length > 0 ? q : "Untitled tree";
+}
+
+type TreeListPreviewItem = {
+  type: NodeTypeValue;
+  imageUrl?: string;
+};
+
+function treeListPreviewItems(
+  tree: CultureTree,
+  enrichments: TreeEnrichmentsMap,
+): TreeListPreviewItem[] {
+  return tree.items.slice(0, 6).map((item) => {
+    const media = enrichments[item.id];
+    return {
+      type: item.type,
+      imageUrl: media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image ?? undefined,
+    };
+  });
 }
 
 const AddCultureTreeNodeInputSchema = z.object({
@@ -104,6 +124,12 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
         enrichmentData: cultureTree.enrichmentData,
         createdAt: cultureTree.createdAt,
         isPublic: cultureTree.isPublic,
+        generationStatus: cultureTree.generationStatus,
+        generationRunId: cultureTree.generationRunId,
+        generationStage: cultureTree.generationStage,
+        generationUpdatedAt: cultureTree.generationUpdatedAt,
+        generationError: cultureTree.generationError,
+        generationFinalData: cultureTree.generationFinalData,
       })
       .from(cultureTree)
       .leftJoin(authUser, eq(authUser.id, cultureTree.userId))
@@ -112,7 +138,8 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
     if (!row) {
       return null;
     }
-    const allowed = row.isPublic || user?.id === row.userId;
+    const generation = parseGenerationMetadata(row);
+    const allowed = (row.isPublic && generation.status === "ready") || user?.id === row.userId;
     if (!allowed) {
       return null;
     }
@@ -131,6 +158,7 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
       resolvedEntities,
       createdAt: row.createdAt,
       isPublic: row.isPublic,
+      generation,
     };
   });
 
@@ -258,6 +286,8 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
         nodeCount: number;
         listTitle: string;
         isPublic: boolean;
+        generationStatus: string;
+        previewItems: TreeListPreviewItem[];
       }[],
     };
   }
@@ -270,8 +300,15 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
       id: cultureTree.id,
       seedQuery: cultureTree.seedQuery,
       data: cultureTree.data,
+      enrichmentData: cultureTree.enrichmentData,
       createdAt: cultureTree.createdAt,
       isPublic: cultureTree.isPublic,
+      generationStatus: cultureTree.generationStatus,
+      generationRunId: cultureTree.generationRunId,
+      generationStage: cultureTree.generationStage,
+      generationUpdatedAt: cultureTree.generationUpdatedAt,
+      generationError: cultureTree.generationError,
+      generationFinalData: cultureTree.generationFinalData,
     })
     .from(cultureTree)
     .where(eq(cultureTree.userId, user.id))
@@ -279,6 +316,7 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
   const trees = rows.map((r) => {
     const parsed = CultureTreeSchema.safeParse(r.data);
     if (!parsed.success) {
+      const generation = parseGenerationMetadata(r);
       return {
         id: r.id,
         seedQuery: r.seedQuery,
@@ -286,9 +324,13 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
         nodeCount: 0,
         listTitle: r.seedQuery.trim() || "Untitled tree",
         isPublic: r.isPublic,
+        generationStatus: generation.status,
+        previewItems: [],
       };
     }
     const t = parsed.data;
+    const generation = parseGenerationMetadata(r);
+    const enrichments = parseTreeEnrichments(r.enrichmentData);
     return {
       id: r.id,
       seedQuery: r.seedQuery,
@@ -296,6 +338,8 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
       nodeCount: countCultureTreeNodes(t),
       listTitle: formatCuratorTreeListTitle(t, r.seedQuery),
       isPublic: r.isPublic,
+      generationStatus: generation.status,
+      previewItems: treeListPreviewItems(t, enrichments),
     };
   });
   return { count: countRow?.value ?? 0, trees };
