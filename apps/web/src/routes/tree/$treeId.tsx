@@ -1,5 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import type { TreeItem } from "@repo/schemas";
+import type { CultureTree, NodeTypeValue, TreeItem } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { ButtonGroup } from "@repo/ui/components/button-group";
 import {
@@ -11,12 +11,17 @@ import {
 } from "@repo/ui/components/dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
-import { LoaderCircleIcon } from "lucide-react";
+import { LoaderCircleIcon, SproutIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
-import { type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
+import {
+  CULTURE_TREE_NODE_TYPES,
+  NodeTypeFilterList,
+  mediaFilterFromSelectedNodeTypes,
+} from "~/components/node-type-filter-list";
+import { TreeNodeDrawer, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import { TreePreview } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import {
@@ -50,13 +55,80 @@ export const Route = createFileRoute("/tree/$treeId")({
   component: TreePage,
 });
 
+function CultureTreeSeedCard({
+  tree,
+  ownerUsername,
+  isAddItemPending = false,
+  onAddItem,
+}: {
+  readonly tree: CultureTree;
+  readonly ownerUsername?: string | null;
+  readonly isAddItemPending?: boolean;
+  readonly onAddItem?: (parentItemId: string, node: TreeNodePopoverSubmitInput) => Promise<void>;
+}) {
+  const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
+
+  return (
+    <section className="relative mx-auto w-full max-w-3xl">
+      <div className="rounded-[1.4rem] border border-primary/20 bg-card/92 px-3 py-2 shadow-[0_14px_38px_-34px_rgba(120,78,18,0.36)] sm:px-4">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <SproutIcon className="size-4 shrink-0 translate-y-0.5 text-primary" aria-hidden />
+            <h1 className="font-heading min-w-0 truncate text-2xl leading-tight tracking-tight text-card-foreground md:text-3xl">
+              {tree.seed}
+            </h1>
+            {byline ? (
+              <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
+                {byline}
+              </p>
+            ) : null}
+          </div>
+          {onAddItem ? (
+            <div className="shrink-0">
+              <TreeNodeDrawer
+                triggerLabel="Grow new branch"
+                triggerClassName="text-[0.65rem]"
+                isPending={isAddItemPending}
+                onSubmit={(node) => onAddItem("root", node)}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="mx-auto mt-2 h-5 w-px bg-gradient-to-b from-primary/35 to-transparent" />
+    </section>
+  );
+}
+
+function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): TreeItem {
+  const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const { identity, searchHint, snapshot } = input.result;
+
+  return {
+    id,
+    name: snapshot.name,
+    type: snapshot.type,
+    year: snapshot.year,
+    reason: "",
+    connectionType: input.connectionType,
+    searchHint,
+    identity,
+    snapshot,
+    source: "user",
+  };
+}
+
 function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { tree, username, enrichments, isOwner, treeId, isPublic } = Route.useLoaderData();
   const [generatingItem, setGeneratingItem] = useState<TreeItem | null>(null);
+  const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
+    ...CULTURE_TREE_NODE_TYPES,
+  ]);
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
+  const [pendingItems, setPendingItems] = useState<TreeItem[]>([]);
 
   const enrich = useMutation({
     mutationFn: () => $enrichExistingCultureTree({ data: { treeId } }),
@@ -82,22 +154,29 @@ function TreePage() {
   });
 
   const addItem = useMutation({
-    mutationFn: (input: { parentItemId: string; node: TreeNodePopoverSubmitInput }) => {
+    mutationFn: (input: {
+      parentItemId: string;
+      node: TreeNodePopoverSubmitInput;
+      pendingItemId: string;
+    }) => {
       const { parentItemId, node } = input;
       return $addCultureTreeNode({ data: { treeId, parentNodeId: parentItemId, node } });
     },
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
       toast.success("Branch added to your tree.");
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
+      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
     },
-    onError: (err: Error) => {
+    onError: (err: Error, variables) => {
+      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
       toast.error(err.message || "Could not add that branch.");
     },
   });
 
   const seedFromItem = useMutation({
-    mutationFn: (item: TreeItem) => $seedTreeFromItem({ data: { item } }),
+    mutationFn: (input: { item: TreeItem; mediaFilter?: NodeTypeValue[] }) =>
+      $seedTreeFromItem({ data: input }),
     onSuccess: async ({ treeId: nextTreeId }) => {
       setGeneratingItem(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
@@ -197,27 +276,56 @@ function TreePage() {
     </div>
   ) : null;
 
+  const previewTree =
+    pendingItems.length > 0 ? { ...tree, items: [...tree.items, ...pendingItems] } : tree;
+  const pendingItemIds = pendingItems.map((item) => item.id);
+  const allGenerationTypesSelected =
+    selectedGenerationTypes.length === CULTURE_TREE_NODE_TYPES.length;
+
+  const handleAddItem = async (parentItemId: string, node: TreeNodePopoverSubmitInput) => {
+    const pendingItem = pendingTreeItemFromInput(node);
+    setPendingItems((items) => [...items, pendingItem]);
+    await addItem.mutateAsync({ parentItemId, node, pendingItemId: pendingItem.id });
+  };
+
+  const toggleGenerationType = (type: NodeTypeValue) => {
+    setSelectedGenerationTypes((current) => {
+      if (current.length === CULTURE_TREE_NODE_TYPES.length) {
+        return [type];
+      }
+
+      if (current.includes(type)) {
+        return current.length === 1 ? current : current.filter((item) => item !== type);
+      }
+
+      return [...current, type];
+    });
+  };
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col text-foreground">
       <div className="shrink-0 bg-background px-4 py-3">
         <div className="mx-auto max-w-6xl">{ownerToolbar}</div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-10 px-4 pb-10">
+      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-4 px-4 pb-10">
+        <CultureTreeSeedCard
+          tree={tree}
+          ownerUsername={username}
+          isAddItemPending={addItem.isPending}
+          onAddItem={async (parentItemId, node) => {
+            await handleAddItem(parentItemId, node);
+          }}
+        />
         <TreePreview
           enrichments={enrichments}
-          isAddItemPending={addItem.isPending}
+          loadingItemIds={pendingItemIds}
           isGeneratingNewTree={seedFromItem.isPending}
-          ownerUsername={username}
-          onAddItem={async (parentItemId, node) => {
-            await addItem.mutateAsync({ parentItemId, node });
-          }}
           onGenerateNewTree={async (item) => {
             setGeneratingItem(item);
-            await seedFromItem.mutateAsync(item);
           }}
           onDeleteItem={isOwner ? (item) => setDeleteTarget(item) : undefined}
-          tree={tree}
+          tree={previewTree}
         />
         {visitorCta}
       </div>
@@ -230,26 +338,64 @@ function TreePage() {
           }
         }}
       >
-        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+        <DialogContent showCloseButton={!seedFromItem.isPending} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl">Generating new tree</DialogTitle>
+            <DialogTitle className="font-heading text-xl">
+              {seedFromItem.isPending ? "Generating new tree" : "Generate new tree"}
+            </DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">
               {generatingItem ? (
                 <>
-                  Building a fresh tree from{" "}
-                  <span className="text-foreground">{generatingItem.name}</span>. This dialog will
-                  close automatically when the new tree is ready.
+                  Build a fresh tree from{" "}
+                  <span className="text-foreground">{generatingItem.name}</span>.
                 </>
               ) : (
-                "Building a fresh tree from this item."
+                "Build a fresh tree from this item."
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3">
-            <LoaderCircleIcon className="size-5 shrink-0 animate-spin text-primary" aria-hidden />
-            <p className="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase">
-              Generating connections…
-            </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+                Cultural mix
+              </p>
+              <NodeTypeFilterList
+                selectedTypes={selectedGenerationTypes}
+                allSelected={allGenerationTypesSelected}
+                disabled={seedFromItem.isPending}
+                onSelectAll={() => setSelectedGenerationTypes([...CULTURE_TREE_NODE_TYPES])}
+                onToggleType={toggleGenerationType}
+              />
+            </div>
+
+            {seedFromItem.isPending ? (
+              <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3">
+                <LoaderCircleIcon
+                  className="size-5 shrink-0 animate-spin text-primary"
+                  aria-hidden
+                />
+                <p className="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase">
+                  Generating connections…
+                </p>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="amber"
+                className="w-full rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+                onClick={() => {
+                  if (!generatingItem) {
+                    return;
+                  }
+                  seedFromItem.mutate({
+                    item: generatingItem,
+                    mediaFilter: mediaFilterFromSelectedNodeTypes(selectedGenerationTypes),
+                  });
+                }}
+              >
+                Generate tree
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

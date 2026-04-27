@@ -12,6 +12,7 @@ import { defineConfig } from "vite-plus";
 
 const webRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const reactStartServerEntry = fileURLToPath(import.meta.resolve("@tanstack/react-start/server"));
 const mode = process.env.NODE_ENV === "production" ? "production" : "development";
 for (const [key, value] of Object.entries(loadEnv(mode, webRoot, ""))) {
   if (process.env[key] === undefined && value !== "") {
@@ -57,10 +58,11 @@ export default defineConfig({
 
   resolve: {
     tsconfigPaths: true,
-    alias: {
-      "@repo/schemas": resolve(repoRoot, "packages/schemas/src/index.ts"),
-      "@repo/engine": resolve(repoRoot, "packages/engine/src/index.ts"),
-    },
+    alias: [
+      { find: "@repo/schemas", replacement: resolve(repoRoot, "packages/schemas/src/index.ts") },
+      { find: "@repo/engine", replacement: resolve(repoRoot, "packages/engine/src/index.ts") },
+      { find: /^@tanstack\/react-start\/server$/, replacement: reactStartServerEntry },
+    ],
   },
   server: {
     port: 3000,

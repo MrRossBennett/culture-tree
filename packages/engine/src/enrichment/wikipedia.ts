@@ -21,6 +21,7 @@ async function fetchSummaryByTitle(pageTitle: string): Promise<EnrichedMedia> {
     description?: string;
     thumbnail?: { source?: string };
     originalimage?: { source?: string };
+    coordinates?: { lat?: number; lon?: number };
   };
   return {
     wikipediaUrl: data.content_urls?.desktop?.page,
@@ -29,6 +30,10 @@ async function fetchSummaryByTitle(pageTitle: string): Promise<EnrichedMedia> {
     thumbnailUrl: data.thumbnail?.source,
     coverUrl: data.originalimage?.source,
     externalUrl: data.content_urls?.desktop?.page,
+    coordinates:
+      typeof data.coordinates?.lat === "number" && typeof data.coordinates.lon === "number"
+        ? { lat: data.coordinates.lat, lng: data.coordinates.lon }
+        : undefined,
   };
 }
 
@@ -165,6 +170,50 @@ export async function fetchWikipediaEnrichment(item: TreeItem): Promise<Enriched
   const q =
     [item.searchHint.title, item.searchHint.creator?.trim()].filter(Boolean).join(" ") || item.name;
   return wikipediaFromSearchQuery(q);
+}
+
+function placeSearchQuery(item: TreeItem): string {
+  const location = item.searchHint.location;
+  return [
+    item.searchHint.title?.trim() || item.name,
+    location?.address?.trim(),
+    location?.city?.trim(),
+    location?.country?.trim(),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Place nodes: Wikipedia first for phase 1 images/context; Google Places can layer on photos/maps later. */
+export async function fetchWikipediaPlaceEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
+  if (slug) {
+    return fetchSummaryByTitle(slug);
+  }
+  return wikipediaFromSearchQuery(placeSearchQuery(item));
+}
+
+function eventSearchQuery(item: TreeItem): string {
+  return [
+    item.searchHint.title?.trim() || item.name,
+    item.searchHint.dateRange?.start?.trim(),
+    item.searchHint.location?.city?.trim(),
+    item.searchHint.location?.country?.trim(),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Event nodes: Wikipedia summaries usually provide the best phase-1 canonical page and lead image. */
+export async function fetchWikipediaEventEnrichment(item: TreeItem): Promise<EnrichedMedia> {
+  const slug = item.searchHint.wikiSlug?.trim();
+  const media = slug
+    ? await fetchSummaryByTitle(slug)
+    : await wikipediaFromSearchQuery(eventSearchQuery(item));
+  return {
+    ...media,
+    eventDate: item.searchHint.dateRange?.start,
+  };
 }
 
 /**

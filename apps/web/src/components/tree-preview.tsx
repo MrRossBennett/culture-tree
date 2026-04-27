@@ -7,12 +7,11 @@ import type {
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
-import { SparklesIcon, SproutIcon, StarIcon, Trash2Icon } from "lucide-react";
+import { LoaderCircleIcon, SparklesIcon, StarIcon, Trash2Icon } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
-import { TreeNodePopover, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 
 type TreeRow = {
   capacity: number;
@@ -112,56 +111,10 @@ function headingFromSearchHint(
   return { primary: displayName };
 }
 
-export function CultureTreeSeedCard({
-  tree,
-  ownerUsername,
-  isAddItemPending = false,
-  onAddItem,
-}: {
-  readonly tree: CultureTree;
-  readonly ownerUsername?: string | null;
-  readonly isAddItemPending?: boolean;
-  readonly onAddItem?: (parentItemId: string, node: TreeNodePopoverSubmitInput) => Promise<void>;
-}) {
-  const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
-
-  return (
-    <div className="relative mx-auto flex w-full max-w-2xl flex-col items-center text-center">
-      <div className="pointer-events-none absolute top-1 left-1/2 h-8 w-px -translate-x-1/2 bg-linear-to-b from-primary/10 via-primary/35 to-transparent" />
-      <div className="relative w-full rounded-[1.2rem] border border-primary/20 bg-card/90 bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_58%)] px-4 py-4 shadow-[0_16px_48px_-40px_rgba(120,78,18,0.35)] md:px-5 md:py-4.5">
-        <div className="mx-auto flex max-w-md flex-col items-center">
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/16 bg-background/70 px-2.5 py-1 font-mono text-[0.56rem] tracking-[0.16em] text-primary uppercase backdrop-blur-sm">
-            <SproutIcon className="size-3" aria-hidden />
-            <span>Seed</span>
-          </div>
-          <h2 className="font-heading text-2xl leading-[1.06] tracking-tight text-card-foreground md:text-3xl">
-            {tree.seed}
-          </h2>
-          {byline ? (
-            <p className="font-body mt-2 text-base text-muted-foreground italic md:text-lg">
-              {byline}
-            </p>
-          ) : null}
-          {onAddItem ? (
-            <div className="mt-3">
-              <TreeNodePopover
-                triggerLabel="Grow new branch"
-                triggerClassName="text-[0.58rem]"
-                isPending={isAddItemPending}
-                onSubmit={(node) => onAddItem("root", node)}
-              />
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-2 h-8 w-px bg-gradient-to-b from-primary/40 via-primary/18 to-transparent" />
-    </div>
-  );
-}
-
 export function CultureTreeItemCard({
   item,
   enrichments,
+  isLoading = false,
   isGeneratingNewTree = false,
   onDeleteItem,
   onGenerateNewTree,
@@ -169,6 +122,7 @@ export function CultureTreeItemCard({
 }: {
   readonly item: TreeItem;
   readonly enrichments: TreeEnrichmentsMap;
+  readonly isLoading?: boolean;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
@@ -188,12 +142,19 @@ export function CultureTreeItemCard({
       <div className="relative flex items-start justify-between gap-3 border-b border-border/45 px-4 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-muted-foreground uppercase">
           <NodeTypeBadge type={item.type} showIcon className="text-[0.54rem]" />
-          <span
-            className="rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide"
-            title="Relationship to seed"
-          >
-            {formatConnectionLabel(item.connectionType)}
-          </span>
+          {isLoading ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide">
+              <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
+              Adding
+            </span>
+          ) : (
+            <span
+              className="rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide"
+              title="Relationship to seed"
+            >
+              {formatConnectionLabel(item.connectionType)}
+            </span>
+          )}
           {media?.rating != null ? (
             <span className="inline-flex items-center gap-0.5 tracking-normal text-foreground/80 normal-case tabular-nums">
               <StarIcon className="size-3.5 text-amber-500/90" aria-hidden />
@@ -202,7 +163,7 @@ export function CultureTreeItemCard({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {onGenerateNewTree ? (
+          {onGenerateNewTree && !isLoading ? (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -222,7 +183,7 @@ export function CultureTreeItemCard({
               <TooltipContent>Generate new tree →</TooltipContent>
             </Tooltip>
           ) : null}
-          {onDeleteItem ? (
+          {onDeleteItem && !isLoading ? (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -287,6 +248,16 @@ export function CultureTreeItemCard({
             <p className="font-body mt-2 line-clamp-4 text-sm leading-relaxed text-foreground/80 italic">
               {item.reason}
             </p>
+          ) : isLoading ? (
+            <div className="mt-3 space-y-2" aria-label="Finding the connection">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <LoaderCircleIcon className="size-3.5 animate-spin text-primary" aria-hidden />
+                Finding the connection…
+              </div>
+              <div className="h-2 w-full animate-pulse rounded-full bg-muted" />
+              <div className="h-2 w-4/5 animate-pulse rounded-full bg-muted" />
+              <div className="h-2 w-2/3 animate-pulse rounded-full bg-muted" />
+            </div>
           ) : null}
         </div>
       </div>
@@ -296,37 +267,27 @@ export function CultureTreeItemCard({
 
 export function TreePreview({
   tree,
-  ownerUsername,
   enrichments = {},
-  isAddItemPending = false,
+  loadingItemIds = [],
   isGeneratingNewTree = false,
-  onAddItem,
   onDeleteItem,
   onGenerateNewTree,
 }: {
   readonly tree: CultureTree;
-  readonly ownerUsername?: string | null;
   readonly enrichments?: TreeEnrichmentsMap;
-  readonly isAddItemPending?: boolean;
+  readonly loadingItemIds?: readonly string[];
   readonly isGeneratingNewTree?: boolean;
-  readonly onAddItem?: (parentItemId: string, node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
 }) {
   const itemRows = splitItemsIntoTreeRows(tree.items);
+  const loadingItemIdSet = new Set(loadingItemIds);
 
   return (
     <section className="relative w-full text-left">
-      <div className="pointer-events-none absolute inset-x-0 top-6 -z-10 h-[28rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.14),transparent_40%)]" />
-      <CultureTreeSeedCard
-        tree={tree}
-        ownerUsername={ownerUsername}
-        isAddItemPending={isAddItemPending}
-        onAddItem={onAddItem}
-      />
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[24rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_42%)]" />
       {itemRows.length > 0 ? (
-        <div className="relative mt-2">
-          <div className="mx-auto mb-6 hidden h-px max-w-5xl bg-linear-to-r from-transparent via-primary/25 to-transparent md:block" />
+        <div className="relative">
           <div className="space-y-4 md:space-y-5">
             {itemRows.map((row, rowIndex) =>
               row.capacity >= 4 && row.items.length < 4 ? (
@@ -339,6 +300,7 @@ export function TreePreview({
                     <CultureTreeItemCard
                       key={item.id}
                       enrichments={enrichments}
+                      isLoading={loadingItemIdSet.has(item.id)}
                       isGeneratingNewTree={isGeneratingNewTree}
                       item={item}
                       onDeleteItem={onDeleteItem}
@@ -365,6 +327,7 @@ export function TreePreview({
                     <CultureTreeItemCard
                       key={item.id}
                       enrichments={enrichments}
+                      isLoading={loadingItemIdSet.has(item.id)}
                       isGeneratingNewTree={isGeneratingNewTree}
                       item={item}
                       onDeleteItem={onDeleteItem}

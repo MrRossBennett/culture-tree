@@ -2,7 +2,7 @@ import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, user as authUser } from "@repo/db/schema";
-import { searchExternalNodes } from "@repo/engine";
+import { completeTreeItemConnection, enrichTree, searchExternalNodes } from "@repo/engine";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
@@ -77,6 +77,15 @@ function removeEnrichmentForItem(
   return Object.fromEntries(Object.entries(enrichments).filter(([id]) => id !== itemId));
 }
 
+function parseTreeEnrichments(value: unknown): TreeEnrichmentsMap {
+  if (value == null) {
+    return {};
+  }
+
+  const parsed = TreeEnrichmentsMapSchema.safeParse(value);
+  return parsed.success ? parsed.data : {};
+}
+
 export const $getCultureTreeById = createServerFn({ method: "GET" })
   .inputValidator(z.object({ treeId: z.string().min(1) }))
   .handler(async ({ data: { treeId } }) => {
@@ -103,13 +112,7 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
       return null;
     }
     const tree = CultureTreeSchema.parse(row.data);
-    let enrichments: TreeEnrichmentsMap = {};
-    if (row.enrichmentData != null) {
-      const parsed = TreeEnrichmentsMapSchema.safeParse(row.enrichmentData);
-      if (parsed.success) {
-        enrichments = parsed.data;
-      }
-    }
+    const enrichments = parseTreeEnrichments(row.enrichmentData);
     return {
       treeId: row.id,
       userId: row.userId,
@@ -162,6 +165,7 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
         id: cultureTree.id,
         userId: cultureTree.userId,
         data: cultureTree.data,
+        enrichmentData: cultureTree.enrichmentData,
       })
       .from(cultureTree)
       .where(eq(cultureTree.id, data.treeId))
@@ -171,10 +175,23 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
-    const nextNode = buildCultureTreeNode(data.node);
+    const draftNode = buildCultureTreeNode(data.node);
+    const nextNode = await completeTreeItemConnection(tree, draftNode);
     const nextTree = appendItemToTree(tree, nextNode);
+    const currentEnrichments = parseTreeEnrichments(row.enrichmentData);
+    let nextEnrichments = currentEnrichments;
 
-    await db.update(cultureTree).set({ data: nextTree }).where(eq(cultureTree.id, data.treeId));
+    if (process.env.MOCK_ENGINE !== "true") {
+      const map = await enrichTree({ ...tree, items: [nextNode] });
+      const newEnrichments = Object.fromEntries(map);
+      TreeEnrichmentsMapSchema.parse(newEnrichments);
+      nextEnrichments = { ...currentEnrichments, ...newEnrichments };
+    }
+
+    await db
+      .update(cultureTree)
+      .set({ data: nextTree, enrichmentData: nextEnrichments })
+      .where(eq(cultureTree.id, data.treeId));
 
     return { ok: true as const };
   });
@@ -199,9 +216,8 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
 
     const tree = CultureTreeSchema.parse(row.data);
     const { tree: nextTree, removed } = removeItemFromTree(tree, data.nodeId);
-    const parsedEnrichments = TreeEnrichmentsMapSchema.safeParse(row.enrichmentData);
     const nextEnrichments = removeEnrichmentForItem(
-      parsedEnrichments.success ? parsedEnrichments.data : null,
+      parseTreeEnrichments(row.enrichmentData),
       removed.id,
     );
 

@@ -1,4 +1,4 @@
-export { generateTree } from "./generation/pipeline";
+export { completeTreeItemConnection, generateTree } from "./generation/pipeline";
 export { enrichTree } from "./enrichment/pipeline";
 export {
   buildTmdbSearchQueries,

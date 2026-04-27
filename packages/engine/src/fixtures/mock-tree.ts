@@ -35,5 +35,14 @@ export function mockCultureTreeForRequest(request: TreeRequest): CultureTree {
   if (!(key in FIXTURE_RAW)) {
     key = "ok-computer-standard";
   }
-  return CultureTreeSchema.parse(FIXTURE_RAW[key]);
+  const tree = CultureTreeSchema.parse(FIXTURE_RAW[key]);
+  if (!data.mediaFilter?.length) {
+    return tree;
+  }
+
+  const allowedTypes = new Set(data.mediaFilter);
+  return CultureTreeSchema.parse({
+    ...tree,
+    items: tree.items.filter((item) => allowedTypes.has(item.type)),
+  });
 }

@@ -6,7 +6,9 @@ import { fetchFilmEnrichment, fetchTvEnrichment } from "./films";
 import {
   fetchWikipediaArtworkEnrichment,
   fetchWikipediaEnrichment,
+  fetchWikipediaEventEnrichment,
   fetchWikipediaMusicEnrichment,
+  fetchWikipediaPlaceEnrichment,
   fetchWikipediaSongEnrichment,
 } from "./wikipedia";
 
@@ -22,11 +24,19 @@ function bookNeedsCoverRetry(cached: EnrichedMedia): boolean {
   return noArt && Boolean(cached.externalUrl?.trim() || cached.description?.trim());
 }
 
-/** Wikipedia-backed row with text/URL but no lead image yet — re-fetch (artwork, song, article). */
+/** Wikipedia-backed row with text/URL but no lead image yet — re-fetch in case a better image is now available. */
 function wikiBackedButMissingImage(cached: EnrichedMedia): boolean {
   const noArt = !cached.coverUrl?.trim() && !cached.thumbnailUrl?.trim();
   return noArt && Boolean(cached.wikipediaUrl?.trim() || cached.wikiExtract?.trim());
 }
+
+const WIKI_IMAGE_RETRY_TYPES = new Set<NodeTypeValue>([
+  "artwork",
+  "song",
+  "article",
+  "place",
+  "event",
+]);
 
 const enricherRegistry: Partial<Record<NodeTypeValue, Enricher>> = {
   book: fetchBookEnrichment,
@@ -39,6 +49,8 @@ const enricherRegistry: Partial<Record<NodeTypeValue, Enricher>> = {
   /** Stand-alone piece (essay, feature, notable post) — Wikipedia when wikiSlug/title matches. */
   article: fetchWikipediaEnrichment,
   artwork: fetchWikipediaArtworkEnrichment,
+  place: fetchWikipediaPlaceEnrichment,
+  event: fetchWikipediaEventEnrichment,
 };
 
 async function enrichOneItem(item: TreeItem): Promise<{ id: string; media: EnrichedMedia }> {
@@ -52,8 +64,7 @@ async function enrichOneItem(item: TreeItem): Promise<{ id: string; media: Enric
     if (cached && hasEnrichmentData(cached)) {
       const stalePartial =
         (item.type === "book" && bookNeedsCoverRetry(cached)) ||
-        ((item.type === "artwork" || item.type === "song" || item.type === "article") &&
-          wikiBackedButMissingImage(cached));
+        (WIKI_IMAGE_RETRY_TYPES.has(item.type) && wikiBackedButMissingImage(cached));
       if (!stalePartial) {
         return { id: item.id, media: cached };
       }

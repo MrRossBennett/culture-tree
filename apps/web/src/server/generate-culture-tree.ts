@@ -4,6 +4,7 @@ import { cultureTree } from "@repo/db/schema";
 import { enrichTree, generateTree } from "@repo/engine";
 import {
   CultureTreeSchema,
+  NodeType,
   TreeEnrichmentsMapSchema,
   TreeItemSchema,
   type TreeEnrichmentsMap,
@@ -47,11 +48,16 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
 
 export const $seedTreeFromItem = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .inputValidator(z.object({ item: TreeItemSchema }))
+  .inputValidator(
+    z.object({
+      item: TreeItemSchema,
+      mediaFilter: z.array(NodeType).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const query = data.item.year ? `${data.item.name} (${data.item.year})` : data.item.name;
 
     return $generateCultureTree({
-      data: { query, depth: "standard", tone: "mixed" },
+      data: { query, depth: "standard", tone: "mixed", mediaFilter: data.mediaFilter },
     });
   });

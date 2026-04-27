@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { generateTree } from "./pipeline";
+import { completeTreeItemConnection, generateTree } from "./pipeline";
 
 const previousMockEngine = process.env.MOCK_ENGINE;
 
@@ -33,5 +33,42 @@ describe("generateTree", () => {
       source: "ai",
     });
     expect("children" in tree.items[0]).toBe(false);
+  });
+
+  it("respects media filters when MOCK_ENGINE is enabled", async () => {
+    process.env.MOCK_ENGINE = "true";
+
+    const tree = await generateTree({
+      query: "Jaws",
+      depth: "standard",
+      tone: "mixed",
+      mediaFilter: ["film"],
+    });
+
+    expect(tree.items.length).toBeGreaterThan(0);
+    expect(tree.items.every((item) => item.type === "film")).toBe(true);
+  });
+
+  it("fills an added tree item reason when MOCK_ENGINE is enabled", async () => {
+    process.env.MOCK_ENGINE = "true";
+
+    const item = await completeTreeItemConnection(
+      {
+        seed: "Grimy New York 70s",
+        seedType: "root",
+        items: [],
+      },
+      {
+        id: "new-item",
+        name: "Television — Marquee Moon",
+        type: "album",
+        reason: "",
+        connectionType: "thematic",
+        searchHint: { title: "Marquee Moon", creator: "Television" },
+        source: "user",
+      },
+    );
+
+    expect(item.reason).toContain("Grimy New York 70s");
   });
 });

@@ -1,4 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
+import type { NodeTypeValue } from "@repo/schemas";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -6,6 +7,11 @@ import { LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import {
+  CULTURE_TREE_NODE_TYPES,
+  NodeTypeFilterList,
+  mediaFilterFromSelectedNodeTypes,
+} from "~/components/node-type-filter-list";
 import { useOpenSignIn } from "~/components/sign-in-dialog-host";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import { $generateCultureTree } from "~/server/generate-culture-tree";
@@ -43,7 +49,9 @@ export function HomeSeedForm({
   const navigate = useNavigate();
   const [depth] = useState<DepthOption>("standard");
   const [tone] = useState<ToneOption>("mixed");
+  const [selectedTypes, setSelectedTypes] = useState<NodeTypeValue[]>([...CULTURE_TREE_NODE_TYPES]);
   const loggedIn = Boolean(user);
+  const allTypesSelected = selectedTypes.length === CULTURE_TREE_NODE_TYPES.length;
 
   const generate = useMutation({
     mutationFn: async () => {
@@ -52,7 +60,12 @@ export function HomeSeedForm({
         throw new Error("Enter a seed first.");
       }
       return $generateCultureTree({
-        data: { query, depth, tone },
+        data: {
+          query,
+          depth,
+          tone,
+          mediaFilter: mediaFilterFromSelectedNodeTypes(selectedTypes),
+        },
       });
     },
     onSuccess: ({ treeId }) => {
@@ -64,6 +77,20 @@ export function HomeSeedForm({
       toast.error(err.message || "Could not generate tree.");
     },
   });
+
+  const toggleType = (type: NodeTypeValue) => {
+    setSelectedTypes((current) => {
+      if (current.length === CULTURE_TREE_NODE_TYPES.length) {
+        return [type];
+      }
+
+      if (current.includes(type)) {
+        return current.length === 1 ? current : current.filter((item) => item !== type);
+      }
+
+      return [...current, type];
+    });
+  };
 
   return (
     <section className="relative z-10 mx-auto w-full max-w-xl space-y-6 px-4 sm:px-6 md:px-0">
@@ -113,6 +140,20 @@ export function HomeSeedForm({
               "Plant Seed →"
             )}
           </button>
+        </div>
+
+        <div className="space-y-2">
+          <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+            Cultural mix
+          </p>
+          <NodeTypeFilterList
+            selectedTypes={selectedTypes}
+            allSelected={allTypesSelected}
+            disabled={generate.isPending}
+            size="md"
+            onSelectAll={() => setSelectedTypes([...CULTURE_TREE_NODE_TYPES])}
+            onToggleType={toggleType}
+          />
         </div>
 
         {loggedIn ? <SeedCountLine /> : null}

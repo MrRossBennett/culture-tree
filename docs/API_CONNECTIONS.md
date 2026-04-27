@@ -14,8 +14,8 @@
 | `artist`  | Wikipedia REST API | None                             | Photo, bio extract, Wikipedia link                                              |
 | `person`  | Wikipedia REST API | None                             | Portrait, bio extract, Wikipedia link                                           |
 | `artwork` | Wikipedia REST API | None                             | Image of the work, description, Wikipedia link                                  |
-| `place`   | Phase 2 — not yet  | —                                | —                                                                               |
-| `event`   | Phase 2 — not yet  | —                                | —                                                                               |
+| `place`   | Wikipedia REST API | None                             | Lead image, extract, Wikipedia link, coordinates when available                 |
+| `event`   | Wikipedia REST API | None                             | Lead image, extract, Wikipedia link, event date from `searchHint.dateRange`     |
 | `podcast` | Not yet            | —                                | —                                                                               |
 | `article` | Not yet            | —                                | —                                                                               |
 
@@ -105,10 +105,12 @@ with `zoom=2` in the URL for a larger image.
 
 ---
 
-### Wikipedia REST API (artists, persons, artworks, albums, songs)
+### Wikipedia REST API (artists, persons, artworks, albums, songs, places, events)
 
 Album and song nodes use the same flow below; search adds a trailing `album` or `song`
-unless `wikiSlug` is set.
+unless `wikiSlug` is set. Place search includes `searchHint.location`
+fields when present. Event search includes `searchHint.dateRange.start`
+and location fields when present.
 
 **Direct lookup (if `searchHint.wikiSlug` exists):**
 
@@ -133,6 +135,7 @@ Then take the page title from results and call the summary endpoint.
 - `content_urls.desktop.page` → wikipediaUrl
 - `extract` → description (truncate to 300 chars)
 - `description` → short description
+- `coordinates.lat` / `coordinates.lon` → coordinates for place pages when present
 
 ---
 

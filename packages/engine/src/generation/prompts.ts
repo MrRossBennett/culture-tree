@@ -114,7 +114,7 @@ Remember: 20% anchors (the connections an expert would expect), 80% deep cuts
 and lateral leaps (the connections that surprise even an expert).`;
 
   if (mediaFilter?.length) {
-    prompt += `\nOnly include these item types: ${mediaFilter.join(", ")}`;
+    prompt += `\nHard category constraint: every item.type MUST be one of: ${mediaFilter.join(", ")}. Do not include any other item types.`;
   }
 
   if (tone === "deep-cuts") {
@@ -128,10 +128,21 @@ recommendations. Nothing too obscure — but nothing boring either.`;
   return prompt;
 }
 
-export function buildPass2Prompt(query: string, pass1Tree: CultureTree, tone?: string): string {
+export function buildPass2Prompt(
+  query: string,
+  pass1Tree: CultureTree,
+  mediaFilter?: string[],
+  tone?: string,
+): string {
   const pass1Summary = pass1Tree.items
     .map((item) => `  - ${item.name} [${item.type}]: "${item.reason}"`)
     .join("\n");
+  const mediaRule = mediaFilter?.length
+    ? `\n- CATEGORY CONSTRAINT: every returned item.type MUST be one of: ${mediaFilter.join(", ")}. Replace every violation with an allowed item type. Do not keep books, albums, songs, places, events, people, or articles unless that exact type is listed here.`
+    : "";
+  const varietyRule = mediaFilter?.length
+    ? "Keep the full list varied within the allowed item types."
+    : "Keep the full list varied. If you have too many items of the same type, replace some with a book, album, place, event, or person.";
 
   return `You previously generated this culture tree for "${query}":
 
@@ -144,8 +155,7 @@ HARD RULES (violations must be fixed):
   director, author, artist, or band, one MUST be replaced.
 - Maximum 1-2 anchors (recommendations most knowledgeable people would name).
   Count how many items are "obvious" — if more than 2 are, replace the weakest ones.
-- Keep the full list varied. If you have too many items of the same type,
-  replace some with a book, album, place, event, or person.
+- ${varietyRule}${mediaRule}
 
 QUALITY RULES (push harder):
 1. KEEP any recommendation that is genuinely surprising or insightful.
@@ -168,8 +178,15 @@ Return the complete improved tree in the same JSON format.
 ${tone === "deep-cuts" ? '\nBe ruthless. If a recommendation would appear in a typical "if you liked X" list, replace it.' : ""}`;
 }
 
-export function buildPass3Prompt(query: string, pass2Tree: CultureTree): string {
+export function buildPass3Prompt(
+  query: string,
+  pass2Tree: CultureTree,
+  mediaFilter?: string[],
+): string {
   const itemNames = pass2Tree.items.map((item) => item.name).join(", ");
+  const mediaRule = mediaFilter?.length
+    ? `It must use one of these item types: ${mediaFilter.join(", ")}.`
+    : "It can be any item type.";
 
   return `Here is the current culture tree for "${query}".
 
@@ -180,7 +197,31 @@ the original query in a way that none of the existing items cover. This should
 be the recommendation that makes someone screenshot the tree and share it
 because it's so unexpected yet perfect.
 
-It can be any item type.
+${mediaRule}
 
 Return the COMPLETE tree (all existing items plus the new one).`;
+}
+
+export function buildMediaFilterRepairPrompt(
+  query: string,
+  tree: CultureTree,
+  mediaFilter: string[],
+): string {
+  const currentItems = tree.items
+    .map((item) => `  - ${item.name} [${item.type}]: "${item.reason}"`)
+    .join("\n");
+
+  return `Repair this culture tree for "${query}".
+
+Current items:
+${currentItems}
+
+Hard category constraint:
+- Every returned item.type MUST be one of: ${mediaFilter.join(", ")}.
+- Replace every item that violates the constraint with an equally strong recommendation using an allowed item type.
+- Keep the same approximate item count.
+- Keep reasons specific, vivid, one sentence, and 30 words max.
+- Preserve the CultureTree schema exactly.
+
+Return the complete repaired tree.`;
 }
