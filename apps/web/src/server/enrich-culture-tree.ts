@@ -7,6 +7,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { kickEntityResolutionRunner, resolveImmediateTreeItems } from "./entity-resolver.server";
+
 export const $enrichExistingCultureTree = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(z.object({ treeId: z.string().min(1) }))
@@ -34,6 +36,9 @@ export const $enrichExistingCultureTree = createServerFn({ method: "POST" })
       .update(cultureTree)
       .set({ enrichmentData: enrichments })
       .where(eq(cultureTree.id, data.treeId));
+
+    await resolveImmediateTreeItems({ treeId: data.treeId, items: tree.items, enrichments });
+    kickEntityResolutionRunner();
 
     return { enrichments };
   });

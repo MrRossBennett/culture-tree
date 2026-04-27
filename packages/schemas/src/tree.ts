@@ -31,7 +31,7 @@ export const ConnectionType = z.enum([
 ]);
 
 export const NodeSource = z.enum(["ai", "user"]);
-export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "google-books"]);
+export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "google-books", "musicbrainz"]);
 
 export const SearchHintSchema = z.object({
   title: z
@@ -48,6 +48,7 @@ export const SearchHintSchema = z.object({
   isbn: z.string().optional(),
   imdbId: z.string().optional(),
   wikiSlug: z.string().optional(),
+  url: z.url().optional(),
   location: z
     .object({
       city: z.string().optional(),

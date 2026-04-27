@@ -31,6 +31,7 @@ import {
   $setCultureTreePublic,
 } from "~/server/culture-trees";
 import { $enrichExistingCultureTree } from "~/server/enrich-culture-tree";
+import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
 import { $seedTreeFromItem } from "~/server/generate-culture-tree";
 
 export const Route = createFileRoute("/tree/$treeId")({
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/tree/$treeId")({
       tree: row.tree,
       username: row.username,
       enrichments: row.enrichments,
+      resolvedEntities: row.resolvedEntities,
       isOwner: user?.id === row.userId,
       isPublic: row.isPublic,
     };
@@ -122,7 +124,8 @@ function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { tree, username, enrichments, isOwner, treeId, isPublic } = Route.useLoaderData();
+  const { tree, username, enrichments, resolvedEntities, isOwner, treeId, isPublic } =
+    Route.useLoaderData();
   const [generatingItem, setGeneratingItem] = useState<TreeItem | null>(null);
   const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
     ...CULTURE_TREE_NODE_TYPES,
@@ -199,6 +202,22 @@ function TreePage() {
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not delete that branch.");
+    },
+  });
+
+  const toggleLike = useMutation({
+    mutationFn: async (input: { entityId: string; liked: boolean }) => {
+      if (input.liked) {
+        return $unlikeEntity({ data: { entityId: input.entityId } });
+      }
+      return $likeEntity({ data: { entityId: input.entityId } });
+    },
+    onSuccess: async (result) => {
+      toast.success(result.liked ? "Liked." : "Removed from likes.");
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not update like.");
     },
   });
 
@@ -321,6 +340,10 @@ function TreePage() {
           enrichments={enrichments}
           loadingItemIds={pendingItemIds}
           isGeneratingNewTree={seedFromItem.isPending}
+          resolvedEntities={resolvedEntities}
+          onToggleLike={async (entityId, liked) => {
+            await toggleLike.mutateAsync({ entityId, liked });
+          }}
           onGenerateNewTree={async (item) => {
             setGeneratingItem(item);
           }}

@@ -3,11 +3,11 @@ import type { CultureTree, EnrichedMedia, NodeTypeValue, TreeItem } from "@repo/
 import { fetchBookEnrichment } from "./books";
 import { getCachedEnrichment, setCachedEnrichment } from "./cache";
 import { fetchFilmEnrichment, fetchTvEnrichment } from "./films";
+import { fetchMusicBrainzAlbumEnrichment } from "./musicbrainz";
 import {
   fetchWikipediaArtworkEnrichment,
   fetchWikipediaEnrichment,
   fetchWikipediaEventEnrichment,
-  fetchWikipediaMusicEnrichment,
   fetchWikipediaPlaceEnrichment,
   fetchWikipediaSongEnrichment,
 } from "./wikipedia";
@@ -30,24 +30,16 @@ function wikiBackedButMissingImage(cached: EnrichedMedia): boolean {
   return noArt && Boolean(cached.wikipediaUrl?.trim() || cached.wikiExtract?.trim());
 }
 
-const WIKI_IMAGE_RETRY_TYPES = new Set<NodeTypeValue>([
-  "artwork",
-  "song",
-  "article",
-  "place",
-  "event",
-]);
+const WIKI_IMAGE_RETRY_TYPES = new Set<NodeTypeValue>(["artwork", "song", "place", "event"]);
 
 const enricherRegistry: Partial<Record<NodeTypeValue, Enricher>> = {
   book: fetchBookEnrichment,
   film: fetchFilmEnrichment,
   tv: fetchTvEnrichment,
-  album: fetchWikipediaMusicEnrichment,
+  album: fetchMusicBrainzAlbumEnrichment,
   song: fetchWikipediaSongEnrichment,
   person: fetchWikipediaEnrichment,
   artist: fetchWikipediaEnrichment,
-  /** Stand-alone piece (essay, feature, notable post) — Wikipedia when wikiSlug/title matches. */
-  article: fetchWikipediaEnrichment,
   artwork: fetchWikipediaArtworkEnrichment,
   place: fetchWikipediaPlaceEnrichment,
   event: fetchWikipediaEventEnrichment,

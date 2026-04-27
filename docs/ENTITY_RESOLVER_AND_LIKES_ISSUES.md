@@ -213,7 +213,7 @@ Implement the primary-authority resolver path for film and TV entities using TMD
 
 ## What to build
 
-Add MusicBrainz as the primary authority for music-related entities. Artists should resolve to MusicBrainz artists, albums to release groups, and songs to recordings. The resolver must respect MusicBrainz usage guidance through caching, a meaningful user agent, and conservative request pacing.
+Add MusicBrainz as the primary authority for music-related entities. Artists should resolve to MusicBrainz artists, albums to release groups, and songs to recordings. MusicBrainz requires no API key for this implementation, but the resolver must respect MusicBrainz usage guidance through cached or deduplicated lookups, a meaningful `User-Agent`, and conservative request pacing.
 
 ## Acceptance criteria
 
@@ -221,8 +221,9 @@ Add MusicBrainz as the primary authority for music-related entities. Artists sho
 - [ ] Album branches resolve to MusicBrainz release-group MBIDs.
 - [ ] Song branches resolve to MusicBrainz recording MBIDs.
 - [ ] MusicBrainz identities use source, external type, and MBID rather than overloaded IDs.
+- [ ] MusicBrainz configuration does not require an API key.
 - [ ] The resolver checks local identities and cached lookups before calling MusicBrainz.
-- [ ] The MusicBrainz client sends a meaningful user agent.
+- [ ] The MusicBrainz client sends a meaningful `User-Agent`.
 - [ ] The MusicBrainz resolver leaves ambiguous or weak matches unresolved.
 - [ ] Tests cover artist, album, song, ambiguous no-match, release-group granularity, and recording granularity.
 
@@ -466,7 +467,7 @@ Harden the resolver runner for real usage. Add source-aware batching, retries, r
 
 - [ ] Resolver jobs are processed in bounded batches.
 - [ ] Failed jobs record errors and retry according to a bounded policy.
-- [ ] MusicBrainz calls respect conservative request pacing.
+- [ ] MusicBrainz calls respect conservative request pacing without relying on an API key.
 - [ ] Resolver processing checks caches before external calls.
 - [ ] Re-running a job cannot duplicate entities, external identities, or tree-item links.
 - [ ] Operational logging or result summaries make it possible to inspect resolver behavior locally.

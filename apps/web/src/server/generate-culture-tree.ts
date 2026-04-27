@@ -15,6 +15,12 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
+import {
+  enqueueTreeForResolution,
+  kickEntityResolutionRunner,
+  resolveImmediateTreeItems,
+} from "./entity-resolver.server";
+
 export const $generateCultureTree = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(TreeRequestSchema)
@@ -42,6 +48,10 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
         .set({ enrichmentData: enrichments })
         .where(eq(cultureTree.id, id));
     }
+
+    await resolveImmediateTreeItems({ treeId: id, items: tree.items, enrichments });
+    await enqueueTreeForResolution({ treeId: id, items: tree.items });
+    kickEntityResolutionRunner();
 
     return { treeId: id, tree, enrichments };
   });

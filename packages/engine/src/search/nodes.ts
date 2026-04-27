@@ -18,7 +18,6 @@ const DIVERSIFIED_TYPE_ORDER: readonly NodeTypeValue[] = [
   "film",
   "tv",
   "person",
-  "article",
   "artwork",
   "podcast",
   "event",
@@ -335,6 +334,8 @@ function sourcePriority(result: ExternalNodeSearchResult): number {
   switch (result.identity.source) {
     case "tmdb":
       return 3;
+    case "musicbrainz":
+      return 3;
     case "google-books":
       return 2;
     case "wikipedia":
@@ -453,14 +454,6 @@ function inferWikipediaType(blob: string): NodeTypeValue | null {
     return "person";
   }
   if (
-    normalized.includes(" magazine ") ||
-    normalized.includes(" newspaper ") ||
-    normalized.includes(" journal ") ||
-    normalized.includes(" zine ")
-  ) {
-    return "article";
-  }
-  if (
     normalized.includes(" painting ") ||
     normalized.includes(" sculpture ") ||
     normalized.includes(" artwork ") ||
@@ -468,9 +461,6 @@ function inferWikipediaType(blob: string): NodeTypeValue | null {
     normalized.includes(" installation art ")
   ) {
     return "artwork";
-  }
-  if (normalized.includes(" essay ") || normalized.includes(" article ")) {
-    return "article";
   }
   return null;
 }

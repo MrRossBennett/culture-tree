@@ -91,7 +91,7 @@ Rules:
   - For places: name + location (city, country, address if notable); creator usually omitted
   - For events: name + wikiSlug (Wikipedia article slug) + dateRange
   - For people: full name + wikiSlug
-  - For articles: one-off written piece (essay, feature, famous blog post) — searchHint.title + wikiSlug or URL
+  - For articles: only use a specific published web article, essay, review, interview, or blog post. Put the article title in searchHint.title and the canonical article URL in searchHint.url when you know it. Do not use Wikipedia pages as articles.
 - connectionType should accurately describe the relationship.
 - A great tree tells a STORY. The items should feel like a curated exhibition,
   not a random list.

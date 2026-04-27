@@ -7,11 +7,20 @@ import type {
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
-import { LoaderCircleIcon, SparklesIcon, StarIcon, Trash2Icon } from "lucide-react";
-import type { CSSProperties } from "react";
+import { cn } from "@repo/ui/lib/utils";
+import {
+  ClipboardIcon,
+  HeartIcon,
+  LoaderCircleIcon,
+  SparklesIcon,
+  StarIcon,
+  Trash2Icon,
+} from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
+import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
 type TreeRow = {
   capacity: number;
@@ -111,6 +120,38 @@ function headingFromSearchHint(
   return { primary: displayName };
 }
 
+function EntityStat({
+  icon,
+  value,
+  tooltip,
+}: {
+  readonly icon: ReactNode;
+  readonly value: number;
+  readonly tooltip: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-muted-foreground transition-colors hover:text-foreground" />
+        }
+      >
+        {icon}
+        <span className="font-mono text-[0.62rem] leading-none tabular-nums">{value}</span>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function memberTooltip(count: number): string {
+  return `Liked by ${count} member${count === 1 ? "" : "s"}`;
+}
+
+function treeTooltip(count: number): string {
+  return `Appears in ${count} tree${count === 1 ? "" : "s"}`;
+}
+
 export function CultureTreeItemCard({
   item,
   enrichments,
@@ -118,6 +159,8 @@ export function CultureTreeItemCard({
   isGeneratingNewTree = false,
   onDeleteItem,
   onGenerateNewTree,
+  onToggleLike,
+  resolvedEntity,
   style,
 }: {
   readonly item: TreeItem;
@@ -126,6 +169,8 @@ export function CultureTreeItemCard({
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
+  readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
+  readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
   readonly style?: CSSProperties;
 }) {
   const media = enrichments[item.id];
@@ -163,6 +208,31 @@ export function CultureTreeItemCard({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {resolvedEntity && !isLoading ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={
+                resolvedEntity.likedByCurrentUser
+                  ? "shrink-0 text-rose-600 hover:text-rose-700"
+                  : "shrink-0 text-muted-foreground hover:text-rose-600"
+              }
+              onClick={() =>
+                void onToggleLike?.(resolvedEntity.id, resolvedEntity.likedByCurrentUser)
+              }
+              aria-label={
+                resolvedEntity.likedByCurrentUser
+                  ? `Unlike ${resolvedEntity.name}`
+                  : `Like ${resolvedEntity.name}`
+              }
+            >
+              <HeartIcon
+                className={cn("size-3.5", resolvedEntity.likedByCurrentUser ? "fill-current" : "")}
+                aria-hidden
+              />
+            </Button>
+          ) : null}
           {onGenerateNewTree && !isLoading ? (
             <Tooltip>
               <TooltipTrigger
@@ -205,12 +275,23 @@ export function CultureTreeItemCard({
         </div>
       </div>
       <div className="relative flex gap-0">
-        <NodeThumbnail
-          type={item.type}
-          src={coverSrc}
-          size="md"
-          className="border-r border-border/55 bg-muted/10"
-        />
+        <div className="shrink-0 border-r border-border/55 bg-muted/10">
+          <NodeThumbnail type={item.type} src={coverSrc} size="md" />
+          {resolvedEntity ? (
+            <div className="flex items-center justify-center gap-1 border-t border-border/45 bg-background/55 px-1 py-1">
+              <EntityStat
+                icon={<HeartIcon className="size-3.5 text-rose-600" aria-hidden />}
+                value={resolvedEntity.likeCount}
+                tooltip={memberTooltip(resolvedEntity.likeCount)}
+              />
+              <EntityStat
+                icon={<ClipboardIcon className="size-3.5 text-primary/80" aria-hidden />}
+                value={resolvedEntity.appearanceCount}
+                tooltip={treeTooltip(resolvedEntity.appearanceCount)}
+              />
+            </div>
+          ) : null}
+        </div>
         <div className="min-w-0 flex-1 px-4 py-2">
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <h3 className="font-heading text-xl leading-snug tracking-tight text-card-foreground md:text-2xl">
@@ -272,6 +353,8 @@ export function TreePreview({
   isGeneratingNewTree = false,
   onDeleteItem,
   onGenerateNewTree,
+  onToggleLike,
+  resolvedEntities = {},
 }: {
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
@@ -279,6 +362,8 @@ export function TreePreview({
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
+  readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
+  readonly resolvedEntities?: TreeResolvedEntitiesMap;
 }) {
   const itemRows = splitItemsIntoTreeRows(tree.items);
   const loadingItemIdSet = new Set(loadingItemIds);
@@ -305,6 +390,8 @@ export function TreePreview({
                       item={item}
                       onDeleteItem={onDeleteItem}
                       onGenerateNewTree={onGenerateNewTree}
+                      onToggleLike={onToggleLike}
+                      resolvedEntity={resolvedEntities[item.id]}
                       style={partialFourUpCardStyle()}
                     />
                   ))}
@@ -332,6 +419,8 @@ export function TreePreview({
                       item={item}
                       onDeleteItem={onDeleteItem}
                       onGenerateNewTree={onGenerateNewTree}
+                      onToggleLike={onToggleLike}
+                      resolvedEntity={resolvedEntities[item.id]}
                       style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
                     />
                   ))}

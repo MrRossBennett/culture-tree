@@ -16,6 +16,11 @@ import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
+import {
+  getResolvedEntitiesForTree,
+  kickEntityResolutionRunner,
+  resolveImmediateTreeItems,
+} from "./entity-resolver.server";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -113,12 +118,17 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
     }
     const tree = CultureTreeSchema.parse(row.data);
     const enrichments = parseTreeEnrichments(row.enrichmentData);
+    const resolvedEntities = await getResolvedEntitiesForTree({
+      treeId: row.id,
+      currentUserId: user?.id,
+    });
     return {
       treeId: row.id,
       userId: row.userId,
       username: row.username,
       tree,
       enrichments,
+      resolvedEntities,
       createdAt: row.createdAt,
       isPublic: row.isPublic,
     };
@@ -192,6 +202,13 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
       .update(cultureTree)
       .set({ data: nextTree, enrichmentData: nextEnrichments })
       .where(eq(cultureTree.id, data.treeId));
+
+    await resolveImmediateTreeItems({
+      treeId: data.treeId,
+      items: [nextNode],
+      enrichments: nextEnrichments,
+    });
+    kickEntityResolutionRunner();
 
     return { ok: true as const };
   });

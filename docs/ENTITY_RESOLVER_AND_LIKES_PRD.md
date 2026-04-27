@@ -64,6 +64,7 @@ Resolution should run automatically as part of generation/enrichment, but it sho
   - `book` uses Google Books for the first version.
   - `person`, `place`, `event`, `artwork`, and `article` use Wikipedia fallback.
 - MusicBrainz should be integrated before music-related likes launch.
+- MusicBrainz requires no API key for the first version. The client must send a meaningful `User-Agent`, cache or deduplicate lookups where possible, and respect conservative source-IP pacing.
 - MusicBrainz artist branches map to MusicBrainz artists.
 - MusicBrainz album branches map to release groups, not releases.
 - MusicBrainz song branches map to recordings for the first version.
@@ -162,4 +163,4 @@ The most important invariant is: if a branch is likeable, it already has a canon
 
 The data model should support entity pages later without building them now. A future entity page should be able to show canonical metadata, external identities, like counts, users who liked the entity, trees where the entity appears, and related entities inferred from co-occurrence.
 
-MusicBrainz usage should follow current service guidance: use a meaningful user agent, cache aggressively, avoid repeated lookups, and keep request pacing conservative.
+MusicBrainz usage requires no API key for the first version. It should follow current service guidance: send a meaningful `User-Agent`, cache aggressively or deduplicate lookups, avoid repeated lookups, and respect the 1 request/second source-IP guideline.
