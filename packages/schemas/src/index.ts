@@ -33,4 +33,17 @@ export {
   type TreeEnrichmentsMap,
 } from "./enrichment";
 
+export {
+  buildImageProvenance,
+  ImageProvenanceKind,
+  ImageProvenanceSchema,
+  ImageProvenanceSource,
+  ImageRightsStatus,
+  inferImageProvenanceFromUrl,
+  type ImageProvenance,
+  type ImageProvenanceKindValue,
+  type ImageProvenanceSourceValue,
+  type ImageRightsStatusValue,
+} from "./image-provenance";
+
 export { RatedConnectionSchema, type RatedConnection } from "./quality";

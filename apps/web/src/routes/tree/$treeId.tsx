@@ -15,10 +15,14 @@ import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  CultureTreeToneSelector,
+  type CultureTreeTone,
+} from "~/components/culture-tree-tone-selector";
 import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
 import {
   CULTURE_TREE_NODE_TYPES,
-  NodeTypeFilterList,
+  CulturalMixSelector,
   mediaFilterFromSelectedNodeTypes,
 } from "~/components/node-type-filter-list";
 import { TreeNodeDrawer, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
@@ -220,6 +224,7 @@ function TreePage() {
   const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
     ...CULTURE_TREE_NODE_TYPES,
   ]);
+  const [generationTone, setGenerationTone] = useState<CultureTreeTone>("mixed");
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
   const [pendingItems, setPendingItems] = useState<TreeItem[]>([]);
   const treeIsReady = generation.status === "ready";
@@ -281,7 +286,7 @@ function TreePage() {
   });
 
   const seedFromItem = useMutation({
-    mutationFn: (input: { item: TreeItem; mediaFilter?: NodeTypeValue[] }) =>
+    mutationFn: (input: { item: TreeItem; mediaFilter?: NodeTypeValue[]; tone: CultureTreeTone }) =>
       $seedTreeFromItem({ data: input }),
     onSuccess: async ({ treeId: nextTreeId }) => {
       setGeneratingItem(null);
@@ -402,8 +407,6 @@ function TreePage() {
   const previewTree =
     pendingItems.length > 0 ? { ...tree, items: [...tree.items, ...pendingItems] } : tree;
   const pendingItemIds = pendingItems.map((item) => item.id);
-  const allGenerationTypesSelected =
-    selectedGenerationTypes.length === CULTURE_TREE_NODE_TYPES.length;
   const generationIsActive = isGenerationActive(generation.status);
   const generationIsTerminal = isGenerationTerminal(generation.status);
 
@@ -422,20 +425,6 @@ function TreePage() {
     const pendingItem = pendingTreeItemFromInput(node);
     setPendingItems((items) => [...items, pendingItem]);
     await addItem.mutateAsync({ parentItemId, node, pendingItemId: pendingItem.id });
-  };
-
-  const toggleGenerationType = (type: NodeTypeValue) => {
-    setSelectedGenerationTypes((current) => {
-      if (current.length === CULTURE_TREE_NODE_TYPES.length) {
-        return [type];
-      }
-
-      if (current.includes(type)) {
-        return current.length === 1 ? current : current.filter((item) => item !== type);
-      }
-
-      return [...current, type];
-    });
   };
 
   return (
@@ -519,18 +508,16 @@ function TreePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
-                Cultural mix
-              </p>
-              <NodeTypeFilterList
-                selectedTypes={selectedGenerationTypes}
-                allSelected={allGenerationTypesSelected}
-                disabled={seedFromItem.isPending}
-                onSelectAll={() => setSelectedGenerationTypes([...CULTURE_TREE_NODE_TYPES])}
-                onToggleType={toggleGenerationType}
-              />
-            </div>
+            <CulturalMixSelector
+              selectedTypes={selectedGenerationTypes}
+              disabled={seedFromItem.isPending}
+              onSelectedTypesChange={setSelectedGenerationTypes}
+            />
+            <CultureTreeToneSelector
+              value={generationTone}
+              disabled={seedFromItem.isPending}
+              onValueChange={setGenerationTone}
+            />
 
             {seedFromItem.isPending ? (
               <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3">
@@ -553,6 +540,7 @@ function TreePage() {
                   }
                   seedFromItem.mutate({
                     item: generatingItem,
+                    tone: generationTone,
                     mediaFilter: mediaFilterFromSelectedNodeTypes(selectedGenerationTypes),
                   });
                 }}

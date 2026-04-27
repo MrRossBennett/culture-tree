@@ -359,6 +359,7 @@ export const $seedTreeFromItem = createServerFn({ method: "POST" })
     z.object({
       item: TreeItemSchema,
       mediaFilter: z.array(NodeType).optional(),
+      tone: StartGenerationInputSchema.shape.tone.optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -367,7 +368,7 @@ export const $seedTreeFromItem = createServerFn({ method: "POST" })
     return startProgressiveCultureTree(context.user.id, {
       query,
       depth: "standard",
-      tone: "mixed",
+      tone: data.tone ?? "mixed",
       mediaFilter: data.mediaFilter,
     });
   });

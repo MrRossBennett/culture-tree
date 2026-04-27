@@ -1,5 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import type { NodeTypeValue } from "@repo/schemas";
+import type { NodeTypeValue, TreeRequest } from "@repo/schemas";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -8,8 +8,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import {
+  CultureTreeToneSelector,
+  type CultureTreeTone,
+} from "~/components/culture-tree-tone-selector";
+import {
   CULTURE_TREE_NODE_TYPES,
-  NodeTypeFilterList,
+  CulturalMixSelector,
   mediaFilterFromSelectedNodeTypes,
 } from "~/components/node-type-filter-list";
 import { useOpenSignIn } from "~/components/sign-in-dialog-host";
@@ -28,12 +32,6 @@ function SeedCountLine() {
   );
 }
 
-const DEPTH_OPTIONS = ["shallow", "standard", "deep"] as const;
-type DepthOption = (typeof DEPTH_OPTIONS)[number];
-
-const TONE_OPTIONS = ["accessible", "mixed", "deep-cuts"] as const;
-type ToneOption = (typeof TONE_OPTIONS)[number];
-
 export function HomeSeedForm({
   prompt,
   setPrompt,
@@ -47,11 +45,10 @@ export function HomeSeedForm({
   const { data: user } = useQuery(authQueryOptions());
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [depth] = useState<DepthOption>("standard");
-  const [tone] = useState<ToneOption>("mixed");
+  const depth: TreeRequest["depth"] = "standard";
+  const [tone, setTone] = useState<CultureTreeTone>("mixed");
   const [selectedTypes, setSelectedTypes] = useState<NodeTypeValue[]>([...CULTURE_TREE_NODE_TYPES]);
   const loggedIn = Boolean(user);
-  const allTypesSelected = selectedTypes.length === CULTURE_TREE_NODE_TYPES.length;
 
   const generate = useMutation({
     mutationFn: async () => {
@@ -77,20 +74,6 @@ export function HomeSeedForm({
       toast.error(err.message || "Could not generate tree.");
     },
   });
-
-  const toggleType = (type: NodeTypeValue) => {
-    setSelectedTypes((current) => {
-      if (current.length === CULTURE_TREE_NODE_TYPES.length) {
-        return [type];
-      }
-
-      if (current.includes(type)) {
-        return current.length === 1 ? current : current.filter((item) => item !== type);
-      }
-
-      return [...current, type];
-    });
-  };
 
   return (
     <section className="relative z-10 mx-auto w-full max-w-xl space-y-6 px-4 sm:px-6 md:px-0">
@@ -142,19 +125,18 @@ export function HomeSeedForm({
           </button>
         </div>
 
-        <div className="space-y-2">
-          <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
-            Cultural mix
-          </p>
-          <NodeTypeFilterList
-            selectedTypes={selectedTypes}
-            allSelected={allTypesSelected}
-            disabled={generate.isPending}
-            size="md"
-            onSelectAll={() => setSelectedTypes([...CULTURE_TREE_NODE_TYPES])}
-            onToggleType={toggleType}
-          />
-        </div>
+        <CulturalMixSelector
+          selectedTypes={selectedTypes}
+          disabled={generate.isPending}
+          size="md"
+          onSelectedTypesChange={setSelectedTypes}
+        />
+
+        <CultureTreeToneSelector
+          value={tone}
+          disabled={generate.isPending}
+          onValueChange={setTone}
+        />
 
         {loggedIn ? <SeedCountLine /> : null}
       </form>

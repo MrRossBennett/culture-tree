@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as CreditsRouteImport } from './routes/credits'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as GuestRouteRouteImport } from './routes/_guest/route'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
@@ -33,6 +34,11 @@ const SignupRoute = SignupRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreditsRoute = CreditsRouteImport.update({
+  id: '/credits',
+  path: '/credits',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -102,6 +108,7 @@ const AuthCuratorUsernameRoute = AuthCuratorUsernameRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/credits': typeof CreditsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/settings': typeof AuthSettingsRouteRouteWithChildren
@@ -117,6 +124,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/credits': typeof CreditsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/onboarding': typeof AuthOnboardingRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteRouteWithChildren
   '/_guest': typeof GuestRouteRouteWithChildren
   '/app': typeof AppRoute
+  '/credits': typeof CreditsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_auth/settings': typeof AuthSettingsRouteRouteWithChildren
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/credits'
     | '/login'
     | '/signup'
     | '/settings'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/app'
+    | '/credits'
     | '/login'
     | '/signup'
     | '/onboarding'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/_auth'
     | '/_guest'
     | '/app'
+    | '/credits'
     | '/login'
     | '/signup'
     | '/_auth/settings'
@@ -200,6 +212,7 @@ export interface RootRouteChildren {
   AuthRouteRoute: typeof AuthRouteRouteWithChildren
   GuestRouteRoute: typeof GuestRouteRouteWithChildren
   AppRoute: typeof AppRoute
+  CreditsRoute: typeof CreditsRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   TreeTreeIdRoute: typeof TreeTreeIdRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/credits': {
+      id: '/credits'
+      path: '/credits'
+      fullPath: '/credits'
+      preLoaderRoute: typeof CreditsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -364,6 +384,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRouteRoute: AuthRouteRouteWithChildren,
   GuestRouteRoute: GuestRouteRouteWithChildren,
   AppRoute: AppRoute,
+  CreditsRoute: CreditsRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   TreeTreeIdRoute: TreeTreeIdRoute,

@@ -130,6 +130,56 @@ export function NodeTypeFilterList({
   );
 }
 
+export function CulturalMixSelector({
+  selectedTypes,
+  disabled = false,
+  size = "sm",
+  className,
+  onSelectedTypesChange,
+}: {
+  readonly selectedTypes: readonly NodeTypeValue[];
+  readonly disabled?: boolean;
+  readonly size?: "sm" | "md";
+  readonly className?: string;
+  readonly onSelectedTypesChange: (types: NodeTypeValue[]) => void;
+}) {
+  const allSelected = selectedTypes.length === CULTURE_TREE_NODE_TYPES.length;
+
+  const toggleType = (type: NodeTypeValue) => {
+    if (selectedTypes.length === CULTURE_TREE_NODE_TYPES.length) {
+      onSelectedTypesChange([type]);
+      return;
+    }
+
+    if (selectedTypes.includes(type)) {
+      onSelectedTypesChange(
+        selectedTypes.length === 1
+          ? [...selectedTypes]
+          : selectedTypes.filter((item) => item !== type),
+      );
+      return;
+    }
+
+    onSelectedTypesChange([...selectedTypes, type]);
+  };
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+        Cultural mix
+      </p>
+      <NodeTypeFilterList
+        selectedTypes={selectedTypes}
+        allSelected={allSelected}
+        disabled={disabled}
+        size={size}
+        onSelectAll={() => onSelectedTypesChange([...CULTURE_TREE_NODE_TYPES])}
+        onToggleType={toggleType}
+      />
+    </div>
+  );
+}
+
 function NodeTypeFilterChip({
   type,
   selected,

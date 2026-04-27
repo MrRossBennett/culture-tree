@@ -14,6 +14,7 @@ import {
   UserIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 
 export function nodeTypeIcon(type: NodeTypeValue, className: string) {
   switch (type) {
@@ -58,16 +59,19 @@ export function NodeThumbnail({
 }) {
   const isSquare = SQUARE_TYPES.has(type);
   const isAlbum = type === "album";
+  const [failedSrc, setFailedSrc] = useState<string | undefined>();
+  const displaySrc = src && failedSrc !== src ? src : undefined;
 
   if (size === "sm") {
     return (
       <AnimatePresence mode="wait" initial={false}>
-        {src ? (
+        {displaySrc ? (
           <motion.img
-            key={src}
+            key={displaySrc}
             alt=""
             referrerPolicy="no-referrer"
-            src={src}
+            src={displaySrc}
+            onError={() => setFailedSrc(displaySrc)}
             initial={{ opacity: 0, scale: 1.018, filter: "blur(10px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, scale: 0.992, filter: "blur(6px)" }}
@@ -101,12 +105,13 @@ export function NodeThumbnail({
 
   return (
     <AnimatePresence mode="wait" initial={false}>
-      {src ? (
+      {displaySrc ? (
         <motion.img
-          key={src}
+          key={displaySrc}
           alt=""
           referrerPolicy="no-referrer"
-          src={src}
+          src={displaySrc}
+          onError={() => setFailedSrc(displaySrc)}
           initial={{ opacity: 0, scale: 1.018, filter: "blur(10px)" }}
           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
           exit={{ opacity: 0, scale: 0.992, filter: "blur(6px)" }}

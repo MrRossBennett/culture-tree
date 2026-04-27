@@ -9,16 +9,21 @@ import {
   treeItemEntity,
 } from "@repo/db/schema";
 import {
+  buildImageProvenance,
   CultureTreeSchema,
+  inferImageProvenanceFromUrl,
   TreeItemSchema,
   type EnrichedMedia,
   type ExternalNodeSourceValue,
+  type ImageProvenance,
   type NodeTypeValue,
   type TreeEnrichmentsMap,
   type TreeItem,
 } from "@repo/schemas";
 import { and, count, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+
+import { compactMetadata, mergeEntityMetadata, type EntityMetadata } from "./entity-metadata";
 
 const ENTITY_RESOLVER_BATCH_LIMIT = 5;
 const ENTITY_RESOLVER_KICK_MAX_JOBS = 25;
@@ -132,6 +137,70 @@ function parseCachedCandidate(value: unknown): ResolverCandidate | null {
     return null;
   }
   return c as ResolverCandidate;
+}
+
+function imageKindForNode(
+  type: NodeTypeValue,
+): "poster" | "cover" | "portrait" | "photo" | "lead-image" {
+  if (type === "film" || type === "tv") {
+    return "poster";
+  }
+  if (type === "book" || type === "album") {
+    return "cover";
+  }
+  if (type === "person" || type === "artist") {
+    return "portrait";
+  }
+  if (type === "place") {
+    return "photo";
+  }
+  return "lead-image";
+}
+
+function provenanceForKnownImage(input: {
+  item: TreeItem;
+  media?: EnrichedMedia;
+  imageUrl?: string;
+  externalUrl?: string;
+}): ImageProvenance | undefined {
+  if (!input.imageUrl) {
+    return undefined;
+  }
+
+  const source = input.item.identity?.source;
+  if (source === "tmdb") {
+    return buildImageProvenance({
+      source: "tmdb",
+      kind: "poster",
+      remoteUrl: input.imageUrl,
+      attributionUrl: input.externalUrl,
+      checkedAt: new Date(),
+    });
+  }
+  if (source === "google-books") {
+    return buildImageProvenance({
+      source: "google-books",
+      kind: "cover",
+      remoteUrl: input.imageUrl,
+      attributionUrl: input.externalUrl,
+      checkedAt: new Date(),
+    });
+  }
+  if (source === "wikipedia") {
+    return buildImageProvenance({
+      source: "wikipedia",
+      kind: imageKindForNode(input.item.type),
+      remoteUrl: input.imageUrl,
+      attributionUrl: input.externalUrl ?? input.media?.wikipediaUrl,
+      checkedAt: new Date(),
+    });
+  }
+
+  return inferImageProvenanceFromUrl({
+    remoteUrl: input.imageUrl,
+    attributionUrl: input.externalUrl ?? input.media?.externalUrl ?? input.media?.wikipediaUrl,
+    checkedAt: new Date(),
+  });
 }
 
 async function getCachedResolverCandidate(item: TreeItem): Promise<ResolverCandidate | null> {
@@ -330,32 +399,37 @@ function candidateFromKnownIdentity(
   if (!identity) {
     if ((item.type === "film" || item.type === "tv") && media?.externalId?.trim()) {
       const tmdbType = item.type === "film" ? "movie" : "tv";
+      const externalUrl = `https://www.themoviedb.org/${tmdbType}/${media.externalId.trim()}`;
+      const display = displayFromItem(item, media, externalUrl);
       return {
         source: "tmdb",
         externalType: tmdbType,
         externalId: media.externalId.trim(),
-        externalUrl: `https://www.themoviedb.org/${tmdbType}/${media.externalId.trim()}`,
-        ...displayFromItem(item, media),
+        externalUrl,
+        ...display,
       };
     }
     const musicBrainzExternalType = musicBrainzExternalTypeForNode(item.type);
     if (musicBrainzExternalType && media?.externalId?.trim()) {
+      const externalUrl = musicBrainzUrlForNode(item.type, media.externalId.trim());
+      const display = displayFromItem(item, media, externalUrl);
       return {
         source: "musicbrainz",
         externalType: musicBrainzExternalType,
         externalId: media.externalId.trim(),
-        externalUrl: musicBrainzUrlForNode(item.type, media.externalId.trim()),
-        ...displayFromItem(item, media),
+        externalUrl,
+        ...display,
       };
     }
     const wikipediaSlug = media?.wikipediaUrl ? normalizeWikipediaKey(media.wikipediaUrl) : null;
     if (wikipediaSlug && wikipediaFallbackTypes.has(item.type)) {
+      const display = displayFromItem(item, media, media?.wikipediaUrl);
       return {
         source: "wikipedia",
         externalType: "page",
         externalId: wikipediaSlug,
         externalUrl: media?.wikipediaUrl,
-        ...displayFromItem(item, media),
+        ...display,
       };
     }
     return null;
@@ -363,13 +437,19 @@ function candidateFromKnownIdentity(
 
   return {
     ...identity,
-    ...displayFromItem(item, media),
+    ...displayFromItem(item, media, identity.externalUrl),
   };
 }
 
-function displayFromItem(item: TreeItem, media: EnrichedMedia | undefined): EntityDisplayInput {
+function displayFromItem(
+  item: TreeItem,
+  media: EnrichedMedia | undefined,
+  externalUrl?: string,
+): EntityDisplayInput {
   const year = item.snapshot?.year ?? item.year;
   const creatorName = item.searchHint.creator?.trim() || undefined;
+  const imageUrl = item.snapshot?.image ?? media?.coverUrl ?? media?.thumbnailUrl;
+  const imageProvenance = provenanceForKnownImage({ item, media, imageUrl, externalUrl });
   return {
     type: item.type,
     name: canonicalNameFromItem(item),
@@ -377,9 +457,9 @@ function displayFromItem(item: TreeItem, media: EnrichedMedia | undefined): Enti
     creatorRole: creatorName ? creatorRoleForType(item.type) : undefined,
     disambiguation: disambiguationFor(item.type, year),
     year,
-    imageUrl: item.snapshot?.image ?? media?.coverUrl ?? media?.thumbnailUrl,
+    imageUrl,
     description: media?.description ?? media?.wikiExtract,
-    metadata: { searchHint: item.searchHint },
+    metadata: compactMetadata({ searchHint: item.searchHint, imageProvenance }),
   };
 }
 
@@ -402,8 +482,9 @@ function withItemAttribution(item: TreeItem, candidate: ResolverCandidate): Reso
 
 async function upsertEntityFromExternalIdentity(input: ResolverCandidate): Promise<string> {
   const [existingIdentity] = await db
-    .select({ entityId: entityExternalIdentity.entityId })
+    .select({ entityId: entityExternalIdentity.entityId, metadata: entity.metadata })
     .from(entityExternalIdentity)
+    .innerJoin(entity, eq(entity.id, entityExternalIdentity.entityId))
     .where(
       and(
         eq(entityExternalIdentity.source, input.source),
@@ -424,7 +505,7 @@ async function upsertEntityFromExternalIdentity(input: ResolverCandidate): Promi
         year: input.year,
         imageUrl: input.imageUrl,
         description: input.description,
-        metadata: input.metadata,
+        metadata: mergeEntityMetadata(existingIdentity.metadata, input.metadata),
       })
       .where(eq(entity.id, existingIdentity.entityId));
     return existingIdentity.entityId;
@@ -446,7 +527,7 @@ async function upsertEntityFromExternalIdentity(input: ResolverCandidate): Promi
       primaryExternalSource: input.source,
       primaryExternalType: input.externalType,
       primaryExternalId: input.externalId,
-      metadata: input.metadata,
+      metadata: mergeEntityMetadata(undefined, input.metadata),
     })
     .onConflictDoNothing({
       target: [entity.primaryExternalSource, entity.primaryExternalType, entity.primaryExternalId],
@@ -592,11 +673,20 @@ async function resolveTmdb(item: TreeItem): Promise<ResolverCandidate | null> {
     ? `https://image.tmdb.org/t/p/w500${match.poster_path}`
     : undefined;
   const creatorName = item.searchHint.creator?.trim() || undefined;
+  const externalUrl = `https://www.themoviedb.org/${tmdbType}/${match.id}`;
+  const imageProvenance = buildImageProvenance({
+    source: "tmdb",
+    kind: "poster",
+    remoteUrl: imageUrl,
+    attributionUrl: externalUrl,
+    providerAssetId: match.poster_path,
+    checkedAt: new Date(),
+  });
   return {
     source: "tmdb",
     externalType: tmdbType,
     externalId: String(match.id),
-    externalUrl: `https://www.themoviedb.org/${tmdbType}/${match.id}`,
+    externalUrl,
     type: item.type,
     name,
     creatorName,
@@ -604,7 +694,7 @@ async function resolveTmdb(item: TreeItem): Promise<ResolverCandidate | null> {
     year: year ?? item.year,
     imageUrl,
     description: match.overview,
-    metadata: { searchHint: item.searchHint },
+    metadata: compactMetadata({ searchHint: item.searchHint, imageProvenance }),
   };
 }
 
@@ -778,21 +868,30 @@ async function resolveMusicBrainz(item: TreeItem): Promise<ResolverCandidate | n
   const artistCredit = match["artist-credit"]?.map((credit) => credit.name).filter(Boolean) ?? [];
   const creatorName = item.searchHint.creator?.trim() || artistCredit[0];
   const imageUrl = item.type === "album" ? await fetchReleaseGroupCoverArt(match.id) : undefined;
+  const externalUrl = musicBrainzUrlForNode(item.type, match.id);
+  const imageProvenance = buildImageProvenance({
+    source: "cover-art-archive",
+    kind: "cover",
+    remoteUrl: imageUrl,
+    attributionUrl: externalUrl,
+    checkedAt: new Date(),
+  });
   return {
     source: "musicbrainz",
     externalType,
     externalId: match.id,
-    externalUrl: musicBrainzUrlForNode(item.type, match.id),
+    externalUrl,
     type: item.type,
     name: match.title,
     creatorName,
     creatorRole: creatorName ? "artist" : undefined,
     year: parseYear(match["first-release-date"]),
     imageUrl,
-    metadata: {
+    metadata: compactMetadata({
       searchHint: item.searchHint,
       artistCredit,
-    },
+      imageProvenance,
+    }),
   };
 }
 
@@ -864,11 +963,19 @@ async function resolveGoogleBooks(item: TreeItem): Promise<ResolverCandidate | n
   const rawImageUrl =
     match.volumeInfo.imageLinks?.thumbnail ?? match.volumeInfo.imageLinks?.smallThumbnail;
   const imageUrl = isLikelyGoogleBooksPlaceholderUrl(rawImageUrl) ? undefined : rawImageUrl;
+  const externalUrl = `https://books.google.com/books?id=${encodeURIComponent(match.id)}`;
+  const imageProvenance = buildImageProvenance({
+    source: "google-books",
+    kind: "cover",
+    remoteUrl: imageUrl,
+    attributionUrl: externalUrl,
+    checkedAt: new Date(),
+  });
   return {
     source: "google-books",
     externalType: "volume",
     externalId: match.id,
-    externalUrl: `https://books.google.com/books?id=${encodeURIComponent(match.id)}`,
+    externalUrl,
     type: item.type,
     name,
     creatorName,
@@ -876,7 +983,11 @@ async function resolveGoogleBooks(item: TreeItem): Promise<ResolverCandidate | n
     year: parseYear(match.volumeInfo.publishedDate),
     imageUrl,
     description: match.volumeInfo.description?.slice(0, 500),
-    metadata: { searchHint: item.searchHint, authors: match.volumeInfo.authors },
+    metadata: compactMetadata({
+      searchHint: item.searchHint,
+      authors: match.volumeInfo.authors,
+      imageProvenance,
+    }),
   };
 }
 
@@ -930,6 +1041,14 @@ async function resolveWikipedia(item: TreeItem): Promise<ResolverCandidate | nul
     return null;
   }
   const creatorName = item.searchHint.creator?.trim() || undefined;
+  const imageUrl = summary.originalimage?.source ?? summary.thumbnail?.source;
+  const imageProvenance = buildImageProvenance({
+    source: "wikipedia",
+    kind: imageKindForNode(item.type),
+    remoteUrl: imageUrl,
+    attributionUrl: summary.content_urls?.desktop?.page,
+    checkedAt: new Date(),
+  });
   return {
     source: "wikipedia",
     externalType: "page",
@@ -939,9 +1058,9 @@ async function resolveWikipedia(item: TreeItem): Promise<ResolverCandidate | nul
     name: summary.title,
     creatorName,
     creatorRole: creatorName ? creatorRoleForType(item.type) : undefined,
-    imageUrl: summary.originalimage?.source ?? summary.thumbnail?.source,
+    imageUrl,
     description: summary.extract?.slice(0, 500) ?? summary.description,
-    metadata: { searchHint: item.searchHint },
+    metadata: compactMetadata({ searchHint: item.searchHint, imageProvenance }),
   };
 }
 
@@ -1350,6 +1469,7 @@ export async function backfillMusicBrainzAlbumImages(): Promise<{
     .select({
       id: entity.id,
       releaseGroupMbid: entity.primaryExternalId,
+      metadata: entity.metadata,
     })
     .from(entity)
     .where(
@@ -1369,9 +1489,80 @@ export async function backfillMusicBrainzAlbumImages(): Promise<{
       missing += 1;
       continue;
     }
-    await db.update(entity).set({ imageUrl }).where(eq(entity.id, row.id));
+    const imageProvenance = buildImageProvenance({
+      source: "cover-art-archive",
+      kind: "cover",
+      remoteUrl: imageUrl,
+      attributionUrl: musicBrainzUrlForNode("album", row.releaseGroupMbid),
+      checkedAt: new Date(),
+    });
+    await db
+      .update(entity)
+      .set({
+        imageUrl,
+        metadata: mergeEntityMetadata(row.metadata, { imageProvenance }),
+      })
+      .where(eq(entity.id, row.id));
     updated += 1;
   }
 
   return { scanned: rows.length, updated, missing };
+}
+
+export async function backfillEntityImageProvenance(): Promise<{
+  scanned: number;
+  updated: number;
+  skipped: number;
+}> {
+  const rows = await db
+    .select({
+      id: entity.id,
+      imageUrl: entity.imageUrl,
+      metadata: entity.metadata,
+      primaryExternalSource: entity.primaryExternalSource,
+      primaryExternalType: entity.primaryExternalType,
+      primaryExternalId: entity.primaryExternalId,
+    })
+    .from(entity)
+    .where(sql`${entity.imageUrl} is not null`);
+
+  let updated = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const existing = row.metadata as EntityMetadata | null;
+    if (existing?.imageProvenance) {
+      skipped += 1;
+      continue;
+    }
+
+    const attributionUrl =
+      row.primaryExternalSource === "tmdb"
+        ? `https://www.themoviedb.org/${row.primaryExternalType}/${row.primaryExternalId}`
+        : row.primaryExternalSource === "google-books"
+          ? `https://books.google.com/books?id=${encodeURIComponent(row.primaryExternalId)}`
+          : row.primaryExternalSource === "wikipedia"
+            ? `https://en.wikipedia.org/wiki/${encodeURIComponent(row.primaryExternalId)}`
+            : row.primaryExternalSource === "musicbrainz"
+              ? `https://musicbrainz.org/${row.primaryExternalType}/${row.primaryExternalId}`
+              : undefined;
+
+    const imageProvenance = inferImageProvenanceFromUrl({
+      remoteUrl: row.imageUrl,
+      attributionUrl,
+      checkedAt: new Date(),
+    });
+
+    if (!imageProvenance) {
+      skipped += 1;
+      continue;
+    }
+
+    await db
+      .update(entity)
+      .set({ metadata: mergeEntityMetadata(row.metadata, { imageProvenance }) })
+      .where(eq(entity.id, row.id));
+    updated += 1;
+  }
+
+  return { scanned: rows.length, updated, skipped };
 }

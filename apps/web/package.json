@@ -7,8 +7,9 @@
     "preview": "vp preview",
     "start": "node .output/server/index.mjs",
     "test": "vp test",
-    "backfill:entities": "../../node_modules/.pnpm/node_modules/.bin/tsx scripts/backfill-entity-resolution.ts",
-    "backfill:album-images": "../../node_modules/.pnpm/node_modules/.bin/tsx scripts/backfill-musicbrainz-album-images.ts",
+    "backfill:entities": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-entity-resolution.ts",
+    "backfill:entity-images": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-entity-image-provenance.ts",
+    "backfill:album-images": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-musicbrainz-album-images.ts",
     "ui": "vpx shadcn@latest"
   },
   "dependencies": {
