@@ -383,7 +383,7 @@ export function TreePreview({
 
   return (
     <section className="relative w-full text-left">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[24rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_42%)]" />
+      <div className="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_46%)]" />
       {itemRows.length > 0 ? (
         <div className="relative">
           <motion.div layout className="space-y-4 md:space-y-5">
