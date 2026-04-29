@@ -25,15 +25,13 @@
     "auth:secret": "vpx auth@latest secret",
     "auth:generate": "vp run --filter=@repo/db auth:generate",
     "skills": "vpx skills@latest",
-    "intent": "vpx @tanstack/intent@latest",
-    "sandcastle": "vpx tsx .sandcastle/main.ts"
+    "intent": "vpx @tanstack/intent@latest"
   },
   "dependencies": {
     "@fontsource/instrument-serif": "catalog:",
     "@fontsource/source-serif-4": "catalog:"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "catalog:",
     "@tanstack/eslint-plugin-query": "catalog:",
     "@tanstack/eslint-plugin-router": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
