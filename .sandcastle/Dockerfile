@@ -32,11 +32,10 @@ USER root
 
 # Docker runs the container as the host UID/GID, which may not match the
 # image's agent user on macOS. Make only the tool state paths writable.
-RUN touch /home/agent/.gitconfig \
-  && mkdir -p /home/agent/.cache /home/agent/.config /home/agent/.local /home/agent/.npm /home/agent/.claude /tmp/.npm \
-  && chmod a+rw /home/agent/.gitconfig \
-  && chmod -R a+rwX /home/agent/.cache /home/agent/.config /home/agent/.local /home/agent/.npm /home/agent/.claude /tmp/.npm
+RUN mkdir -p /home/agent/.cache /home/agent/.config /home/agent/.local /home/agent/.npm /home/agent/.claude /tmp/.npm /tmp/sandcastle-git \
+  && chmod -R a+rwX /home/agent/.cache /home/agent/.config /home/agent/.local /home/agent/.npm /home/agent/.claude /tmp/.npm /tmp/sandcastle-git
 
+ENV GIT_CONFIG_GLOBAL="/tmp/sandcastle-git/.gitconfig"
 ENV NPM_CONFIG_CACHE="/tmp/.npm"
 
 USER agent
