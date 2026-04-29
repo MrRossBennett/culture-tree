@@ -4,6 +4,7 @@ packages:
   - tooling/*
 
 catalog:
+  "@ai-hero/sandcastle": ^0.5.5
   "@ai-sdk/anthropic": ^3.0.68
   "@babel/core": ^7.29.0
   "@base-ui/react": ^1.3.0

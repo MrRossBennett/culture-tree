@@ -30,6 +30,20 @@ skills:
 
 <!-- intent-skills:end -->
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on this repo (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` and root `docs/adr/`. See `docs/agents/domain.md`.
+
 ## TanStack Docs
 
 Use `pnpm tanstack` (which is aliased to `vpx @tanstack/cli@latest` in `package.json`) to look up TanStack documentation. Always pass `--json` for machine-readable output.
