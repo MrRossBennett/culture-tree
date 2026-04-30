@@ -230,6 +230,9 @@ importers:
       '@repo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@repo/entitlements':
+        specifier: workspace:*
+        version: link:../../packages/entitlements
       '@repo/engine':
         specifier: workspace:*
         version: link:../../packages/engine

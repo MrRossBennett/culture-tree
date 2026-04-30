@@ -12,7 +12,10 @@
       "@repo/schemas/*": ["../../packages/schemas/src/*"],
 
       "@repo/engine": ["../../packages/engine/src/index.ts"],
-      "@repo/engine/*": ["../../packages/engine/src/*"]
+      "@repo/engine/*": ["../../packages/engine/src/*"],
+
+      "@repo/entitlements": ["../../packages/entitlements/src/index.ts"],
+      "@repo/entitlements/*": ["../../packages/entitlements/src/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

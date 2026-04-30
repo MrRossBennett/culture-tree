@@ -20,6 +20,7 @@
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/engine": "workspace:*",
+    "@repo/entitlements": "workspace:*",
     "@repo/schemas": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tanstack/react-form-start": "catalog:",

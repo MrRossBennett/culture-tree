@@ -1,6 +1,6 @@
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
-import { cultureTree } from "@repo/db/schema";
+import { cultureTree, usageHistory } from "@repo/db/schema";
 import { enrichTree, generateTree } from "@repo/engine";
 import {
   CultureTreeSchema,
@@ -32,6 +32,11 @@ import {
   parseGenerationMetadata,
   parseMediaFilter,
 } from "./progressive-tree-generation-lifecycle";
+import {
+  buildAcceptedAiGenerationUsage,
+  usageTypeForGenerateTreeAction,
+  type GenerateTreeUsageAction,
+} from "./usage-history";
 
 const REVEAL_DELAY_MS = 700;
 
@@ -263,27 +268,51 @@ async function findFreshActiveDraft(userId: string, data: TreeRequest) {
   });
 }
 
-async function startProgressiveCultureTree(userId: string, data: TreeRequest) {
-  const existing = await findFreshActiveDraft(userId, data);
+type GenerationPerson = {
+  id: string;
+  email?: string | null;
+};
+
+async function startProgressiveCultureTree(
+  person: GenerationPerson,
+  data: TreeRequest,
+  action: Extract<GenerateTreeUsageAction, "direct_generate_tree" | "generate_tree_from_branch">,
+) {
+  const existing = await findFreshActiveDraft(person.id, data);
   if (existing) {
     return { treeId: existing.id };
   }
 
   const treeId = nanoid();
   const runId = nanoid();
-  await db.insert(cultureTree).values({
-    id: treeId,
-    userId,
-    data: draftTreeForSeed(data.query),
-    seedQuery: data.query,
-    depth: data.depth,
-    tone: data.tone,
-    mediaFilter: data.mediaFilter,
-    isPublic: false,
-    generationStatus: "queued",
-    generationRunId: runId,
-    generationStage: "Preparing the seed",
-    generationUpdatedAt: new Date(),
+  const usageType = usageTypeForGenerateTreeAction(action);
+  await db.transaction(async (tx) => {
+    await tx.insert(cultureTree).values({
+      id: treeId,
+      userId: person.id,
+      data: draftTreeForSeed(data.query),
+      seedQuery: data.query,
+      depth: data.depth,
+      tone: data.tone,
+      mediaFilter: data.mediaFilter,
+      isPublic: false,
+      generationStatus: "queued",
+      generationRunId: runId,
+      generationStage: "Preparing the seed",
+      generationUpdatedAt: new Date(),
+    });
+
+    if (usageType) {
+      await tx.insert(usageHistory).values(
+        buildAcceptedAiGenerationUsage({
+          id: nanoid(),
+          person,
+          cultureTreeId: treeId,
+          usageType,
+          proAllowlist: process.env.PRO_ALLOWLIST,
+        }),
+      );
+    }
   });
 
   kickGenerationRunner(treeId, runId);
@@ -293,7 +322,9 @@ async function startProgressiveCultureTree(userId: string, data: TreeRequest) {
 export const $generateCultureTree = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(StartGenerationInputSchema)
-  .handler(async ({ data, context }) => startProgressiveCultureTree(context.user.id, data));
+  .handler(async ({ data, context }) =>
+    startProgressiveCultureTree(context.user, data, "direct_generate_tree"),
+  );
 
 export const $retryCultureTreeGeneration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -365,10 +396,14 @@ export const $seedTreeFromItem = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const query = data.item.year ? `${data.item.name} (${data.item.year})` : data.item.name;
 
-    return startProgressiveCultureTree(context.user.id, {
-      query,
-      depth: "standard",
-      tone: data.tone ?? "mixed",
-      mediaFilter: data.mediaFilter,
-    });
+    return startProgressiveCultureTree(
+      context.user,
+      {
+        query,
+        depth: "standard",
+        tone: data.tone ?? "mixed",
+        mediaFilter: data.mediaFilter,
+      },
+      "generate_tree_from_branch",
+    );
   });

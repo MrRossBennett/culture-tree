@@ -61,6 +61,10 @@ export default defineConfig({
     alias: [
       { find: "@repo/schemas", replacement: resolve(repoRoot, "packages/schemas/src/index.ts") },
       { find: "@repo/engine", replacement: resolve(repoRoot, "packages/engine/src/index.ts") },
+      {
+        find: "@repo/entitlements",
+        replacement: resolve(repoRoot, "packages/entitlements/src/index.ts"),
+      },
       { find: /^@tanstack\/react-start\/server$/, replacement: reactStartServerEntry },
     ],
   },
