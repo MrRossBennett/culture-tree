@@ -4,7 +4,7 @@ import {
   CultureTreeSchema,
   TreeItemSchema,
   TreeRequestSchema,
-  normalizeCultureTreeOutput,
+  acceptCultureTreeGenerationOutput,
   type CultureTree,
   type TreeItem,
   type TreeRequest,
@@ -39,7 +39,7 @@ async function generatePass(
       schema: CultureTreeSchema,
     }),
   });
-  return normalizeCultureTreeOutput(result.output, seedLabel);
+  return acceptCultureTreeGenerationOutput({ output: result.output, seedLabel });
 }
 
 function treeMatchesMediaFilter(tree: CultureTree, mediaFilter?: readonly string[]): boolean {

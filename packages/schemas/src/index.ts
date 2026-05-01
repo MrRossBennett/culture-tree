@@ -1,5 +1,6 @@
 export {
   ConnectionType,
+  acceptCultureTreeGenerationOutput,
   countCultureTreeNodes,
   CultureTreeSchema,
   deriveSearchHintFromName,

@@ -1,29 +1,27 @@
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, usageHistory } from "@repo/db/schema";
-import { enrichTree, generateTree } from "@repo/engine";
-import { AI_GENERATION_USAGE_TYPES, PLANS } from "@repo/entitlements";
+import { generateTree } from "@repo/engine";
+import { PLANS } from "@repo/entitlements";
 import {
   CultureTreeSchema,
   NodeType,
-  TreeEnrichmentsMapSchema,
   TreeItemSchema,
   type CultureTree,
-  type TreeEnrichmentsMap,
-  type TreeItem,
   type TreeRequest,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { decideGenerateTreeAllowance, type AllowanceLimitReached } from "./allowance-gates";
+import { prepareGenerateTreeAllowanceDecision } from "./ai-generation-usage";
+import type { AllowanceLimitReached } from "./allowance-gates";
 import {
-  enqueueTreeForResolution,
-  kickEntityResolutionRunner,
-  resolveImmediateTreeItems,
-} from "./entity-resolver.server";
+  enrichCommittedBranchesOnCultureTree,
+  hasUsefulEnrichment,
+  parseTreeEnrichments,
+} from "./committed-branch-enrichment";
 import { withLimitReachedMessage } from "./limit-reached-messages";
 import {
   StartGenerationInputSchema,
@@ -37,9 +35,7 @@ import {
 } from "./progressive-tree-generation-lifecycle";
 import {
   buildAcceptedAiGenerationUsage,
-  currentAllowancePeriod,
   usageTypeForGenerateTreeAction,
-  type AllowancePeriod,
   type GenerateTreeUsageAction,
 } from "./usage-history";
 
@@ -53,15 +49,6 @@ function sameMediaFilter(a: unknown, b: readonly string[] | undefined): boolean 
   const parsed = parseMediaFilter(a) ?? [];
   const next = b ?? [];
   return parsed.length === next.length && parsed.every((value, index) => value === next[index]);
-}
-
-function parseTreeEnrichments(value: unknown): TreeEnrichmentsMap {
-  const parsed = TreeEnrichmentsMapSchema.safeParse(value ?? {});
-  return parsed.success ? parsed.data : {};
-}
-
-function hasUsefulEnrichment(value: unknown): boolean {
-  return value != null && typeof value === "object" && Object.keys(value).length > 0;
 }
 
 async function guardedUpdate(
@@ -84,40 +71,6 @@ async function markGenerationFailed(treeId: string, runId: string, error: unknow
     generationStage: "Stopped",
     generationError: message,
   });
-}
-
-async function enrichCommittedItems(
-  treeId: string,
-  tree: CultureTree,
-  items: readonly TreeItem[],
-): Promise<void> {
-  if (items.length === 0 || process.env.MOCK_ENGINE === "true") {
-    await enqueueTreeForResolution({ treeId, items: [...items] });
-    kickEntityResolutionRunner();
-    return;
-  }
-
-  const [row] = await db
-    .select({ enrichmentData: cultureTree.enrichmentData })
-    .from(cultureTree)
-    .where(eq(cultureTree.id, treeId))
-    .limit(1);
-  const currentEnrichments = parseTreeEnrichments(row?.enrichmentData);
-  const partialTree = CultureTreeSchema.parse({ ...tree, items: [...items] });
-  const map = await enrichTree(partialTree);
-  const newEnrichments = Object.fromEntries(map);
-  TreeEnrichmentsMapSchema.parse(newEnrichments);
-  const nextEnrichments = { ...currentEnrichments, ...newEnrichments };
-  TreeEnrichmentsMapSchema.parse(nextEnrichments);
-
-  await db
-    .update(cultureTree)
-    .set({ enrichmentData: nextEnrichments })
-    .where(eq(cultureTree.id, treeId));
-
-  await resolveImmediateTreeItems({ treeId, items: [...items], enrichments: nextEnrichments });
-  await enqueueTreeForResolution({ treeId, items: [...items] });
-  kickEntityResolutionRunner();
 }
 
 async function revealFinalTree(
@@ -169,7 +122,7 @@ async function revealFinalTree(
     }
 
     try {
-      await enrichCommittedItems(treeId, nextTree, [nextItem]);
+      await enrichCommittedBranchesOnCultureTree({ treeId, tree: nextTree, branches: [nextItem] });
     } catch (error) {
       console.error("Progressive branch enrichment failed", error);
     }
@@ -282,42 +235,6 @@ type StartProgressiveCultureTreeResult =
   | { ok: true; treeId: string }
   | { ok: false; limitReached: AllowanceLimitReached };
 
-async function countGenerateTreeUsage(personId: string): Promise<number> {
-  const [row] = await db
-    .select({ value: count() })
-    .from(usageHistory)
-    .where(
-      and(
-        eq(usageHistory.personId, personId),
-        eq(usageHistory.usageType, usageTypeForGenerateTreeAction("direct_generate_tree") ?? ""),
-      ),
-    )
-    .limit(1);
-
-  return row?.value ?? 0;
-}
-
-async function countPaidAiGenerationUsage(input: {
-  personId: string;
-  allowancePeriod: AllowancePeriod;
-}): Promise<number> {
-  const [row] = await db
-    .select({ value: count() })
-    .from(usageHistory)
-    .where(
-      and(
-        eq(usageHistory.personId, input.personId),
-        eq(usageHistory.effectivePlan, PLANS.pro),
-        inArray(usageHistory.usageType, [...AI_GENERATION_USAGE_TYPES]),
-        gte(usageHistory.createdAt, input.allowancePeriod.start),
-        lt(usageHistory.createdAt, input.allowancePeriod.end),
-      ),
-    )
-    .limit(1);
-
-  return row?.value ?? 0;
-}
-
 async function startProgressiveCultureTree(
   person: GenerationPerson,
   data: TreeRequest,
@@ -328,15 +245,9 @@ async function startProgressiveCultureTree(
     return { ok: true, treeId: existing.id };
   }
 
-  const allowancePeriod = currentAllowancePeriod();
-  const allowance = decideGenerateTreeAllowance({
+  const { allowance, allowancePeriod } = await prepareGenerateTreeAllowanceDecision({
     person,
     proAllowlist: process.env.PRO_ALLOWLIST,
-    generatedTreeUsageCount: await countGenerateTreeUsage(person.id),
-    paidAiGenerationUsageCountForAllowancePeriod: await countPaidAiGenerationUsage({
-      personId: person.id,
-      allowancePeriod,
-    }),
   });
   if (!allowance.allowed) {
     return {
@@ -430,7 +341,11 @@ export const $retryCultureTreeGeneration = createServerFn({ method: "POST" })
     );
 
     if (metadata.status === "ready" && missingEnrichment.length > 0) {
-      await enrichCommittedItems(row.id, tree, missingEnrichment);
+      await enrichCommittedBranchesOnCultureTree({
+        treeId: row.id,
+        tree,
+        branches: missingEnrichment,
+      });
       return { treeId: row.id, status: "ready" as const };
     }
 

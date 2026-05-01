@@ -331,3 +331,10 @@ export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): Cul
 
   return finalizeSearchHints(coerced);
 }
+
+export function acceptCultureTreeGenerationOutput(input: {
+  output: unknown;
+  seedLabel: string;
+}): CultureTree {
+  return normalizeCultureTreeOutput(input.output, input.seedLabel);
+}

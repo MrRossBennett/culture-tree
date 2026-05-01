@@ -2,36 +2,38 @@ import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, usageHistory, user as authUser } from "@repo/db/schema";
-import { completeTreeItemConnection, enrichTree, searchExternalNodes } from "@repo/engine";
-import { AI_GENERATION_USAGE_TYPES, ENTITLEMENTS, PLANS } from "@repo/entitlements";
+import { completeTreeItemConnection, searchExternalNodes } from "@repo/engine";
+import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
-  TreeEnrichmentsMapSchema,
   type CultureTree,
   type NodeTypeValue,
   type TreeEnrichmentsMap,
-  type TreeItem,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { and, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { decideGrowBranchAllowance, type AllowanceLimitReached } from "./allowance-gates";
-import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
+import { prepareGrowBranchAllowanceDecision } from "./ai-generation-usage";
+import type { AllowanceLimitReached } from "./allowance-gates";
 import {
-  getResolvedEntitiesForTree,
-  kickEntityResolutionRunner,
-  resolveImmediateTreeItems,
-} from "./entity-resolver.server";
+  parseTreeEnrichments,
+  prepareEnrichmentsForCommittedBranches,
+  resolveCommittedBranches,
+} from "./committed-branch-enrichment";
+import {
+  countBranchesInSubtree,
+  deleteBranchFromCultureTree,
+  growBranchInCultureTree,
+  removeEnrichmentsForBranches,
+} from "./culture-tree-branches";
+import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
+import { getResolvedEntitiesForTree } from "./entity-resolver.server";
 import { withLimitReachedMessage } from "./limit-reached-messages";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
-import {
-  type AllowancePeriod,
-  buildAcceptedAiGenerationUsage,
-  currentAllowancePeriod,
-} from "./usage-history";
+import { buildAcceptedAiGenerationUsage } from "./usage-history";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -75,92 +77,7 @@ const SearchCultureTreeNodesInputSchema = z.object({
   query: z.string().trim().min(1),
 });
 
-function appendItemToTree(tree: CultureTree, nextItem: TreeItem): CultureTree {
-  return {
-    ...tree,
-    items: [...tree.items, nextItem],
-  };
-}
-
-function removeItemFromTree(
-  tree: CultureTree,
-  itemId: string,
-): { tree: CultureTree; removed: TreeItem } {
-  const removed = tree.items.find((item) => item.id === itemId);
-  if (!removed) {
-    throw new Error("Item not found.");
-  }
-
-  return {
-    tree: {
-      ...tree,
-      items: tree.items.filter((item) => item.id !== itemId),
-    },
-    removed,
-  };
-}
-
-function removeEnrichmentForItem(
-  enrichments: TreeEnrichmentsMap | null | undefined,
-  itemId: string,
-): TreeEnrichmentsMap | null {
-  if (!enrichments) {
-    return null;
-  }
-
-  return Object.fromEntries(Object.entries(enrichments).filter(([id]) => id !== itemId));
-}
-
-function parseTreeEnrichments(value: unknown): TreeEnrichmentsMap {
-  if (value == null) {
-    return {};
-  }
-
-  const parsed = TreeEnrichmentsMapSchema.safeParse(value);
-  return parsed.success ? parsed.data : {};
-}
-
 type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: AllowanceLimitReached };
-
-async function countGrowBranchUsage(input: {
-  personId: string;
-  cultureTreeId: string;
-}): Promise<number> {
-  const [row] = await db
-    .select({ value: count() })
-    .from(usageHistory)
-    .where(
-      and(
-        eq(usageHistory.personId, input.personId),
-        eq(usageHistory.cultureTreeId, input.cultureTreeId),
-        eq(usageHistory.usageType, ENTITLEMENTS.growBranch),
-      ),
-    )
-    .limit(1);
-
-  return row?.value ?? 0;
-}
-
-async function countPaidAiGenerationUsage(input: {
-  personId: string;
-  allowancePeriod: AllowancePeriod;
-}): Promise<number> {
-  const [row] = await db
-    .select({ value: count() })
-    .from(usageHistory)
-    .where(
-      and(
-        eq(usageHistory.personId, input.personId),
-        eq(usageHistory.effectivePlan, PLANS.pro),
-        inArray(usageHistory.usageType, [...AI_GENERATION_USAGE_TYPES]),
-        gte(usageHistory.createdAt, input.allowancePeriod.start),
-        lt(usageHistory.createdAt, input.allowancePeriod.end),
-      ),
-    )
-    .limit(1);
-
-  return row?.value ?? 0;
-}
 
 export const $getCultureTreeById = createServerFn({ method: "GET" })
   .inputValidator(z.object({ treeId: z.string().min(1) }))
@@ -264,18 +181,10 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
-    const allowancePeriod = currentAllowancePeriod();
-    const allowance = decideGrowBranchAllowance({
+    const { allowance, allowancePeriod } = await prepareGrowBranchAllowanceDecision({
       person: context.user,
+      cultureTreeId: data.treeId,
       proAllowlist: process.env.PRO_ALLOWLIST,
-      growBranchUsageCountForCultureTree: await countGrowBranchUsage({
-        personId: context.user.id,
-        cultureTreeId: data.treeId,
-      }),
-      paidAiGenerationUsageCountForAllowancePeriod: await countPaidAiGenerationUsage({
-        personId: context.user.id,
-        allowancePeriod,
-      }),
     });
     if (!allowance.allowed) {
       return {
@@ -289,16 +198,17 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
 
     const draftNode = buildCultureTreeNode(data.node);
     const nextNode = await completeTreeItemConnection(tree, draftNode);
-    const nextTree = appendItemToTree(tree, nextNode);
+    const nextTree = growBranchInCultureTree({
+      tree,
+      parentBranchId: data.parentNodeId,
+      branch: nextNode,
+    });
     const currentEnrichments = parseTreeEnrichments(row.enrichmentData);
-    let nextEnrichments = currentEnrichments;
-
-    if (process.env.MOCK_ENGINE !== "true") {
-      const map = await enrichTree({ ...tree, items: [nextNode] });
-      const newEnrichments = Object.fromEntries(map);
-      TreeEnrichmentsMapSchema.parse(newEnrichments);
-      nextEnrichments = { ...currentEnrichments, ...newEnrichments };
-    }
+    const nextEnrichments = await prepareEnrichmentsForCommittedBranches({
+      tree,
+      branches: [nextNode],
+      currentEnrichments,
+    });
 
     await db.transaction(async (tx) => {
       await tx
@@ -318,12 +228,11 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
       );
     });
 
-    await resolveImmediateTreeItems({
+    await resolveCommittedBranches({
       treeId: data.treeId,
-      items: [nextNode],
+      branches: [nextNode],
       enrichments: nextEnrichments,
     });
-    kickEntityResolutionRunner();
 
     return { ok: true };
   });
@@ -347,10 +256,10 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
-    const { tree: nextTree, removed } = removeItemFromTree(tree, data.nodeId);
-    const nextEnrichments = removeEnrichmentForItem(
+    const { tree: nextTree, removedBranches } = deleteBranchFromCultureTree(tree, data.nodeId);
+    const nextEnrichments = removeEnrichmentsForBranches(
       parseTreeEnrichments(row.enrichmentData),
-      removed.id,
+      removedBranches,
     );
 
     await db
@@ -358,7 +267,7 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
       .set({ data: nextTree, enrichmentData: nextEnrichments })
       .where(eq(cultureTree.id, data.treeId));
 
-    return { ok: true as const };
+    return { ok: true as const, removedBranchCount: countBranchesInSubtree(removedBranches) };
   });
 
 export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(async () => {

@@ -24,6 +24,11 @@ import { and, count, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 import { compactMetadata, mergeEntityMetadata, type EntityMetadata } from "./entity-metadata";
+import {
+  primarySourceForType,
+  sourceCanCreateEntityForType,
+  wikipediaFallbackTypes,
+} from "./entity-resolution-authorities";
 
 const ENTITY_RESOLVER_BATCH_LIMIT = 5;
 const ENTITY_RESOLVER_KICK_MAX_JOBS = 25;
@@ -422,7 +427,7 @@ function candidateFromKnownIdentity(
       };
     }
     const wikipediaSlug = media?.wikipediaUrl ? normalizeWikipediaKey(media.wikipediaUrl) : null;
-    if (wikipediaSlug && wikipediaFallbackTypes.has(item.type)) {
+    if (wikipediaSlug && wikipediaFallbackTypes().has(item.type)) {
       const display = displayFromItem(item, media, media?.wikipediaUrl);
       return {
         source: "wikipedia",
@@ -597,27 +602,6 @@ async function resolveWithCandidate(input: {
   );
   await linkTreeItemToEntity({ treeId: input.treeId, itemId: input.item.id, entityId });
   return { status: "resolved", entityId };
-}
-
-const wikipediaFallbackTypes = new Set<NodeTypeValue>(["person", "place", "event", "artwork"]);
-
-function sourceCanCreateEntityForType(
-  source: ExternalNodeSourceValue,
-  type: NodeTypeValue,
-): boolean {
-  if (type === "film" || type === "tv") {
-    return source === "tmdb";
-  }
-  if (type === "artist" || type === "album" || type === "song") {
-    return source === "musicbrainz";
-  }
-  if (type === "book") {
-    return source === "google-books";
-  }
-  if (wikipediaFallbackTypes.has(type)) {
-    return source === "wikipedia";
-  }
-  return false;
 }
 
 async function resolveKnownIdentity(input: {
@@ -1008,7 +992,7 @@ async function fetchWikipediaSummary(title: string) {
 }
 
 async function resolveWikipedia(item: TreeItem): Promise<ResolverCandidate | null> {
-  if (!wikipediaFallbackTypes.has(item.type)) {
+  if (!wikipediaFallbackTypes().has(item.type)) {
     return null;
   }
   const directSlug = item.searchHint.wikiSlug?.trim();
@@ -1159,19 +1143,6 @@ export async function enqueueEntityResolutionJob(input: {
     .onConflictDoNothing({
       target: [entityResolutionJob.treeId, entityResolutionJob.itemId],
     });
-}
-
-function primarySourceForType(type: NodeTypeValue): ExternalNodeSourceValue {
-  if (type === "film" || type === "tv") {
-    return "tmdb";
-  }
-  if (type === "artist" || type === "album" || type === "song") {
-    return "musicbrainz";
-  }
-  if (type === "book") {
-    return "google-books";
-  }
-  return "wikipedia";
 }
 
 export async function processEntityResolutionJobs(
