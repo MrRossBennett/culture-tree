@@ -65,7 +65,12 @@ export function HomeSeedForm({
         },
       });
     },
-    onSuccess: ({ treeId }) => {
+    onSuccess: (result) => {
+      if (!result.ok) {
+        toast.error(result.limitReached.message);
+        return;
+      }
+      const { treeId } = result;
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       toast.success("Your culture tree is growing.");
       void navigate({ to: "/tree/$treeId", params: { treeId } });

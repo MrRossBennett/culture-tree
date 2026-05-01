@@ -288,8 +288,13 @@ function TreePage() {
   const seedFromItem = useMutation({
     mutationFn: (input: { item: TreeItem; mediaFilter?: NodeTypeValue[]; tone: CultureTreeTone }) =>
       $seedTreeFromItem({ data: input }),
-    onSuccess: async ({ treeId: nextTreeId }) => {
+    onSuccess: async (result) => {
       setGeneratingItem(null);
+      if (!result.ok) {
+        toast.error(result.limitReached.message);
+        return;
+      }
+      const nextTreeId = result.treeId;
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       toast.success("New tree started.");
       void navigate({ to: "/tree/$treeId", params: { treeId: nextTreeId } });

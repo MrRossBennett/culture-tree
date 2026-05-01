@@ -13,10 +13,11 @@ import {
   type TreeRequest,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
+import { decideGenerateTreeAllowance, type GenerateTreeLimitReached } from "./allowance-gates";
 import {
   enqueueTreeForResolution,
   kickEntityResolutionRunner,
@@ -273,14 +274,42 @@ type GenerationPerson = {
   email?: string | null;
 };
 
+type StartProgressiveCultureTreeResult =
+  | { ok: true; treeId: string }
+  | { ok: false; limitReached: GenerateTreeLimitReached };
+
+async function countGenerateTreeUsage(personId: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(usageHistory)
+    .where(
+      and(
+        eq(usageHistory.personId, personId),
+        eq(usageHistory.usageType, usageTypeForGenerateTreeAction("direct_generate_tree") ?? ""),
+      ),
+    )
+    .limit(1);
+
+  return row?.value ?? 0;
+}
+
 async function startProgressiveCultureTree(
   person: GenerationPerson,
   data: TreeRequest,
   action: Extract<GenerateTreeUsageAction, "direct_generate_tree" | "generate_tree_from_branch">,
-) {
+): Promise<StartProgressiveCultureTreeResult> {
   const existing = await findFreshActiveDraft(person.id, data);
   if (existing) {
-    return { treeId: existing.id };
+    return { ok: true, treeId: existing.id };
+  }
+
+  const allowance = decideGenerateTreeAllowance({
+    person,
+    proAllowlist: process.env.PRO_ALLOWLIST,
+    generatedTreeUsageCount: await countGenerateTreeUsage(person.id),
+  });
+  if (!allowance.allowed) {
+    return { ok: false, limitReached: allowance.limitReached };
   }
 
   const treeId = nanoid();
@@ -316,7 +345,7 @@ async function startProgressiveCultureTree(
   });
 
   kickGenerationRunner(treeId, runId);
-  return { treeId };
+  return { ok: true, treeId };
 }
 
 export const $generateCultureTree = createServerFn({ method: "POST" })
