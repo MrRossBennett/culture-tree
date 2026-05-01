@@ -27,7 +27,20 @@ export type GrowBranchLimitReached = {
   message: string;
 };
 
-export type AllowanceLimitReached = GenerateTreeLimitReached | GrowBranchLimitReached;
+export type ProSharedAiGenerationLimitReached = {
+  code: "limit_reached";
+  allowance: "pro_shared_ai_generation";
+  usageType: (typeof ENTITLEMENTS)[keyof typeof ENTITLEMENTS];
+  limit: number;
+  used: number;
+  remaining: 0;
+  message: string;
+};
+
+export type AllowanceLimitReached =
+  | GenerateTreeLimitReached
+  | GrowBranchLimitReached
+  | ProSharedAiGenerationLimitReached;
 
 export type GenerateTreeAllowanceResult =
   | {
@@ -38,8 +51,8 @@ export type GenerateTreeAllowanceResult =
     }
   | {
       allowed: false;
-      effectivePlan: typeof PLANS.free;
-      limitReached: GenerateTreeLimitReached;
+      effectivePlan: PlanKey;
+      limitReached: GenerateTreeLimitReached | ProSharedAiGenerationLimitReached;
     };
 
 export type GrowBranchAllowanceResult =
@@ -51,21 +64,75 @@ export type GrowBranchAllowanceResult =
     }
   | {
       allowed: false;
-      effectivePlan: typeof PLANS.free;
-      limitReached: GrowBranchLimitReached;
+      effectivePlan: PlanKey;
+      limitReached: GrowBranchLimitReached | ProSharedAiGenerationLimitReached;
     };
 
 export type DecideGenerateTreeAllowanceInput = {
   person: { email?: string | null } | null | undefined;
   proAllowlist?: ProAllowlistSource;
   generatedTreeUsageCount: number;
+  paidAiGenerationUsageCountForAllowancePeriod?: number;
 };
 
 export type DecideGrowBranchAllowanceInput = {
   person: { email?: string | null } | null | undefined;
   proAllowlist?: ProAllowlistSource;
   growBranchUsageCountForCultureTree: number;
+  paidAiGenerationUsageCountForAllowancePeriod?: number;
 };
+
+function decideProSharedAiGenerationAllowance<
+  TUsageType extends (typeof ENTITLEMENTS)[keyof typeof ENTITLEMENTS],
+>(input: {
+  usageType: TUsageType;
+  used: number;
+}):
+  | {
+      allowed: true;
+      effectivePlan: typeof PLANS.pro;
+      usageType: TUsageType;
+      remaining: number | null;
+    }
+  | {
+      allowed: false;
+      effectivePlan: typeof PLANS.pro;
+      limitReached: ProSharedAiGenerationLimitReached & { usageType: TUsageType };
+    } {
+  const limit = PLAN_CONFIG.pro.allowances.sharedAiGenerationsPerAllowancePeriod;
+  if (limit == null) {
+    return {
+      allowed: true,
+      effectivePlan: PLANS.pro,
+      usageType: input.usageType,
+      remaining: null,
+    };
+  }
+
+  const remaining = Math.max(limit - input.used, 0);
+  if (remaining > 0) {
+    return {
+      allowed: true,
+      effectivePlan: PLANS.pro,
+      usageType: input.usageType,
+      remaining,
+    };
+  }
+
+  return {
+    allowed: false,
+    effectivePlan: PLANS.pro,
+    limitReached: {
+      code: "limit_reached",
+      allowance: "pro_shared_ai_generation",
+      usageType: input.usageType,
+      limit,
+      used: input.used,
+      remaining: 0,
+      message: "Pro Plan AI Generation Allowance is exhausted for the current Allowance Period.",
+    },
+  };
+}
 
 export function decideGenerateTreeAllowance(
   input: DecideGenerateTreeAllowanceInput,
@@ -76,12 +143,10 @@ export function decideGenerateTreeAllowance(
   });
 
   if (plan.key !== PLANS.free) {
-    return {
-      allowed: true,
-      effectivePlan: plan.key,
+    return decideProSharedAiGenerationAllowance({
       usageType: ENTITLEMENTS.generateTree,
-      remaining: null,
-    };
+      used: input.paidAiGenerationUsageCountForAllowancePeriod ?? 0,
+    });
   }
 
   const limit = PLAN_CONFIG.free.allowances.lifetimeGenerateTree;
@@ -128,12 +193,10 @@ export function decideGrowBranchAllowance(
   });
 
   if (plan.key !== PLANS.free) {
-    return {
-      allowed: true,
-      effectivePlan: plan.key,
+    return decideProSharedAiGenerationAllowance({
       usageType: ENTITLEMENTS.growBranch,
-      remaining: null,
-    };
+      used: input.paidAiGenerationUsageCountForAllowancePeriod ?? 0,
+    });
   }
 
   const limit = PLAN_CONFIG.free.allowances.growBranchPerCultureTree;

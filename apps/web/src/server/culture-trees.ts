@@ -3,7 +3,7 @@ import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, usageHistory, user as authUser } from "@repo/db/schema";
 import { completeTreeItemConnection, enrichTree, searchExternalNodes } from "@repo/engine";
-import { ENTITLEMENTS } from "@repo/entitlements";
+import { AI_GENERATION_USAGE_TYPES, ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
@@ -14,11 +14,11 @@ import {
   type TreeItem,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { decideGrowBranchAllowance, type GrowBranchLimitReached } from "./allowance-gates";
+import { decideGrowBranchAllowance, type AllowanceLimitReached } from "./allowance-gates";
 import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
 import {
   getResolvedEntitiesForTree,
@@ -26,7 +26,11 @@ import {
   resolveImmediateTreeItems,
 } from "./entity-resolver.server";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
-import { buildAcceptedAiGenerationUsage } from "./usage-history";
+import {
+  type AllowancePeriod,
+  buildAcceptedAiGenerationUsage,
+  currentAllowancePeriod,
+} from "./usage-history";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -115,7 +119,7 @@ function parseTreeEnrichments(value: unknown): TreeEnrichmentsMap {
   return parsed.success ? parsed.data : {};
 }
 
-type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: GrowBranchLimitReached };
+type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: AllowanceLimitReached };
 
 async function countGrowBranchUsage(input: {
   personId: string;
@@ -129,6 +133,27 @@ async function countGrowBranchUsage(input: {
         eq(usageHistory.personId, input.personId),
         eq(usageHistory.cultureTreeId, input.cultureTreeId),
         eq(usageHistory.usageType, ENTITLEMENTS.growBranch),
+      ),
+    )
+    .limit(1);
+
+  return row?.value ?? 0;
+}
+
+async function countPaidAiGenerationUsage(input: {
+  personId: string;
+  allowancePeriod: AllowancePeriod;
+}): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(usageHistory)
+    .where(
+      and(
+        eq(usageHistory.personId, input.personId),
+        eq(usageHistory.effectivePlan, PLANS.pro),
+        inArray(usageHistory.usageType, [...AI_GENERATION_USAGE_TYPES]),
+        gte(usageHistory.createdAt, input.allowancePeriod.start),
+        lt(usageHistory.createdAt, input.allowancePeriod.end),
       ),
     )
     .limit(1);
@@ -238,12 +263,17 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
+    const allowancePeriod = currentAllowancePeriod();
     const allowance = decideGrowBranchAllowance({
       person: context.user,
       proAllowlist: process.env.PRO_ALLOWLIST,
       growBranchUsageCountForCultureTree: await countGrowBranchUsage({
         personId: context.user.id,
         cultureTreeId: data.treeId,
+      }),
+      paidAiGenerationUsageCountForAllowancePeriod: await countPaidAiGenerationUsage({
+        personId: context.user.id,
+        allowancePeriod,
       }),
     });
     if (!allowance.allowed) {
@@ -276,6 +306,7 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
           cultureTreeId: data.treeId,
           usageType: ENTITLEMENTS.growBranch,
           proAllowlist: process.env.PRO_ALLOWLIST,
+          allowancePeriod: allowance.effectivePlan === PLANS.pro ? allowancePeriod : null,
         }),
       );
     });

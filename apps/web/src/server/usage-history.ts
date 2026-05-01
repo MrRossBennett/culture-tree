@@ -21,15 +21,27 @@ export type UsageHistoryRecord = {
   createdAt: Date;
 };
 
+export type AllowancePeriod = {
+  start: Date;
+  end: Date;
+};
+
 export type BuildAcceptedAiGenerationUsageInput = {
   id: string;
   person: { id: string; email?: string | null };
   cultureTreeId: string;
   usageType: AiGenerationUsageType;
   proAllowlist?: ProAllowlistSource;
-  allowancePeriod?: { start: Date; end: Date } | null;
+  allowancePeriod?: AllowancePeriod | null;
   now?: Date;
 };
+
+export function currentAllowancePeriod(now = new Date()): AllowancePeriod {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+  return { start, end };
+}
 
 export function usageTypeForGenerateTreeAction(
   action: GenerateTreeUsageAction,

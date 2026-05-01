@@ -1,9 +1,20 @@
 import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildAcceptedAiGenerationUsage, usageTypeForGenerateTreeAction } from "./usage-history";
+import {
+  buildAcceptedAiGenerationUsage,
+  currentAllowancePeriod,
+  usageTypeForGenerateTreeAction,
+} from "./usage-history";
 
 describe("Usage History", () => {
+  it("resolves the current Allowance Period for paid usage", () => {
+    expect(currentAllowancePeriod(new Date("2026-04-30T09:00:00.000Z"))).toEqual({
+      start: new Date("2026-04-01T00:00:00.000Z"),
+      end: new Date("2026-05-01T00:00:00.000Z"),
+    });
+  });
+
   it("records accepted direct Generate Tree usage with the person's Effective Plan", () => {
     const usage = buildAcceptedAiGenerationUsage({
       id: "usage_123",

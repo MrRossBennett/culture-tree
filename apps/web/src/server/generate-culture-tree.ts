@@ -2,6 +2,7 @@ import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, usageHistory } from "@repo/db/schema";
 import { enrichTree, generateTree } from "@repo/engine";
+import { AI_GENERATION_USAGE_TYPES, PLANS } from "@repo/entitlements";
 import {
   CultureTreeSchema,
   NodeType,
@@ -13,11 +14,11 @@ import {
   type TreeRequest,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { decideGenerateTreeAllowance, type GenerateTreeLimitReached } from "./allowance-gates";
+import { decideGenerateTreeAllowance, type AllowanceLimitReached } from "./allowance-gates";
 import {
   enqueueTreeForResolution,
   kickEntityResolutionRunner,
@@ -35,7 +36,9 @@ import {
 } from "./progressive-tree-generation-lifecycle";
 import {
   buildAcceptedAiGenerationUsage,
+  currentAllowancePeriod,
   usageTypeForGenerateTreeAction,
+  type AllowancePeriod,
   type GenerateTreeUsageAction,
 } from "./usage-history";
 
@@ -276,7 +279,7 @@ type GenerationPerson = {
 
 type StartProgressiveCultureTreeResult =
   | { ok: true; treeId: string }
-  | { ok: false; limitReached: GenerateTreeLimitReached };
+  | { ok: false; limitReached: AllowanceLimitReached };
 
 async function countGenerateTreeUsage(personId: string): Promise<number> {
   const [row] = await db
@@ -286,6 +289,27 @@ async function countGenerateTreeUsage(personId: string): Promise<number> {
       and(
         eq(usageHistory.personId, personId),
         eq(usageHistory.usageType, usageTypeForGenerateTreeAction("direct_generate_tree") ?? ""),
+      ),
+    )
+    .limit(1);
+
+  return row?.value ?? 0;
+}
+
+async function countPaidAiGenerationUsage(input: {
+  personId: string;
+  allowancePeriod: AllowancePeriod;
+}): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(usageHistory)
+    .where(
+      and(
+        eq(usageHistory.personId, input.personId),
+        eq(usageHistory.effectivePlan, PLANS.pro),
+        inArray(usageHistory.usageType, [...AI_GENERATION_USAGE_TYPES]),
+        gte(usageHistory.createdAt, input.allowancePeriod.start),
+        lt(usageHistory.createdAt, input.allowancePeriod.end),
       ),
     )
     .limit(1);
@@ -303,10 +327,15 @@ async function startProgressiveCultureTree(
     return { ok: true, treeId: existing.id };
   }
 
+  const allowancePeriod = currentAllowancePeriod();
   const allowance = decideGenerateTreeAllowance({
     person,
     proAllowlist: process.env.PRO_ALLOWLIST,
     generatedTreeUsageCount: await countGenerateTreeUsage(person.id),
+    paidAiGenerationUsageCountForAllowancePeriod: await countPaidAiGenerationUsage({
+      personId: person.id,
+      allowancePeriod,
+    }),
   });
   if (!allowance.allowed) {
     return { ok: false, limitReached: allowance.limitReached };
@@ -339,6 +368,7 @@ async function startProgressiveCultureTree(
           cultureTreeId: treeId,
           usageType,
           proAllowlist: process.env.PRO_ALLOWLIST,
+          allowancePeriod: allowance.effectivePlan === PLANS.pro ? allowancePeriod : null,
         }),
       );
     }

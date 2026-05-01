@@ -44,13 +44,37 @@ describe("Generate Tree Allowance Gate", () => {
       person: { email: "pro@example.com" },
       proAllowlist: "pro@example.com",
       generatedTreeUsageCount: 99,
+      paidAiGenerationUsageCountForAllowancePeriod: 99,
     });
 
     expect(result).toEqual({
       allowed: true,
       effectivePlan: PLANS.pro,
       usageType: ENTITLEMENTS.generateTree,
-      remaining: null,
+      remaining: 1,
+    });
+  });
+
+  it("blocks Pro Generate Tree when shared paid AI Generation allowance is exhausted", () => {
+    const result = decideGenerateTreeAllowance({
+      person: { email: "pro@example.com" },
+      proAllowlist: "pro@example.com",
+      generatedTreeUsageCount: 0,
+      paidAiGenerationUsageCountForAllowancePeriod: 100,
+    });
+
+    expect(result).toEqual({
+      allowed: false,
+      effectivePlan: PLANS.pro,
+      limitReached: {
+        code: "limit_reached",
+        allowance: "pro_shared_ai_generation",
+        usageType: ENTITLEMENTS.generateTree,
+        limit: 100,
+        used: 100,
+        remaining: 0,
+        message: "Pro Plan AI Generation Allowance is exhausted for the current Allowance Period.",
+      },
     });
   });
 });
@@ -96,13 +120,37 @@ describe("Grow Branch Allowance Gate", () => {
       person: { email: "pro@example.com" },
       proAllowlist: "pro@example.com",
       growBranchUsageCountForCultureTree: 99,
+      paidAiGenerationUsageCountForAllowancePeriod: 99,
     });
 
     expect(result).toEqual({
       allowed: true,
       effectivePlan: PLANS.pro,
       usageType: ENTITLEMENTS.growBranch,
-      remaining: null,
+      remaining: 1,
+    });
+  });
+
+  it("blocks Pro Grow Branch when shared paid AI Generation allowance is exhausted", () => {
+    const result = decideGrowBranchAllowance({
+      person: { email: "pro@example.com" },
+      proAllowlist: "pro@example.com",
+      growBranchUsageCountForCultureTree: 0,
+      paidAiGenerationUsageCountForAllowancePeriod: 100,
+    });
+
+    expect(result).toEqual({
+      allowed: false,
+      effectivePlan: PLANS.pro,
+      limitReached: {
+        code: "limit_reached",
+        allowance: "pro_shared_ai_generation",
+        usageType: ENTITLEMENTS.growBranch,
+        limit: 100,
+        used: 100,
+        remaining: 0,
+        message: "Pro Plan AI Generation Allowance is exhausted for the current Allowance Period.",
+      },
     });
   });
 });
