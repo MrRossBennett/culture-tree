@@ -273,7 +273,12 @@ function TreePage() {
       const { parentItemId, node } = input;
       return $addCultureTreeNode({ data: { treeId, parentNodeId: parentItemId, node } });
     },
-    onSuccess: async (_, variables) => {
+    onSuccess: async (result, variables) => {
+      if (!result.ok) {
+        setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+        toast.error(result.limitReached.message);
+        return;
+      }
       toast.success("Branch added to your tree.");
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();

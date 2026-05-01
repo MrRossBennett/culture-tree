@@ -1,7 +1,7 @@
 import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import { describe, expect, it } from "vite-plus/test";
 
-import { decideGenerateTreeAllowance } from "./allowance-gates";
+import { decideGenerateTreeAllowance, decideGrowBranchAllowance } from "./allowance-gates";
 
 describe("Generate Tree Allowance Gate", () => {
   it("allows a Free Plan person below the lifetime Generate Tree allowance", () => {
@@ -50,6 +50,58 @@ describe("Generate Tree Allowance Gate", () => {
       allowed: true,
       effectivePlan: PLANS.pro,
       usageType: ENTITLEMENTS.generateTree,
+      remaining: null,
+    });
+  });
+});
+
+describe("Grow Branch Allowance Gate", () => {
+  it("allows a Free Plan person below the per-tree Grow Branch allowance", () => {
+    const result = decideGrowBranchAllowance({
+      person: { email: "free@example.com" },
+      growBranchUsageCountForCultureTree: 2,
+    });
+
+    expect(result).toEqual({
+      allowed: true,
+      effectivePlan: PLANS.free,
+      usageType: ENTITLEMENTS.growBranch,
+      remaining: 1,
+    });
+  });
+
+  it("blocks a Free Plan person once per-tree Grow Branch usage is exhausted", () => {
+    const result = decideGrowBranchAllowance({
+      person: { email: "free@example.com" },
+      growBranchUsageCountForCultureTree: 3,
+    });
+
+    expect(result).toEqual({
+      allowed: false,
+      effectivePlan: PLANS.free,
+      limitReached: {
+        code: "limit_reached",
+        allowance: "free_per_tree_grow_branch",
+        usageType: ENTITLEMENTS.growBranch,
+        limit: 3,
+        used: 3,
+        remaining: 0,
+        message: "Free Plan includes 3 Grow Branch actions per Culture Tree.",
+      },
+    });
+  });
+
+  it("does not apply the Free Plan per-tree Grow Branch allowance to Pro Plan people", () => {
+    const result = decideGrowBranchAllowance({
+      person: { email: "pro@example.com" },
+      proAllowlist: "pro@example.com",
+      growBranchUsageCountForCultureTree: 99,
+    });
+
+    expect(result).toEqual({
+      allowed: true,
+      effectivePlan: PLANS.pro,
+      usageType: ENTITLEMENTS.growBranch,
       remaining: null,
     });
   });

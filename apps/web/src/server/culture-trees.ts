@@ -1,8 +1,9 @@
 import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
-import { cultureTree, user as authUser } from "@repo/db/schema";
+import { cultureTree, usageHistory, user as authUser } from "@repo/db/schema";
 import { completeTreeItemConnection, enrichTree, searchExternalNodes } from "@repo/engine";
+import { ENTITLEMENTS } from "@repo/entitlements";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
@@ -13,9 +14,11 @@ import {
   type TreeItem,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
-import { count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
+import { decideGrowBranchAllowance, type GrowBranchLimitReached } from "./allowance-gates";
 import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
 import {
   getResolvedEntitiesForTree,
@@ -23,6 +26,7 @@ import {
   resolveImmediateTreeItems,
 } from "./entity-resolver.server";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
+import { buildAcceptedAiGenerationUsage } from "./usage-history";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -111,6 +115,27 @@ function parseTreeEnrichments(value: unknown): TreeEnrichmentsMap {
   return parsed.success ? parsed.data : {};
 }
 
+type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: GrowBranchLimitReached };
+
+async function countGrowBranchUsage(input: {
+  personId: string;
+  cultureTreeId: string;
+}): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(usageHistory)
+    .where(
+      and(
+        eq(usageHistory.personId, input.personId),
+        eq(usageHistory.cultureTreeId, input.cultureTreeId),
+        eq(usageHistory.usageType, ENTITLEMENTS.growBranch),
+      ),
+    )
+    .limit(1);
+
+  return row?.value ?? 0;
+}
+
 export const $getCultureTreeById = createServerFn({ method: "GET" })
   .inputValidator(z.object({ treeId: z.string().min(1) }))
   .handler(async ({ data: { treeId } }) => {
@@ -197,7 +222,7 @@ export const $searchCultureTreeNodes = createServerFn({ method: "POST" })
 export const $addCultureTreeNode = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(AddCultureTreeNodeInputSchema)
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<AddCultureTreeNodeResult> => {
     const [row] = await db
       .select({
         id: cultureTree.id,
@@ -213,6 +238,18 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     }
 
     const tree = CultureTreeSchema.parse(row.data);
+    const allowance = decideGrowBranchAllowance({
+      person: context.user,
+      proAllowlist: process.env.PRO_ALLOWLIST,
+      growBranchUsageCountForCultureTree: await countGrowBranchUsage({
+        personId: context.user.id,
+        cultureTreeId: data.treeId,
+      }),
+    });
+    if (!allowance.allowed) {
+      return { ok: false, limitReached: allowance.limitReached };
+    }
+
     const draftNode = buildCultureTreeNode(data.node);
     const nextNode = await completeTreeItemConnection(tree, draftNode);
     const nextTree = appendItemToTree(tree, nextNode);
@@ -226,10 +263,22 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
       nextEnrichments = { ...currentEnrichments, ...newEnrichments };
     }
 
-    await db
-      .update(cultureTree)
-      .set({ data: nextTree, enrichmentData: nextEnrichments })
-      .where(eq(cultureTree.id, data.treeId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(cultureTree)
+        .set({ data: nextTree, enrichmentData: nextEnrichments })
+        .where(eq(cultureTree.id, data.treeId));
+
+      await tx.insert(usageHistory).values(
+        buildAcceptedAiGenerationUsage({
+          id: nanoid(),
+          person: context.user,
+          cultureTreeId: data.treeId,
+          usageType: ENTITLEMENTS.growBranch,
+          proAllowlist: process.env.PRO_ALLOWLIST,
+        }),
+      );
+    });
 
     await resolveImmediateTreeItems({
       treeId: data.treeId,
@@ -238,7 +287,7 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     });
     kickEntityResolutionRunner();
 
-    return { ok: true as const };
+    return { ok: true };
   });
 
 export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
