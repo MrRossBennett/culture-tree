@@ -24,6 +24,7 @@ import {
   kickEntityResolutionRunner,
   resolveImmediateTreeItems,
 } from "./entity-resolver.server";
+import { withLimitReachedMessage } from "./limit-reached-messages";
 import {
   StartGenerationInputSchema,
   draftTreeForSeed,
@@ -338,7 +339,13 @@ async function startProgressiveCultureTree(
     }),
   });
   if (!allowance.allowed) {
-    return { ok: false, limitReached: allowance.limitReached };
+    return {
+      ok: false,
+      limitReached: withLimitReachedMessage({
+        action,
+        limitReached: allowance.limitReached,
+      }),
+    };
   }
 
   const treeId = nanoid();

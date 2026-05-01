@@ -25,6 +25,7 @@ import {
   kickEntityResolutionRunner,
   resolveImmediateTreeItems,
 } from "./entity-resolver.server";
+import { withLimitReachedMessage } from "./limit-reached-messages";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
 import {
   type AllowancePeriod,
@@ -277,7 +278,13 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
       }),
     });
     if (!allowance.allowed) {
-      return { ok: false, limitReached: allowance.limitReached };
+      return {
+        ok: false,
+        limitReached: withLimitReachedMessage({
+          action: "grow_branch",
+          limitReached: allowance.limitReached,
+        }),
+      };
     }
 
     const draftNode = buildCultureTreeNode(data.node);
