@@ -1,5 +1,6 @@
 import type { NodeTypeValue } from "@repo/schemas";
 import { cn } from "@repo/ui/lib/utils";
+import { useState } from "react";
 
 export const CULTURE_TREE_NODE_TYPES = [
   "book",
@@ -83,6 +84,10 @@ export function NodeTypeFilterList({
   disabled = false,
   allLabel = "All",
   size = "sm",
+  hiddenTypeCount = 0,
+  collapsible = false,
+  moreExpanded = false,
+  onToggleMore,
   onSelectAll,
   onToggleType,
 }: {
@@ -91,12 +96,20 @@ export function NodeTypeFilterList({
   readonly allSelected: boolean;
   readonly disabled?: boolean;
   readonly allLabel?: string;
-  readonly size?: "sm" | "md";
+  readonly size?: "sm" | "md" | "lg";
+  readonly hiddenTypeCount?: number;
+  readonly collapsible?: boolean;
+  readonly moreExpanded?: boolean;
+  readonly onToggleMore?: () => void;
   readonly onSelectAll: () => void;
   readonly onToggleType: (type: NodeTypeValue) => void;
 }) {
   const chipSizeClassName =
-    size === "md" ? "min-h-7 px-3 py-1 text-[0.66rem]" : "px-2 py-0.5 text-[0.56rem] leading-none";
+    size === "lg"
+      ? "min-h-8 px-3.5 py-1.5 text-[0.68rem]"
+      : size === "md"
+        ? "min-h-7 px-3 py-1 text-[0.66rem]"
+        : "px-2 py-0.5 text-[0.56rem] leading-none";
 
   return (
     <div className={cn("flex flex-wrap", size === "md" ? "gap-2" : "gap-1.5")}>
@@ -126,6 +139,21 @@ export function NodeTypeFilterList({
           onClick={() => onToggleType(type)}
         />
       ))}
+      {hiddenTypeCount > 0 || collapsible ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onToggleMore}
+          aria-expanded={moreExpanded}
+          className={cn(
+            "inline-flex items-center rounded border border-border/40 bg-transparent font-mono tracking-[0.08em] text-muted-foreground/55 uppercase transition-colors",
+            "hover:border-border hover:bg-card/30 hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none disabled:cursor-default disabled:opacity-50",
+            chipSizeClassName,
+          )}
+        >
+          {moreExpanded ? "Show less" : `+${hiddenTypeCount} more`}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -135,15 +163,31 @@ export function CulturalMixSelector({
   disabled = false,
   size = "sm",
   className,
+  label = "Cultural mix",
+  inlineLabel = false,
+  visibleTypeCount,
   onSelectedTypesChange,
 }: {
   readonly selectedTypes: readonly NodeTypeValue[];
   readonly disabled?: boolean;
-  readonly size?: "sm" | "md";
+  readonly size?: "sm" | "md" | "lg";
   readonly className?: string;
+  readonly label?: string;
+  readonly inlineLabel?: boolean;
+  readonly visibleTypeCount?: number;
   readonly onSelectedTypesChange: (types: NodeTypeValue[]) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const allSelected = selectedTypes.length === CULTURE_TREE_NODE_TYPES.length;
+  const visibleTypes =
+    visibleTypeCount == null || expanded
+      ? CULTURE_TREE_NODE_TYPES
+      : CULTURE_TREE_NODE_TYPES.slice(0, visibleTypeCount);
+  const hiddenTypeCount =
+    visibleTypeCount == null || expanded
+      ? 0
+      : Math.max(CULTURE_TREE_NODE_TYPES.length - visibleTypes.length, 0);
+  const collapsible = visibleTypeCount != null && expanded;
 
   const toggleType = (type: NodeTypeValue) => {
     if (selectedTypes.length === CULTURE_TREE_NODE_TYPES.length) {
@@ -164,15 +208,20 @@ export function CulturalMixSelector({
   };
 
   return (
-    <div className={cn("space-y-2", className)}>
-      <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
-        Cultural mix
+    <div className={cn(inlineLabel ? "flex items-center gap-4" : "space-y-2", className)}>
+      <p className="shrink-0 font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+        {label}
       </p>
       <NodeTypeFilterList
+        types={visibleTypes}
         selectedTypes={selectedTypes}
         allSelected={allSelected}
         disabled={disabled}
         size={size}
+        hiddenTypeCount={hiddenTypeCount}
+        collapsible={collapsible}
+        moreExpanded={expanded}
+        onToggleMore={() => setExpanded((value) => !value)}
         onSelectAll={() => onSelectedTypesChange([...CULTURE_TREE_NODE_TYPES])}
         onToggleType={toggleType}
       />
@@ -190,11 +239,15 @@ function NodeTypeFilterChip({
   readonly type: NodeTypeValue;
   readonly selected: boolean;
   readonly disabled: boolean;
-  readonly size: "sm" | "md";
+  readonly size: "sm" | "md" | "lg";
   readonly onClick: () => void;
 }) {
   const chipSizeClassName =
-    size === "md" ? "min-h-7 px-3 py-1 text-[0.66rem]" : "px-2 py-0.5 text-[0.56rem] leading-none";
+    size === "lg"
+      ? "min-h-8 px-3.5 py-1.5 text-[0.68rem]"
+      : size === "md"
+        ? "min-h-7 px-3 py-1 text-[0.66rem]"
+        : "px-2 py-0.5 text-[0.56rem] leading-none";
 
   return (
     <button

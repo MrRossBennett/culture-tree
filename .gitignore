@@ -27,6 +27,7 @@ dist
 # Local agent/tool settings
 .claude/settings.local.json
 .cursor/settings.local.json
+.agents/skills/impeccable/
 
 # Debug
 npm-debug.log*

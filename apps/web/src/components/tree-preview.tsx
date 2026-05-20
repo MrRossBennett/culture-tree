@@ -254,35 +254,16 @@ export function CultureTreeItemCard({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="shrink-0 text-muted-foreground hover:text-amber"
+                    className="shrink-0 border border-primary/35 bg-primary/10 text-primary shadow-[0_0_0_1px_rgba(214,154,78,0.05)] hover:border-primary/60 hover:bg-primary/20 hover:text-primary focus-visible:ring-primary/80"
                     disabled={isGeneratingNewTree}
                     onClick={() => void onGenerateNewTree(item)}
                     aria-label={`Generate new tree from ${item.name}`}
                   />
                 }
               >
-                <SparklesIcon className="size-3.5" aria-hidden />
+                <SparklesIcon className="size-3.5 fill-primary/20" aria-hidden />
               </TooltipTrigger>
               <TooltipContent>Generate new tree →</TooltipContent>
-            </Tooltip>
-          ) : null}
-          {onDeleteItem && !isLoading ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => onDeleteItem(item)}
-                    aria-label={`Delete ${item.name} from this tree`}
-                  />
-                }
-              >
-                <Trash2Icon className="size-3.5" aria-hidden />
-              </TooltipTrigger>
-              <TooltipContent>Delete branch</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -305,7 +286,7 @@ export function CultureTreeItemCard({
             </div>
           ) : null}
         </div>
-        <div className="min-w-0 flex-1 px-4 py-2">
+        <div className={cn("min-w-0 flex-1 px-4 py-2", onDeleteItem && !isLoading && "pb-9")}>
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <h3 className="font-heading text-xl leading-snug tracking-tight text-card-foreground md:text-2xl">
               {itemHeading.primary}
@@ -339,7 +320,7 @@ export function CultureTreeItemCard({
             </p>
           ) : null}
           {item.reason ? (
-            <p className="font-body mt-2 line-clamp-4 text-sm leading-relaxed text-foreground/80 italic">
+            <p className="font-body mt-2 line-clamp-4 text-base leading-relaxed font-medium text-card-foreground">
               {item.reason}
             </p>
           ) : isLoading ? (
@@ -355,6 +336,27 @@ export function CultureTreeItemCard({
           ) : null}
         </div>
       </div>
+      {onDeleteItem && !isLoading ? (
+        <div className="absolute right-3 bottom-3 z-10">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => onDeleteItem(item)}
+                  aria-label={`Delete ${item.name} from this tree`}
+                />
+              }
+            >
+              <Trash2Icon className="size-3.5" aria-hidden />
+            </TooltipTrigger>
+            <TooltipContent>Delete branch</TooltipContent>
+          </Tooltip>
+        </div>
+      ) : null}
     </motion.article>
   );
 }

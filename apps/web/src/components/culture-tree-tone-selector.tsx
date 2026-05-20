@@ -19,19 +19,23 @@ export function CultureTreeToneSelector({
   value,
   disabled = false,
   className,
+  label = "Discovery tone",
+  inlineLabel = false,
   onValueChange,
 }: {
   readonly value: CultureTreeTone;
   readonly disabled?: boolean;
   readonly className?: string;
+  readonly label?: string;
+  readonly inlineLabel?: boolean;
   readonly onValueChange: (value: CultureTreeTone) => void;
 }) {
   return (
-    <div className={cn("space-y-2", className)}>
-      <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
-        Discovery tone
+    <div className={cn(inlineLabel ? "flex items-center gap-4" : "space-y-2", className)}>
+      <p className="shrink-0 font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+        {label}
       </p>
-      <div className="grid grid-cols-3 rounded border border-border/50 bg-card/20 p-1">
+      <div className="grid flex-1 grid-cols-3 rounded border border-border/50 bg-card/20 p-1">
         {CULTURE_TREE_TONE_OPTIONS.map((option) => (
           <button
             key={option}
