@@ -187,7 +187,7 @@ QUALITY RULES (push harder):
    a Google search for "${query}". Those are too obvious.
 3. At least one item must be something the user has almost certainly
    never heard of — a genuine discovery.
-4. Replace shallow picks across the full flat list, not just the most obvious ones.
+4. Replace shallow picks across the full guide, not just the most obvious ones.
 5. Make sure every "reason" is vivid and specific — it should make the
    user immediately understand WHY this is useful next and want to go explore.
 6. Tighten every "reason" to one sentence and 30 words max. Cut setup,

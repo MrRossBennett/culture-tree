@@ -85,7 +85,7 @@ interface TreeNodeDrawerProps {
 export function TreeNodeDrawer({
   triggerLabel,
   triggerClassName,
-  title = "Grow new branch",
+  title = "Grow Branch",
   isPending = false,
   onSubmit,
 }: TreeNodeDrawerProps) {
@@ -140,10 +140,6 @@ export function TreeNodeDrawer({
       try {
         const response = await $searchCultureTreeNodes({ data: { query: queryToSearch } });
         if (!cancelled) {
-          console.log("tree node search results", {
-            query: queryToSearch,
-            results: response.results,
-          });
           setResults(response.results);
         }
       } catch (error) {

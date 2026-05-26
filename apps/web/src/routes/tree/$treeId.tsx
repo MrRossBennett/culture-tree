@@ -597,7 +597,6 @@ function TreePage() {
           }
         }}
         branchLabel={deleteTarget?.name ?? ""}
-        subtreeNodeCount={1}
         isPending={deleteItem.isPending}
         onConfirm={() => {
           if (!deleteTarget) {

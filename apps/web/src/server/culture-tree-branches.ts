@@ -7,8 +7,6 @@ import {
   type TreeItem,
 } from "@repo/schemas";
 
-export const CULTURE_TREE_SEED_BRANCH_ID = "root";
-
 export type DeleteBranchResult = {
   tree: CultureTree;
   removedBranches: TreeItem[];
@@ -72,6 +70,6 @@ export function removeEnrichmentsForBranches(
   return Object.fromEntries(Object.entries(enrichments).filter(([id]) => !removedIds.has(id)));
 }
 
-export function countBranchesInSubtree(branches: readonly TreeItem[]): number {
+export function countRemovedBranches(branches: readonly TreeItem[]): number {
   return branches.length;
 }

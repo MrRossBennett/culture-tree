@@ -25,7 +25,7 @@ import {
   resolveCommittedBranches,
 } from "./committed-branch-enrichment";
 import {
-  countBranchesInSubtree,
+  countRemovedBranches,
   deleteBranchFromCultureTree,
   growBranchInCultureTree,
   removeEnrichmentsForBranches,
@@ -268,7 +268,7 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
       .set({ data: nextTree, enrichmentData: nextEnrichments })
       .where(eq(cultureTree.id, data.treeId));
 
-    return { ok: true as const, removedBranchCount: countBranchesInSubtree(removedBranches) };
+    return { ok: true as const, removedBranchCount: countRemovedBranches(removedBranches) };
   });
 
 export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(async () => {

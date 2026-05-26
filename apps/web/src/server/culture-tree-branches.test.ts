@@ -2,7 +2,7 @@ import { CultureTreeSchema, type CultureTree, type TreeItem } from "@repo/schema
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  countBranchesInSubtree,
+  countRemovedBranches,
   deleteBranchFromCultureTree,
   growBranchInCultureTree,
   removeEnrichmentsForBranches,
@@ -90,12 +90,12 @@ describe("Culture Tree Branch mutations", () => {
     ).toThrow("Guide Section not found.");
   });
 
-  it("deletes a Branch and reports the removed Subtree", () => {
+  it("deletes a Branch and reports the removed Branch", () => {
     const result = deleteBranchFromCultureTree(tree, "branch_1");
 
     expect(result.tree.items).toEqual([]);
     expect(result.removedBranches).toEqual([branch]);
-    expect(countBranchesInSubtree(result.removedBranches)).toBe(1);
+    expect(countRemovedBranches(result.removedBranches)).toBe(1);
   });
 
   it("deletes a Branch from its Guide Section without affecting unrelated sections", () => {
@@ -117,7 +117,7 @@ describe("Culture Tree Branch mutations", () => {
     expect(() => deleteBranchFromCultureTree(guideTree, "missing")).toThrow("Branch not found.");
   });
 
-  it("removes enrichment data for every Branch in the deleted Subtree", () => {
+  it("removes enrichment data for every deleted Branch", () => {
     expect(
       removeEnrichmentsForBranches(
         {

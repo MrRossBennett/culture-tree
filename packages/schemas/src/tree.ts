@@ -250,7 +250,7 @@ export const CultureTreeSchema = z
 export type CultureTree = z.infer<typeof CultureTreeSchema>;
 export type GuideSection = z.infer<typeof GuideSectionSchema>;
 
-/** Total nodes in the tree (seed plus all flat items). */
+/** Total Branches in the tree, plus the Seed. */
 export function countCultureTreeNodes(tree: CultureTree): number {
   return 1 + tree.items.length;
 }
@@ -479,10 +479,7 @@ export function formatGuideSectionTitle(id: GuideSectionIdValue): string {
   }
 }
 
-/**
- * Model output can be partial or malformed; coerce into a valid {@link CultureTree} for persistence.
- * Also tolerates the legacy nested tree shape by flattening descendants into `items`.
- */
+/** Model output can be partial or malformed; coerce into a valid {@link CultureTree}. */
 export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): CultureTree {
   const fallbackSeed = seedLabel.trim() || "Culture tree";
   const parsed = CultureTreeSchema.safeParse(raw);
@@ -506,7 +503,6 @@ export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): Cul
     seedType = nt.success ? nt.data : "root";
   }
 
-  const legacyChildren = Array.isArray(o.children) ? o.children : [];
   const rawItems = Array.isArray(o.items) ? o.items : [];
   const guideSections = normalizeGuideSections(o.guideSections);
 
@@ -515,12 +511,7 @@ export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): Cul
       ? rawItems
       : guideSections.length > 0
         ? flattenGuideSectionItems(guideSections)
-        : legacyChildren.flatMap((child) => {
-            const childObj =
-              child && typeof child === "object" ? (child as Record<string, unknown>) : {};
-            const descendants = Array.isArray(childObj.children) ? childObj.children : [];
-            return [{ ...childObj, children: undefined }, ...descendants];
-          });
+        : [];
 
   const coerced = CultureTreeSchema.parse({
     seed: legacySeed,

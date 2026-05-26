@@ -13,25 +13,14 @@ interface DeleteTreeNodeDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly branchLabel: string;
-  readonly subtreeNodeCount: number;
   readonly isPending?: boolean;
   readonly onConfirm: () => void;
-}
-
-function subtreeSummary(subtreeNodeCount: number): string {
-  if (subtreeNodeCount <= 1) {
-    return "Only this branch will be removed.";
-  }
-
-  const connectedBranchCount = subtreeNodeCount - 1;
-  return `This will also remove ${connectedBranchCount} connected ${connectedBranchCount === 1 ? "branch" : "branches"}.`;
 }
 
 export function DeleteTreeNodeDialog({
   open,
   onOpenChange,
   branchLabel,
-  subtreeNodeCount,
   isPending = false,
   onConfirm,
 }: DeleteTreeNodeDialogProps) {
@@ -47,7 +36,9 @@ export function DeleteTreeNodeDialog({
         </DialogHeader>
 
         <div className="rounded-2xl border border-destructive/25 bg-destructive/5 px-4 py-3">
-          <p className="font-body text-sm text-foreground">{subtreeSummary(subtreeNodeCount)}</p>
+          <p className="font-body text-sm text-foreground">
+            Only this Branch will be removed from its Guide Section.
+          </p>
         </div>
 
         <DialogFooter>

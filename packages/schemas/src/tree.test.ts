@@ -8,29 +8,7 @@ import {
 } from "./tree";
 
 describe("acceptCultureTreeGenerationOutput", () => {
-  it("accepts canonical Culture Tree output", () => {
-    const tree = acceptCultureTreeGenerationOutput({
-      seedLabel: "Ghost Dog",
-      output: {
-        seed: "Ghost Dog",
-        seedType: "root",
-        items: [
-          {
-            id: "item_1",
-            name: "Liquid Swords",
-            type: "album",
-            reason: "Turns noir dread into cold-blooded mythology.",
-            connectionType: "spiritual-kin",
-            searchHint: { title: "Liquid Swords by GZA" },
-          },
-        ],
-      },
-    });
-
-    expect(tree.items[0]?.searchHint).toEqual({ title: "Liquid Swords", creator: "GZA" });
-  });
-
-  it("accepts Start Here Guide Sections and derives flat items", () => {
+  it("accepts Guide Sections and derives Branches for shared Branch workflows", () => {
     const tree = acceptCultureTreeGenerationOutput({
       seedLabel: "Ghost Dog",
       output: {
@@ -419,7 +397,7 @@ describe("acceptCultureTreeGenerationOutput", () => {
     });
   });
 
-  it("accepts legacy nested output as flat Branches", () => {
+  it("does not preserve legacy nested output", () => {
     const tree = acceptCultureTreeGenerationOutput({
       seedLabel: "Ghost Dog",
       output: {
@@ -449,10 +427,8 @@ describe("acceptCultureTreeGenerationOutput", () => {
     expect(tree).toMatchObject({
       seed: "Ghost Dog",
       seedType: "root",
-      items: [
-        { id: "item_001", name: "Le Samourai" },
-        { id: "item_002", name: "Branded to Kill" },
-      ],
+      guideSections: [],
+      items: [],
     });
   });
 });
