@@ -71,8 +71,13 @@ Rules:
 - Return Guide Sections in "guideSections" using this fixed order:
   1. "start-here" titled "Start Here" with "branchRole": "essential-next"
   2. "more-like-this" titled "More Like This" with "branchRole": "similar-appetite"
-  3. "go-sideways" titled "Go Sideways" with "branchRole": "sideways-path"
-  4. "go-deeper" titled "Go Deeper" with "branchRole": "deep-cut"
+  3. optional "join-the-dots" titled "Join The Dots" with "branchRole": "documented-context"
+  4. "go-sideways" titled "Go Sideways" with "branchRole": "sideways-path"
+  5. "go-deeper" titled "Go Deeper" with "branchRole": "deep-cut"
+- Only include Join The Dots when you have direct or documented context:
+  direct references, creator-cited influence, production history, real-world
+  context, or similarly strong provenance. Do not pad it with clever
+  interpretive links. Omit Join The Dots entirely when evidence is weak or absent.
 - Do not repeat the same Branch id or cultural artifact across Guide Sections.
 - Recommendation-oriented Guide Sections should be dominated by Consumable Works:
   books, albums, songs, films, TV, podcasts, artworks, articles, or specific
@@ -117,13 +122,17 @@ export function buildPass1Prompt(
 ): string {
   let prompt = `Generate a culture tree for: "${query}"
 
-Return ${config.count} total items distributed across four fixed Guide Sections:
-Start Here, More Like This, Go Sideways, and Go Deeper.
+Return ${config.count} total items distributed across the fixed Guide Sections:
+Start Here, More Like This, optionally Join The Dots, Go Sideways, and Go Deeper.
 
 Start Here is not for showing off. It should answer: "where should I go next
 first?" More Like This should satisfy the same appetite. Go Sideways should
 cross media or mode while keeping the thread. Go Deeper should be specialist,
 less obvious, or more demanding.
+
+Join The Dots is only for direct or documented context. If you cannot name a
+direct reference, creator-cited influence, production history, real-world
+context, or similarly strong provenance, omit Join The Dots entirely.
 
 Remember: include a small number of anchors when they are genuinely useful, then
 add deep cuts and lateral leaps that still help the person choose a next path.`;
@@ -183,10 +192,13 @@ QUALITY RULES (push harder):
    user immediately understand WHY this is useful next and want to go explore.
 6. Tighten every "reason" to one sentence and 30 words max. Cut setup,
    hedging, and filler. Keep only the most vivid connective tissue.
-7. Keep the four fixed Guide Sections in order: Start Here, More Like This,
-   Go Sideways, Go Deeper. Use the matching Branch Role for every item:
-   essential-next, similar-appetite, sideways-path, deep-cut.
+7. Keep the fixed Guide Sections in order: Start Here, More Like This,
+   optional Join The Dots, Go Sideways, Go Deeper. Use the matching Branch Role
+   for every item: essential-next, similar-appetite, documented-context,
+   sideways-path, deep-cut.
 8. Do not repeat the same Branch id or cultural artifact across sections.
+9. Omit Join The Dots if the only available context is loose interpretation,
+   vibe, theme, or speculative influence.
 
 Before returning, review your tree and ask yourself: "Would a deeply
 knowledgeable person be surprised and delighted by at least 4 of

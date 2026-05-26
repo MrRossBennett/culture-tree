@@ -1,4 +1,4 @@
-import { CORE_RECOMMENDATION_GUIDE_SECTION_IDS } from "@repo/schemas";
+import { CORE_RECOMMENDATION_GUIDE_SECTION_IDS, GUIDE_SECTION_DISPLAY_ORDER } from "@repo/schemas";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { completeTreeItemConnection, generateTree } from "./pipeline";
@@ -24,9 +24,9 @@ describe("generateTree", () => {
     });
 
     expect(tree.seed).toBe("OK Computer — Radiohead");
-    expect(tree.guideSections.map((section) => section.id)).toEqual(
-      CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
-    );
+    const sectionIds = tree.guideSections.map((section) => section.id);
+    expect(sectionIds).toEqual(GUIDE_SECTION_DISPLAY_ORDER);
+    expect(CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((id) => sectionIds.includes(id))).toBe(true);
     expect(
       tree.guideSections.every((section) => section.items.every((item) => item.branchRole != null)),
     ).toBe(true);

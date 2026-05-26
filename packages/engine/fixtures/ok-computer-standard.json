@@ -100,6 +100,27 @@
       ]
     },
     {
+      "id": "join-the-dots",
+      "title": "Join The Dots",
+      "description": "Directly documented context for Radiohead's visual and cultural world.",
+      "items": [
+        {
+          "id": "item_013",
+          "name": "Chris Marker — La Jetee",
+          "type": "film",
+          "year": 1962,
+          "reason": "Radiohead cited Marker as an influence on the Amnesiac artwork, making this documented context rather than loose machine-age mood matching.",
+          "connectionType": "documented-by",
+          "branchRole": "documented-context",
+          "searchHint": {
+            "title": "La Jetee",
+            "creator": "Chris Marker"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
       "id": "go-sideways",
       "title": "Go Sideways",
       "description": "Cross-media paths that keep the same technological unease alive.",
@@ -328,6 +349,20 @@
       "searchHint": {
         "title": "Teo Macero",
         "wikiSlug": "Teo_Macero"
+      },
+      "source": "ai"
+    },
+    {
+      "id": "item_013",
+      "name": "Chris Marker — La Jetee",
+      "type": "film",
+      "year": 1962,
+      "reason": "Radiohead cited Marker as an influence on the Amnesiac artwork, making this documented context rather than loose machine-age mood matching.",
+      "connectionType": "documented-by",
+      "branchRole": "documented-context",
+      "searchHint": {
+        "title": "La Jetee",
+        "creator": "Chris Marker"
       },
       "source": "ai"
     }

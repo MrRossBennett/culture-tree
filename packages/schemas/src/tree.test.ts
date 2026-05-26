@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
   CultureTreeSchema,
+  GUIDE_SECTION_DISPLAY_ORDER,
   acceptCultureTreeGenerationOutput,
 } from "./tree";
 
@@ -321,6 +322,101 @@ describe("acceptCultureTreeGenerationOutput", () => {
       CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
     );
     expect(tree.items.map((item) => item.id)).toEqual(["item_1", "item_2", "item_4", "item_3"]);
+  });
+
+  it("accepts optional Join The Dots after More Like This when documented context exists", () => {
+    const tree = acceptCultureTreeGenerationOutput({
+      seedLabel: "OK Computer",
+      output: {
+        seed: "OK Computer",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "start-here",
+            title: "Start Here",
+            items: [
+              {
+                id: "item_1",
+                name: "Talk Talk — Spirit of Eden",
+                type: "album",
+                reason: "A direct first step into post-rock atmosphere and haunted restraint.",
+                connectionType: "influence",
+                branchRole: "essential-next",
+                searchHint: { title: "Spirit of Eden", creator: "Talk Talk" },
+              },
+            ],
+          },
+          {
+            id: "more-like-this",
+            title: "More Like This",
+            items: [
+              {
+                id: "item_2",
+                name: "Koyaanisqatsi",
+                type: "film",
+                reason:
+                  "Another widescreen machine-age panic with beauty and dread fused together.",
+                connectionType: "thematic",
+                branchRole: "similar-appetite",
+                searchHint: { title: "Koyaanisqatsi" },
+              },
+            ],
+          },
+          {
+            id: "join-the-dots",
+            title: "Join The Dots",
+            items: [
+              {
+                id: "item_3",
+                name: "Chris Marker — La Jetee",
+                type: "film",
+                reason:
+                  "Radiohead cited Marker as an influence on the Amnesiac artwork, making this documented context rather than loose mood matching.",
+                connectionType: "documented-by",
+                branchRole: "documented-context",
+                searchHint: { title: "La Jetee", creator: "Chris Marker" },
+              },
+            ],
+          },
+          {
+            id: "go-sideways",
+            title: "Go Sideways",
+            items: [
+              {
+                id: "item_4",
+                name: "Roadside Picnic",
+                type: "book",
+                reason: "A sideways path into unknowable technology and radioactive aftermath.",
+                connectionType: "spiritual-kin",
+                branchRole: "sideways-path",
+                searchHint: { title: "Roadside Picnic", creator: "Arkady Strugatsky" },
+              },
+            ],
+          },
+          {
+            id: "go-deeper",
+            title: "Go Deeper",
+            items: [
+              {
+                id: "item_5",
+                name: "AMM — AMMMusic",
+                type: "album",
+                reason: "A deeper route into silence, texture, and anti-song composition.",
+                connectionType: "influence",
+                branchRole: "deep-cut",
+                searchHint: { title: "AMMMusic", creator: "AMM" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(tree.guideSections.map((section) => section.id)).toEqual(GUIDE_SECTION_DISPLAY_ORDER);
+    expect(tree.guideSections[2]).toMatchObject({
+      id: "join-the-dots",
+      items: [{ branchRole: "documented-context", connectionType: "documented-by" }],
+    });
   });
 
   it("accepts legacy nested output as flat Branches", () => {
