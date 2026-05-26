@@ -49,6 +49,127 @@
           "source": "ai"
         }
       ]
+    },
+    {
+      "id": "more-like-this",
+      "title": "More Like This",
+      "description": "Works with a similar appetite for dread, atmosphere, and studio mutation.",
+      "items": [
+        {
+          "id": "item_002",
+          "name": "AMM — AMMMusic",
+          "type": "album",
+          "year": 1967,
+          "reason": "The British improv collective treated silence and texture like composition, laying the groundwork for the spacious anti-song logic that makes OK Computer feel haunted rather than merely experimental.",
+          "connectionType": "influence",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "AMMMusic",
+            "creator": "AMM"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_004",
+          "name": "Ron Fricke — Chronos",
+          "type": "film",
+          "year": 1985,
+          "reason": "Fricke strips dialogue away until civilization looks like a time-lapse nervous system, a pure visual analogue for OK Computer's sense of human life being swallowed by patterns.",
+          "connectionType": "spiritual-kin",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "Chronos",
+            "creator": "Ron Fricke"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_011",
+          "name": "Miles Davis — Bitches Brew",
+          "type": "album",
+          "year": 1970,
+          "reason": "The anchor: both albums shocked their audiences by using the studio to melt familiar forms into something atmospheric, disorienting, and permanently future-facing.",
+          "connectionType": "influence",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "Bitches Brew",
+            "creator": "Miles Davis"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-sideways",
+      "title": "Go Sideways",
+      "description": "Cross-media paths that keep the same technological unease alive.",
+      "items": [
+        {
+          "id": "item_005",
+          "name": "Brasília",
+          "type": "place",
+          "reason": "Brazil's planned capital embodies the album's core anxiety: utopian design that looks immaculate from the air and feels estranging, even lonely, once actual humans arrive.",
+          "connectionType": "thematic",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Brasília",
+            "location": {
+              "city": "Brasília",
+              "country": "Brazil"
+            }
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_008",
+          "name": "Arkady Strugatsky — Roadside Picnic",
+          "type": "book",
+          "year": 1972,
+          "reason": "The novel behind Stalker imagines technology as radioactive mystery, cosmic leftovers that humans can exploit but never understand, exactly the frequency OK Computer hums on.",
+          "connectionType": "adaptation",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Roadside Picnic",
+            "creator": "Arkady Strugatsky"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_009",
+          "name": "György Ligeti — Lux Aeterna",
+          "type": "song",
+          "year": 1966,
+          "reason": "Ligeti turns voices into an alien weather system, the same trick Radiohead uses when guitars and melodies dissolve into dread, beauty, and loss of human scale.",
+          "connectionType": "spiritual-kin",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Lux Aeterna",
+            "creator": "György Ligeti"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-deeper",
+      "title": "Go Deeper",
+      "description": "More specialist paths after the obvious routes are covered.",
+      "items": [
+        {
+          "id": "item_010",
+          "name": "Hilliard Ensemble — Morimur",
+          "type": "album",
+          "year": 1999,
+          "reason": "Bach and Pärt fold centuries together until sacred music feels unmoored from time, which is the same uncanny temporal drift hiding inside OK Computer's digital paranoia.",
+          "connectionType": "thematic",
+          "branchRole": "deep-cut",
+          "searchHint": {
+            "title": "Morimur",
+            "creator": "Hilliard Ensemble"
+          },
+          "source": "ai"
+        }
+      ]
     }
   ],
   "items": [

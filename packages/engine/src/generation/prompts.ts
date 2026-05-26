@@ -68,10 +68,15 @@ Rules:
   "item_001", "item_002", etc.
 - On every item, include "source": "ai" (string) so provenance is explicit in
   the JSON.
-- Return Guide Sections in "guideSections". For this first guide slice, include
-  a fixed "start-here" section titled "Start Here" before any flat "items".
-- Start Here items must use "branchRole": "essential-next" and should be the
-  strongest practical next cultural paths from the seed.
+- Return Guide Sections in "guideSections" using this fixed order:
+  1. "start-here" titled "Start Here" with "branchRole": "essential-next"
+  2. "more-like-this" titled "More Like This" with "branchRole": "similar-appetite"
+  3. "go-sideways" titled "Go Sideways" with "branchRole": "sideways-path"
+  4. "go-deeper" titled "Go Deeper" with "branchRole": "deep-cut"
+- Do not repeat the same Branch id or cultural artifact across Guide Sections.
+- Recommendation-oriented Guide Sections should be dominated by Consumable Works:
+  books, albums, songs, films, TV, podcasts, artworks, articles, or specific
+  cultural objects a person can directly experience.
 - Every connection needs a SPECIFIC, insightful reason. Never generic.
   Bad: "Both are considered classics of their genre."
   Good: "Both use unreliable narrators to explore how memory distorts grief."
@@ -97,8 +102,8 @@ Rules:
   - For people: full name + wikiSlug
   - For articles: only use a specific published web article, essay, review, interview, or blog post. Put the article title in searchHint.title and the canonical article URL in searchHint.url when you know it. Do not use Wikipedia pages as articles.
 - connectionType should accurately describe the relationship.
-- A great tree tells a STORY. Start Here should feel like a tiny editorial guide,
-  not a random list.
+- A great tree tells a STORY. The Guide Sections should feel like a simple
+  editorial route through the seed, not a random list.
 
 Output:
 - Fill the structured CultureTree schema exactly (the runtime enforces it).
@@ -112,11 +117,13 @@ export function buildPass1Prompt(
 ): string {
   let prompt = `Generate a culture tree for: "${query}"
 
-Return ${config.count} total items. Put at least 3 of them in guideSections[0],
-the fixed "start-here" Guide Section titled "Start Here".
+Return ${config.count} total items distributed across four fixed Guide Sections:
+Start Here, More Like This, Go Sideways, and Go Deeper.
 
 Start Here is not for showing off. It should answer: "where should I go next
-first?" Use "essential-next" as the branchRole for every Start Here item.
+first?" More Like This should satisfy the same appetite. Go Sideways should
+cross media or mode while keeping the thread. Go Deeper should be specialist,
+less obvious, or more demanding.
 
 Remember: include a small number of anchors when they are genuinely useful, then
 add deep cuts and lateral leaps that still help the person choose a next path.`;
@@ -176,8 +183,10 @@ QUALITY RULES (push harder):
    user immediately understand WHY this is useful next and want to go explore.
 6. Tighten every "reason" to one sentence and 30 words max. Cut setup,
    hedging, and filler. Keep only the most vivid connective tissue.
-7. Keep guideSections[0] as the fixed "start-here" Guide Section, and keep
-   every Start Here item's branchRole set to "essential-next".
+7. Keep the four fixed Guide Sections in order: Start Here, More Like This,
+   Go Sideways, Go Deeper. Use the matching Branch Role for every item:
+   essential-next, similar-appetite, sideways-path, deep-cut.
+8. Do not repeat the same Branch id or cultural artifact across sections.
 
 Before returning, review your tree and ask yourself: "Would a deeply
 knowledgeable person be surprised and delighted by at least 4 of
@@ -230,7 +239,8 @@ Hard category constraint:
 - Replace every item that violates the constraint with an equally strong recommendation using an allowed item type.
 - Keep the same approximate item count.
 - Keep reasons specific, vivid, one sentence, and 30 words max.
-- Preserve the CultureTree schema exactly.
+- Preserve the CultureTree schema exactly, including the four fixed Guide
+  Sections and their matching Branch Roles.
 
 Return the complete repaired tree.`;
 }

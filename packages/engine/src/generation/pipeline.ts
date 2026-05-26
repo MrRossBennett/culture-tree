@@ -1,6 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import {
   ConnectionType,
+  CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
   CultureTreeSchema,
   TreeItemSchema,
   TreeRequestSchema,
@@ -57,14 +58,19 @@ function pruneTreeToMediaFilter(tree: CultureTree, mediaFilter?: readonly string
   }
 
   const allowedTypes = new Set(mediaFilter);
+  const guideSections = tree.guideSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => allowedTypes.has(item.type)),
+    }))
+    .filter((section) => section.items.length > 0);
+  const hasCoreGuideSections = CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((sectionId) =>
+    guideSections.some((section) => section.id === sectionId),
+  );
+
   return {
     ...tree,
-    guideSections: tree.guideSections
-      .map((section) => ({
-        ...section,
-        items: section.items.filter((item) => allowedTypes.has(item.type)),
-      }))
-      .filter((section) => section.items.length > 0),
+    guideSections: hasCoreGuideSections ? guideSections : [],
     items: tree.items.filter((item) => allowedTypes.has(item.type)),
   };
 }

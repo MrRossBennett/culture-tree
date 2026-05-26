@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CultureTreeSchema, acceptCultureTreeGenerationOutput } from "./tree";
+import {
+  CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
+  CultureTreeSchema,
+  acceptCultureTreeGenerationOutput,
+} from "./tree";
 
 describe("acceptCultureTreeGenerationOutput", () => {
   it("accepts canonical Culture Tree output", () => {
@@ -48,6 +52,51 @@ describe("acceptCultureTreeGenerationOutput", () => {
               },
             ],
           },
+          {
+            id: "more-like-this",
+            title: "More Like This",
+            items: [
+              {
+                id: "item_2",
+                name: "Branded to Kill",
+                type: "film",
+                reason: "A stranger variation on hitman cool and dream logic.",
+                connectionType: "spiritual-kin",
+                branchRole: "similar-appetite",
+                searchHint: { title: "Branded to Kill" },
+              },
+            ],
+          },
+          {
+            id: "go-sideways",
+            title: "Go Sideways",
+            items: [
+              {
+                id: "item_3",
+                name: "Liquid Swords",
+                type: "album",
+                reason: "Moves the same lone-warrior code into icy street mythology.",
+                connectionType: "spiritual-kin",
+                branchRole: "sideways-path",
+                searchHint: { title: "Liquid Swords", creator: "GZA" },
+              },
+            ],
+          },
+          {
+            id: "go-deeper",
+            title: "Go Deeper",
+            items: [
+              {
+                id: "item_4",
+                name: "A Colt Is My Passport",
+                type: "film",
+                reason: "A leaner, stranger route into the same assassin fatalism.",
+                connectionType: "contemporary",
+                branchRole: "deep-cut",
+                searchHint: { title: "A Colt Is My Passport" },
+              },
+            ],
+          },
         ],
       },
     });
@@ -57,10 +106,13 @@ describe("acceptCultureTreeGenerationOutput", () => {
       title: "Start Here",
       items: [{ id: "item_1", branchRole: "essential-next" }],
     });
-    expect(tree.items.map((item) => item.id)).toEqual(["item_1"]);
+    expect(tree.guideSections.map((section) => section.id)).toEqual(
+      CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
+    );
+    expect(tree.items.map((item) => item.id)).toEqual(["item_1", "item_2", "item_3", "item_4"]);
   });
 
-  it("rejects unknown Guide Sections and Branch Roles", () => {
+  it("rejects unknown Guide Sections, missing core sections, invalid Branch Roles, and duplicates", () => {
     expect(() =>
       CultureTreeSchema.parse({
         seed: "Ghost Dog",
@@ -85,6 +137,190 @@ describe("acceptCultureTreeGenerationOutput", () => {
         ],
       }),
     ).toThrow();
+
+    expect(() =>
+      CultureTreeSchema.parse({
+        seed: "Ghost Dog",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "start-here",
+            title: "Start Here",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "sideways-path",
+                searchHint: { title: "Le Samourai" },
+                source: "ai",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow();
+
+    expect(() =>
+      CultureTreeSchema.parse({
+        seed: "Ghost Dog",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "start-here",
+            title: "Start Here",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "essential-next",
+                searchHint: { title: "Le Samourai" },
+                source: "ai",
+              },
+            ],
+          },
+          {
+            id: "more-like-this",
+            title: "More Like This",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "similar-appetite",
+                searchHint: { title: "Le Samourai" },
+                source: "ai",
+              },
+            ],
+          },
+          {
+            id: "go-sideways",
+            title: "Go Sideways",
+            items: [
+              {
+                id: "item_2",
+                name: "Liquid Swords",
+                type: "album",
+                reason: "Moves the same lone-warrior code into icy street mythology.",
+                connectionType: "spiritual-kin",
+                branchRole: "sideways-path",
+                searchHint: { title: "Liquid Swords", creator: "GZA" },
+                source: "ai",
+              },
+            ],
+          },
+          {
+            id: "go-deeper",
+            title: "Go Deeper",
+            items: [
+              {
+                id: "item_3",
+                name: "A Colt Is My Passport",
+                type: "film",
+                reason: "A leaner, stranger route into the same assassin fatalism.",
+                connectionType: "contemporary",
+                branchRole: "deep-cut",
+                searchHint: { title: "A Colt Is My Passport" },
+                source: "ai",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
+  it("normalizes generated Guide Sections into fixed order and removes duplicate Branches", () => {
+    const tree = acceptCultureTreeGenerationOutput({
+      seedLabel: "Ghost Dog",
+      output: {
+        seed: "Ghost Dog",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "go-deeper",
+            title: "Go Deeper",
+            items: [
+              {
+                id: "item_3",
+                name: "A Colt Is My Passport",
+                type: "film",
+                reason: "A leaner, stranger route into the same assassin fatalism.",
+                connectionType: "contemporary",
+                branchRole: "deep-cut",
+                searchHint: { title: "A Colt Is My Passport" },
+              },
+            ],
+          },
+          {
+            id: "start-here",
+            title: "Start Here",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "essential-next",
+                searchHint: { title: "Le Samourai" },
+              },
+            ],
+          },
+          {
+            id: "more-like-this",
+            title: "More Like This",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "similar-appetite",
+                searchHint: { title: "Le Samourai" },
+              },
+              {
+                id: "item_2",
+                name: "Branded to Kill",
+                type: "film",
+                reason: "A stranger variation on hitman cool and dream logic.",
+                connectionType: "spiritual-kin",
+                branchRole: "similar-appetite",
+                searchHint: { title: "Branded to Kill" },
+              },
+            ],
+          },
+          {
+            id: "go-sideways",
+            title: "Go Sideways",
+            items: [
+              {
+                id: "item_4",
+                name: "Liquid Swords",
+                type: "album",
+                reason: "Moves the same lone-warrior code into icy street mythology.",
+                connectionType: "spiritual-kin",
+                branchRole: "sideways-path",
+                searchHint: { title: "Liquid Swords", creator: "GZA" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(tree.guideSections.map((section) => section.id)).toEqual(
+      CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
+    );
+    expect(tree.items.map((item) => item.id)).toEqual(["item_1", "item_2", "item_4", "item_3"]);
   });
 
   it("accepts legacy nested output as flat Branches", () => {

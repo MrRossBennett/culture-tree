@@ -1,3 +1,4 @@
+import { CORE_RECOMMENDATION_GUIDE_SECTION_IDS } from "@repo/schemas";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { completeTreeItemConnection, generateTree } from "./pipeline";
@@ -13,7 +14,7 @@ describe("generateTree", () => {
     }
   });
 
-  it("returns a tree with Start Here Guide Sections when MOCK_ENGINE is enabled", async () => {
+  it("returns a tree with required recommendation Guide Sections when MOCK_ENGINE is enabled", async () => {
     process.env.MOCK_ENGINE = "true";
 
     const tree = await generateTree({
@@ -23,14 +24,12 @@ describe("generateTree", () => {
     });
 
     expect(tree.seed).toBe("OK Computer — Radiohead");
-    expect(tree.guideSections[0]).toMatchObject({
-      id: "start-here",
-      title: "Start Here",
-    });
-    expect(tree.guideSections[0]?.items.length).toBeGreaterThan(0);
-    expect(tree.guideSections[0]?.items.every((item) => item.branchRole === "essential-next")).toBe(
-      true,
+    expect(tree.guideSections.map((section) => section.id)).toEqual(
+      CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
     );
+    expect(
+      tree.guideSections.every((section) => section.items.every((item) => item.branchRole != null)),
+    ).toBe(true);
     expect(tree.items.length).toBeGreaterThan(0);
     expect(tree.items[0]).toMatchObject({
       id: expect.any(String),

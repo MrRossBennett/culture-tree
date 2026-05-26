@@ -50,6 +50,124 @@
           "source": "ai"
         }
       ]
+    },
+    {
+      "id": "more-like-this",
+      "title": "More Like This",
+      "description": "Works that keep the same urban corrosion and exhausted danger in view.",
+      "items": [
+        {
+          "id": "item_003",
+          "name": "Suicide",
+          "type": "artist",
+          "reason": "Alan Vega and Martin Rev turned cheap electronics into downtown menace, making music that sounded less performed than exhaled by the city itself.",
+          "connectionType": "thematic",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "Suicide band New York"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_005",
+          "name": "The Power Broker",
+          "type": "book",
+          "year": 1974,
+          "reason": "Caro shows how Robert Moses built the physical systems that later decayed into 70s New York, turning policy into a hidden prehistory of urban ruin.",
+          "connectionType": "catalyst",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "The Power Broker",
+            "creator": "Robert Caro"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-sideways",
+      "title": "Go Sideways",
+      "description": "Other ways into the same downtown collapse and reinvention.",
+      "items": [
+        {
+          "id": "item_006",
+          "name": "Co-op City",
+          "type": "place",
+          "reason": "This Bronx megaproject embodies the era's busted utopianism, a vertical suburb where planning ambition hardened into concrete estrangement.",
+          "connectionType": "catalyst",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Co-op City",
+            "location": {
+              "city": "Bronx",
+              "country": "United States"
+            }
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_007",
+          "name": "New York Dolls at the Mercer Arts Center Collapse",
+          "type": "event",
+          "year": 1973,
+          "reason": "A glam-rock venue literally caving in feels like the perfect emblem of the period, when every cultural breakthrough seemed balanced on rotten infrastructure.",
+          "connectionType": "thematic",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Mercer Arts Center collapse",
+            "dateRange": {
+              "start": "1973-08-03",
+              "end": "1973-08-03"
+            }
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_012",
+          "name": "The Colossus of New York",
+          "type": "book",
+          "year": 2003,
+          "reason": "Whitehead's essay-book turns sidewalks, subways, and towers into memory devices, proving the ruined city never stopped shaping the people who survived it.",
+          "connectionType": "documented-by",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "The Colossus of New York",
+            "creator": "Colson Whitehead"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-deeper",
+      "title": "Go Deeper",
+      "description": "More specific places and afterimages once the core mood is clear.",
+      "items": [
+        {
+          "id": "item_008",
+          "name": "Oscar Wilde Room",
+          "type": "place",
+          "reason": "This tiny Mercer basement was the larval stage of punk, a room where glam collapse and downtown reinvention still looked like the same scene.",
+          "connectionType": "birthplace",
+          "branchRole": "deep-cut",
+          "searchHint": {
+            "title": "Oscar Wilde Room Mercer Arts Center"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_010",
+          "name": "Loisaida",
+          "type": "place",
+          "reason": "The Puerto Rican name for the Lower East Side preserves the community imagination that survived even as the neighborhood around it was left to crumble.",
+          "connectionType": "thematic",
+          "branchRole": "deep-cut",
+          "searchHint": {
+            "title": "Loisaida Lower East Side"
+          },
+          "source": "ai"
+        }
+      ]
     }
   ],
   "items": [

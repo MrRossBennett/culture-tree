@@ -47,6 +47,29 @@ export const BranchRole = z.enum([
   "deep-cut",
 ]);
 
+export const CORE_RECOMMENDATION_GUIDE_SECTION_IDS = [
+  "start-here",
+  "more-like-this",
+  "go-sideways",
+  "go-deeper",
+] as const satisfies readonly GuideSectionIdValue[];
+
+export const GUIDE_SECTION_DISPLAY_ORDER = [
+  "start-here",
+  "more-like-this",
+  "join-the-dots",
+  "go-sideways",
+  "go-deeper",
+] as const satisfies readonly GuideSectionIdValue[];
+
+const GUIDE_SECTION_BRANCH_ROLE: Record<GuideSectionIdValue, BranchRoleValue> = {
+  "start-here": "essential-next",
+  "more-like-this": "similar-appetite",
+  "join-the-dots": "documented-context",
+  "go-sideways": "sideways-path",
+  "go-deeper": "deep-cut",
+};
+
 export const SearchHintSchema = z.object({
   title: z
     .string()
@@ -149,12 +172,76 @@ export const GuideSectionSchema = z.object({
   items: z.array(TreeItemSchema).min(1),
 });
 
-export const CultureTreeSchema = z.object({
-  seed: z.string().trim().min(1),
-  seedType: z.literal("root").or(NodeType),
-  guideSections: z.array(GuideSectionSchema).default([]),
-  items: z.array(TreeItemSchema).default([]),
-});
+export const CultureTreeSchema = z
+  .object({
+    seed: z.string().trim().min(1),
+    seedType: z.literal("root").or(NodeType),
+    guideSections: z.array(GuideSectionSchema).default([]),
+    items: z.array(TreeItemSchema).default([]),
+  })
+  .superRefine((tree, ctx) => {
+    if (tree.guideSections.length === 0) {
+      return;
+    }
+
+    const sectionIds = tree.guideSections.map((section) => section.id);
+    const sectionIdSet = new Set(sectionIds);
+
+    for (const requiredId of CORE_RECOMMENDATION_GUIDE_SECTION_IDS) {
+      if (!sectionIdSet.has(requiredId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Culture Tree Guide Sections must include ${formatGuideSectionTitle(requiredId)}.`,
+          path: ["guideSections"],
+        });
+      }
+    }
+
+    for (const [index, section] of tree.guideSections.entries()) {
+      if (sectionIds.indexOf(section.id) !== index) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Duplicate Guide Section ${formatGuideSectionTitle(section.id)}.`,
+          path: ["guideSections", index, "id"],
+        });
+      }
+
+      const expectedRole = GUIDE_SECTION_BRANCH_ROLE[section.id];
+      for (const [itemIndex, item] of section.items.entries()) {
+        if (item.branchRole !== expectedRole) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${formatGuideSectionTitle(section.id)} Branches must use ${expectedRole}.`,
+            path: ["guideSections", index, "items", itemIndex, "branchRole"],
+          });
+        }
+      }
+    }
+
+    const seenItemIds = new Set<string>();
+    for (const [sectionIndex, section] of tree.guideSections.entries()) {
+      for (const [itemIndex, item] of section.items.entries()) {
+        if (seenItemIds.has(item.id)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `Duplicate Branch ${item.id} across Guide Sections.`,
+            path: ["guideSections", sectionIndex, "items", itemIndex, "id"],
+          });
+        }
+        seenItemIds.add(item.id);
+      }
+    }
+
+    const actualOrder = sectionIds.map((id) => GUIDE_SECTION_DISPLAY_ORDER.indexOf(id));
+    const sortedOrder = [...actualOrder].sort((a, b) => a - b);
+    if (!actualOrder.every((order, index) => order === sortedOrder[index])) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Guide Sections must use the fixed display order.",
+        path: ["guideSections"],
+      });
+    }
+  });
 
 export type CultureTree = z.infer<typeof CultureTreeSchema>;
 export type GuideSection = z.infer<typeof GuideSectionSchema>;
@@ -331,7 +418,8 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
     return [];
   }
 
-  return raw
+  const seenItemIds = new Set<string>();
+  const sections = raw
     .map((section) => {
       const o = section && typeof section === "object" ? (section as Record<string, unknown>) : {};
       const idResult = GuideSectionId.safeParse(o.id);
@@ -341,6 +429,22 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
 
       const rawItems = Array.isArray(o.items) ? o.items : [];
       if (rawItems.length === 0) {
+        return null;
+      }
+
+      const expectedRole = GUIDE_SECTION_BRANCH_ROLE[idResult.data];
+      const items = rawItems
+        .map((item, index) => normalizeTreeItem(item, index))
+        .filter((item) => {
+          if (seenItemIds.has(item.id)) {
+            return false;
+          }
+          seenItemIds.add(item.id);
+          return true;
+        })
+        .map((item) => ({ ...item, branchRole: expectedRole }));
+
+      if (items.length === 0) {
         return null;
       }
 
@@ -354,10 +458,14 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
           typeof o.description === "string" && o.description.trim().length > 0
             ? o.description.trim()
             : undefined,
-        items: rawItems.map((item, index) => normalizeTreeItem(item, index)),
+        items,
       });
     })
     .filter((section): section is GuideSection => section != null);
+
+  return sections.sort(
+    (a, b) => GUIDE_SECTION_DISPLAY_ORDER.indexOf(a.id) - GUIDE_SECTION_DISPLAY_ORDER.indexOf(b.id),
+  );
 }
 
 export function formatGuideSectionTitle(id: GuideSectionIdValue): string {
