@@ -1,9 +1,13 @@
-import type {
-  ConnectionTypeValue,
-  CultureTree,
-  SearchHint,
-  TreeEnrichmentsMap,
-  TreeItem,
+import {
+  formatGuideSectionTitle,
+  type BranchRoleValue,
+  type ConnectionTypeValue,
+  type CultureTree,
+  type GuideSection,
+  type GuideSectionIdValue,
+  type SearchHint,
+  type TreeEnrichmentsMap,
+  type TreeItem,
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
@@ -20,6 +24,14 @@ type TreeRow = {
   capacity: number;
   items: TreeItem[];
   startIndex: number;
+};
+
+type TreeCardStyle = CSSProperties & {
+  "--tree-item-span"?: string;
+};
+
+type TreeRowStyle = CSSProperties & {
+  "--tree-row-columns"?: string;
 };
 
 function splitItemsIntoTreeRows(items: readonly TreeItem[]): TreeRow[] {
@@ -61,28 +73,42 @@ function partialFourUpCardStyle(): CSSProperties {
   };
 }
 
-function itemSpanStyle(itemCount: number, capacity: number, index: number): CSSProperties {
+function rowGridStyle(capacity: number): TreeRowStyle {
+  const columns =
+    capacity >= 4
+      ? "repeat(12, minmax(0, 1fr))"
+      : capacity > 1
+        ? `repeat(${capacity}, minmax(0, 1fr))`
+        : undefined;
+
+  return {
+    "--tree-row-columns": columns,
+    maxWidth: rowMaxWidth(capacity),
+  };
+}
+
+function itemSpanStyle(itemCount: number, capacity: number, index: number): TreeCardStyle {
   if (capacity >= 4) {
     if (itemCount >= 4) {
       return {
-        gridColumn: `${index * 3 + 1} / span 3`,
+        "--tree-item-span": `${index * 3 + 1} / span 3`,
       };
     }
 
     if (itemCount === 3) {
       return {
-        gridColumn: `${index * 3 + 2} / span 3`,
+        "--tree-item-span": `${index * 3 + 2} / span 3`,
       };
     }
 
     if (itemCount === 2) {
       return {
-        gridColumn: `${index * 3 + 4} / span 3`,
+        "--tree-item-span": `${index * 3 + 4} / span 3`,
       };
     }
 
     return {
-      gridColumn: "5 / span 3",
+      "--tree-item-span": "5 / span 3",
     };
   }
 
@@ -96,12 +122,46 @@ function itemSpanStyle(itemCount: number, capacity: number, index: number): CSSP
   const span = spans[index] ?? 1;
 
   return {
-    gridColumn: `${start} / span ${span}`,
+    "--tree-item-span": `${start} / span ${span}`,
   };
 }
 
 function formatConnectionLabel(connectionType: ConnectionTypeValue): string {
   return connectionType.replaceAll("-", " ").toUpperCase();
+}
+
+function formatBranchRoleLabel(branchRole: BranchRoleValue): string {
+  return branchRole.replaceAll("-", " ").toUpperCase();
+}
+
+type PreviewSection = {
+  id: GuideSectionIdValue | "unsectioned";
+  title: string;
+  description?: string;
+  items: TreeItem[];
+};
+
+function buildPreviewSections(tree: CultureTree): PreviewSection[] {
+  if (tree.guideSections.length === 0) {
+    return [{ id: "unsectioned", title: "Branches", items: tree.items }];
+  }
+
+  const sectionItemIds = new Set(
+    tree.guideSections.flatMap((section) => section.items.map((item) => item.id)),
+  );
+  const unsectionedItems = tree.items.filter((item) => !sectionItemIds.has(item.id));
+  const sections: PreviewSection[] = tree.guideSections.map((section: GuideSection) => ({
+    id: section.id,
+    title: section.title || formatGuideSectionTitle(section.id),
+    description: section.description,
+    items: section.items,
+  }));
+
+  if (unsectionedItems.length > 0) {
+    sections.push({ id: "unsectioned", title: "More Branches", items: unsectionedItems });
+  }
+
+  return sections;
 }
 
 function headingFromSearchHint(
@@ -198,7 +258,7 @@ export function CultureTreeItemCard({
         },
         filter: { duration: 0.44, delay: Math.min(revealIndex, 6) * 0.035, ease: "easeOut" },
       }}
-      className="group relative overflow-hidden rounded-[1.4rem] border border-border/70 bg-card/92 shadow-[0_24px_70px_-46px_rgba(30,22,10,0.55)] will-change-transform"
+      className="group relative overflow-hidden rounded-[1.4rem] border border-border/70 bg-card/92 shadow-[0_24px_70px_-46px_rgba(30,22,10,0.55)] will-change-transform md:[grid-column:var(--tree-item-span)]"
       style={style}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.1),transparent_52%)]" />
@@ -212,12 +272,22 @@ export function CultureTreeItemCard({
               Adding
             </span>
           ) : (
-            <span
-              className="rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide"
-              title="Relationship to seed"
-            >
-              {formatConnectionLabel(item.connectionType)}
-            </span>
+            <>
+              {item.branchRole ? (
+                <span
+                  className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-[0.56rem] tracking-wide text-primary"
+                  title="Branch role"
+                >
+                  {formatBranchRoleLabel(item.branchRole)}
+                </span>
+              ) : null}
+              <span
+                className="rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide"
+                title="Relationship to seed"
+              >
+                {formatConnectionLabel(item.connectionType)}
+              </span>
+            </>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -257,13 +327,13 @@ export function CultureTreeItemCard({
                     className="shrink-0 border border-primary/35 bg-primary/10 text-primary shadow-[0_0_0_1px_rgba(214,154,78,0.05)] hover:border-primary/60 hover:bg-primary/20 hover:text-primary focus-visible:ring-primary/80"
                     disabled={isGeneratingNewTree}
                     onClick={() => void onGenerateNewTree(item)}
-                    aria-label={`Generate new tree from ${item.name}`}
+                    aria-label={`Explore This: ${item.name}`}
                   />
                 }
               >
                 <SparklesIcon className="size-3.5 fill-primary/20" aria-hidden />
               </TooltipTrigger>
-              <TooltipContent>Generate new tree →</TooltipContent>
+              <TooltipContent>Explore This</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -380,77 +450,96 @@ export function TreePreview({
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
 }) {
-  const itemRows = splitItemsIntoTreeRows(tree.items);
+  const previewSections = buildPreviewSections(tree).filter((section) => section.items.length > 0);
   const loadingItemIdSet = new Set(loadingItemIds);
 
   return (
-    <section className="relative w-full text-left">
+    <section className="relative w-full pt-1 text-left">
       <div className="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_46%)]" />
-      {itemRows.length > 0 ? (
-        <div className="relative">
-          <motion.div layout className="space-y-4 md:space-y-5">
-            {itemRows.map((row, rowIndex) =>
-              row.capacity >= 4 && row.items.length < 4 ? (
-                <motion.div
-                  layout
-                  key={`tree-row-${rowIndex}`}
-                  className="mx-auto flex max-w-6xl flex-wrap justify-center gap-4 md:gap-5"
-                  style={{ maxWidth: rowMaxWidth(row.capacity) }}
-                >
-                  <AnimatePresence>
-                    {row.items.map((item, itemIndex) => (
-                      <CultureTreeItemCard
-                        key={item.id}
-                        enrichments={enrichments}
-                        isLoading={loadingItemIdSet.has(item.id)}
-                        isGeneratingNewTree={isGeneratingNewTree}
-                        item={item}
-                        onDeleteItem={onDeleteItem}
-                        onGenerateNewTree={onGenerateNewTree}
-                        onToggleLike={onToggleLike}
-                        revealIndex={row.startIndex + itemIndex}
-                        resolvedEntity={resolvedEntities[item.id]}
-                        style={partialFourUpCardStyle()}
-                      />
-                    ))}
-                  </AnimatePresence>
+      {previewSections.length > 0 ? (
+        <div className="relative space-y-10 md:space-y-12">
+          {previewSections.map((section) => {
+            const itemRows = splitItemsIntoTreeRows(section.items);
+            const isStartHere = section.id === "start-here";
+
+            return (
+              <section key={section.id} className="mx-auto w-full max-w-7xl">
+                <div className="mx-auto mb-4 max-w-4xl text-center">
+                  <p className="font-mono text-[0.6rem] tracking-[0.16em] text-primary uppercase">
+                    Guide Section
+                  </p>
+                  <h2
+                    className={cn(
+                      "font-heading mt-1 tracking-tight text-foreground",
+                      isStartHere ? "text-3xl md:text-4xl" : "text-2xl md:text-3xl",
+                    )}
+                  >
+                    {section.title}
+                  </h2>
+                  {section.description ? (
+                    <p className="font-body mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground italic md:text-base">
+                      {section.description}
+                    </p>
+                  ) : null}
+                </div>
+                <motion.div layout className="space-y-6 md:space-y-7">
+                  {itemRows.map((row, rowIndex) =>
+                    row.capacity >= 4 && row.items.length < 4 ? (
+                      <motion.div
+                        layout
+                        key={`${section.id}-tree-row-${rowIndex}`}
+                        className="mx-auto flex max-w-6xl flex-wrap justify-center gap-5 md:gap-6"
+                        style={{ maxWidth: rowMaxWidth(row.capacity) }}
+                      >
+                        <AnimatePresence>
+                          {row.items.map((item, itemIndex) => (
+                            <CultureTreeItemCard
+                              key={item.id}
+                              enrichments={enrichments}
+                              isLoading={loadingItemIdSet.has(item.id)}
+                              isGeneratingNewTree={isGeneratingNewTree}
+                              item={item}
+                              onDeleteItem={onDeleteItem}
+                              onGenerateNewTree={onGenerateNewTree}
+                              onToggleLike={onToggleLike}
+                              revealIndex={row.startIndex + itemIndex}
+                              resolvedEntity={resolvedEntities[item.id]}
+                              style={partialFourUpCardStyle()}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        layout
+                        key={`${section.id}-tree-row-${rowIndex}`}
+                        className="mx-auto grid grid-cols-1 gap-5 md:[grid-template-columns:var(--tree-row-columns)] md:gap-6"
+                        style={rowGridStyle(row.capacity)}
+                      >
+                        <AnimatePresence>
+                          {row.items.map((item, itemIndex) => (
+                            <CultureTreeItemCard
+                              key={item.id}
+                              enrichments={enrichments}
+                              isLoading={loadingItemIdSet.has(item.id)}
+                              isGeneratingNewTree={isGeneratingNewTree}
+                              item={item}
+                              onDeleteItem={onDeleteItem}
+                              onGenerateNewTree={onGenerateNewTree}
+                              onToggleLike={onToggleLike}
+                              revealIndex={row.startIndex + itemIndex}
+                              resolvedEntity={resolvedEntities[item.id]}
+                              style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </motion.div>
+                    ),
+                  )}
                 </motion.div>
-              ) : (
-                <motion.div
-                  layout
-                  key={`tree-row-${rowIndex}`}
-                  className="mx-auto grid grid-cols-1 gap-4 md:gap-5"
-                  style={{
-                    gridTemplateColumns:
-                      row.capacity >= 4
-                        ? "repeat(12, minmax(0, 1fr))"
-                        : row.capacity > 1
-                          ? `repeat(${row.capacity}, minmax(0, 1fr))`
-                          : undefined,
-                    maxWidth: rowMaxWidth(row.capacity),
-                  }}
-                >
-                  <AnimatePresence>
-                    {row.items.map((item, itemIndex) => (
-                      <CultureTreeItemCard
-                        key={item.id}
-                        enrichments={enrichments}
-                        isLoading={loadingItemIdSet.has(item.id)}
-                        isGeneratingNewTree={isGeneratingNewTree}
-                        item={item}
-                        onDeleteItem={onDeleteItem}
-                        onGenerateNewTree={onGenerateNewTree}
-                        onToggleLike={onToggleLike}
-                        revealIndex={row.startIndex + itemIndex}
-                        resolvedEntity={resolvedEntities[item.id]}
-                        style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              ),
-            )}
-          </motion.div>
+              </section>
+            );
+          })}
         </div>
       ) : (
         <p className="font-body mt-4 text-center text-sm text-muted-foreground">No items yet.</p>

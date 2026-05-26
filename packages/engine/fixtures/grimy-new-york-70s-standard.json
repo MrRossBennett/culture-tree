@@ -1,6 +1,57 @@
 {
   "seed": "Grimy New York 70s",
   "seedType": "root",
+  "guideSections": [
+    {
+      "id": "start-here",
+      "title": "Start Here",
+      "description": "The strongest first paths into grimy 1970s New York.",
+      "items": [
+        {
+          "id": "item_001",
+          "name": "Taxi Driver",
+          "type": "film",
+          "year": 1976,
+          "reason": "Scorsese's fever dream captures the psychic rot beneath the city's neon decay, where alienation stops being mood and becomes the weather itself.",
+          "connectionType": "thematic",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Taxi Driver",
+            "creator": "Martin Scorsese"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_002",
+          "name": "The Friends of Eddie Coyle",
+          "type": "film",
+          "year": 1973,
+          "reason": "Peter Yates's crime film shares the same exhausted masculinity and urban corrosion, showing a city that does not contain violence so much as manufacture it.",
+          "connectionType": "spiritual-kin",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "The Friends of Eddie Coyle",
+            "creator": "Peter Yates"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_004",
+          "name": "Frankie Teardrop",
+          "type": "song",
+          "year": 1977,
+          "reason": "Ten minutes of factory-floor panic and domestic collapse, like the sound of the American Dream cracking open in a Lower East Side hallway.",
+          "connectionType": "catalyst",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Frankie Teardrop",
+            "creator": "Suicide"
+          },
+          "source": "ai"
+        }
+      ]
+    }
+  ],
   "items": [
     {
       "id": "item_001",
@@ -13,6 +64,7 @@
         "title": "Taxi Driver",
         "creator": "Martin Scorsese"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {
@@ -26,6 +78,7 @@
         "title": "The Friends of Eddie Coyle",
         "creator": "Peter Yates"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {
@@ -50,6 +103,7 @@
         "title": "Frankie Teardrop",
         "creator": "Suicide"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {

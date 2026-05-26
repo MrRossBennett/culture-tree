@@ -68,6 +68,10 @@ Rules:
   "item_001", "item_002", etc.
 - On every item, include "source": "ai" (string) so provenance is explicit in
   the JSON.
+- Return Guide Sections in "guideSections". For this first guide slice, include
+  a fixed "start-here" section titled "Start Here" before any flat "items".
+- Start Here items must use "branchRole": "essential-next" and should be the
+  strongest practical next cultural paths from the seed.
 - Every connection needs a SPECIFIC, insightful reason. Never generic.
   Bad: "Both are considered classics of their genre."
   Good: "Both use unreliable narrators to explore how memory distorts grief."
@@ -93,7 +97,7 @@ Rules:
   - For people: full name + wikiSlug
   - For articles: only use a specific published web article, essay, review, interview, or blog post. Put the article title in searchHint.title and the canonical article URL in searchHint.url when you know it. Do not use Wikipedia pages as articles.
 - connectionType should accurately describe the relationship.
-- A great tree tells a STORY. The items should feel like a curated exhibition,
+- A great tree tells a STORY. Start Here should feel like a tiny editorial guide,
   not a random list.
 
 Output:
@@ -108,10 +112,14 @@ export function buildPass1Prompt(
 ): string {
   let prompt = `Generate a culture tree for: "${query}"
 
-Return ${config.count} items in a single flat list.
+Return ${config.count} total items. Put at least 3 of them in guideSections[0],
+the fixed "start-here" Guide Section titled "Start Here".
 
-Remember: 20% anchors (the connections an expert would expect), 80% deep cuts
-and lateral leaps (the connections that surprise even an expert).`;
+Start Here is not for showing off. It should answer: "where should I go next
+first?" Use "essential-next" as the branchRole for every Start Here item.
+
+Remember: include a small number of anchors when they are genuinely useful, then
+add deep cuts and lateral leaps that still help the person choose a next path.`;
 
   if (mediaFilter?.length) {
     prompt += `\nHard category constraint: every item.type MUST be one of: ${mediaFilter.join(", ")}. Do not include any other item types.`;
@@ -165,10 +173,11 @@ QUALITY RULES (push harder):
    never heard of — a genuine discovery.
 4. Replace shallow picks across the full flat list, not just the most obvious ones.
 5. Make sure every "reason" is vivid and specific — it should make the
-   user immediately understand WHY these two things are connected and
-   want to go explore.
+   user immediately understand WHY this is useful next and want to go explore.
 6. Tighten every "reason" to one sentence and 30 words max. Cut setup,
    hedging, and filler. Keep only the most vivid connective tissue.
+7. Keep guideSections[0] as the fixed "start-here" Guide Section, and keep
+   every Start Here item's branchRole set to "essential-next".
 
 Before returning, review your tree and ask yourself: "Would a deeply
 knowledgeable person be surprised and delighted by at least 4 of

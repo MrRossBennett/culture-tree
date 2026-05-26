@@ -15,24 +15,32 @@ The starting idea at the center of a Culture Tree.
 _Avoid_: Root, root node
 
 **Branch**:
-Any item connected into the Culture Tree beneath the Seed or another Branch.
+Any item connected into a Culture Tree.
 _Avoid_: Node, leaf
 
-**Top-level Branch**:
-A Branch connected directly to the Seed.
-_Avoid_: First-level node
+**Guide Section**:
+A named intent-based grouping inside a Culture Tree that helps a person decide what kind of cultural path to follow next.
+_Avoid_: Category, genre bucket, graph cluster
 
-**Child Branch**:
-A Branch connected beneath another Branch.
-_Avoid_: Child node, subnode
+**Default Guide Sections**:
+The standard Guide Sections for a generated Culture Tree: Start Here, More Like This, Join The Dots, Go Sideways, and Go Deeper.
+_Avoid_: Dynamic section set, media category list
 
-**Leaf Branch**:
-A Branch with no Child Branches.
-_Avoid_: Node
+**Branch Role**:
+The practical job a Branch plays for a person exploring a Culture Tree, such as an essential next stop, a similar work, a direct context item, a sideways path, or a deeper recommendation.
+_Avoid_: Connection type, genre, tag
 
-**Subtree**:
-A Branch together with all of its connected Child Branches.
-_Avoid_: Branch descendants, node subtree
+**Default Branch Roles**:
+The standard Branch Roles for a generated Culture Tree: Essential Next, Similar Appetite, Documented Context, Sideways Path, and Deep Cut.
+_Avoid_: Section name, connection label, genre label
+
+**Consumable Work**:
+A cultural artifact a person can directly watch, read, listen to, view, or otherwise experience.
+_Avoid_: Content item, media asset
+
+**Documented Connection**:
+A connection supported by a direct reference, creator-cited influence, production history, real-world context, or other provenance stronger than interpretation alone.
+_Avoid_: Vibe, loose association, clever link
 
 ### Tree Actions
 
@@ -40,9 +48,13 @@ _Avoid_: Branch descendants, node subtree
 The action of creating a new Culture Tree from a Seed.
 _Avoid_: Create graph, make node tree
 
+**Explore Branch**:
+The action of using an existing Branch as the Seed for a new Culture Tree.
+_Avoid_: Expand node, child tree, nested tree
+
 **Grow Branch**:
-The action of adding a new Branch to a Seed or another Branch with AI-generated connection context.
-_Avoid_: Add node, append node, add branch
+The action of adding a new Branch to an existing Culture Tree, usually inside a Guide Section.
+_Avoid_: Add node, append node, add child branch
 
 **Clone Tree**:
 The action of copying an existing Culture Tree without asking the system to regenerate content.
@@ -61,7 +73,7 @@ The future action of adding or editing a Branch without asking the system to gen
 _Avoid_: Free grow, non-AI branch
 
 **Delete Branch**:
-The action of removing a Branch and its entire Subtree from a Culture Tree.
+The action of removing a Branch from a Culture Tree.
 _Avoid_: Delete node, remove node
 
 **Enrich**:
@@ -212,10 +224,19 @@ _Avoid_: Checkout, pricing page
 
 - A **Culture Tree** has exactly one **Seed**
 - A **Culture Tree** has zero or more **Branches**
-- A **Top-level Branch** belongs directly to one **Seed**
-- A **Child Branch** belongs directly to one parent **Branch**
-- A **Leaf Branch** has zero **Child Branches**
-- Deleting a **Branch** removes its entire **Subtree**
+- A **Culture Tree** can have zero or more **Guide Sections**
+- A **Guide Section** groups Branches by exploration intent, not by artifact type
+- A generated Culture Tree uses the **Default Guide Sections**
+- **Join The Dots** may be omitted when there is not enough direct or documented context
+- A **Branch** belongs to at most one primary **Guide Section**
+- A **Branch** can have one primary **Branch Role**
+- A **Branch Role** explains why the Branch is useful to explore next
+- **Explore Branch** creates a new Culture Tree rather than nesting one Culture Tree inside another
+- **Grow Branch** extends the current Culture Tree rather than creating a nested Child Branch
+- **Grow Branch** can add a Branch to a specific Guide Section
+- Deleting a **Branch** removes it from its Culture Tree
+- A **Consumable Work** should dominate recommendation-oriented Guide Sections
+- A **Documented Connection** requires stronger provenance than an interpretive recommendation
 - A **Public Tree** can be viewed by non-owners, but only the **Owner** can edit it
 - An **Owner** can delete their own Culture Trees and Branches regardless of allowance state
 - An **Owner** can make their own Culture Trees public or private regardless of Plan

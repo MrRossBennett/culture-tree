@@ -59,6 +59,12 @@ function pruneTreeToMediaFilter(tree: CultureTree, mediaFilter?: readonly string
   const allowedTypes = new Set(mediaFilter);
   return {
     ...tree,
+    guideSections: tree.guideSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => allowedTypes.has(item.type)),
+      }))
+      .filter((section) => section.items.length > 0),
     items: tree.items.filter((item) => allowedTypes.has(item.type)),
   };
 }

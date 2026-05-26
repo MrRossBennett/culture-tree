@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { acceptCultureTreeGenerationOutput } from "./tree";
+import { CultureTreeSchema, acceptCultureTreeGenerationOutput } from "./tree";
 
 describe("acceptCultureTreeGenerationOutput", () => {
   it("accepts canonical Culture Tree output", () => {
@@ -23,6 +23,68 @@ describe("acceptCultureTreeGenerationOutput", () => {
     });
 
     expect(tree.items[0]?.searchHint).toEqual({ title: "Liquid Swords", creator: "GZA" });
+  });
+
+  it("accepts Start Here Guide Sections and derives flat items", () => {
+    const tree = acceptCultureTreeGenerationOutput({
+      seedLabel: "Ghost Dog",
+      output: {
+        seed: "Ghost Dog",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "start-here",
+            title: "Start Here",
+            description: "The strongest next moves from the seed.",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "essential-next",
+                searchHint: { title: "Le Samourai" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(tree.guideSections[0]).toMatchObject({
+      id: "start-here",
+      title: "Start Here",
+      items: [{ id: "item_1", branchRole: "essential-next" }],
+    });
+    expect(tree.items.map((item) => item.id)).toEqual(["item_1"]);
+  });
+
+  it("rejects unknown Guide Sections and Branch Roles", () => {
+    expect(() =>
+      CultureTreeSchema.parse({
+        seed: "Ghost Dog",
+        seedType: "root",
+        guideSections: [
+          {
+            id: "vibes",
+            title: "Vibes",
+            items: [
+              {
+                id: "item_1",
+                name: "Le Samourai",
+                type: "film",
+                reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+                connectionType: "influence",
+                branchRole: "cool-one",
+                searchHint: { title: "Le Samourai" },
+                source: "ai",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow();
   });
 
   it("accepts legacy nested output as flat Branches", () => {

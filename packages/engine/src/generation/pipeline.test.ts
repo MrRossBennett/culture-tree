@@ -13,7 +13,7 @@ describe("generateTree", () => {
     }
   });
 
-  it("returns a flat tree with items when MOCK_ENGINE is enabled", async () => {
+  it("returns a tree with Start Here Guide Sections when MOCK_ENGINE is enabled", async () => {
     process.env.MOCK_ENGINE = "true";
 
     const tree = await generateTree({
@@ -23,6 +23,14 @@ describe("generateTree", () => {
     });
 
     expect(tree.seed).toBe("OK Computer — Radiohead");
+    expect(tree.guideSections[0]).toMatchObject({
+      id: "start-here",
+      title: "Start Here",
+    });
+    expect(tree.guideSections[0]?.items.length).toBeGreaterThan(0);
+    expect(tree.guideSections[0]?.items.every((item) => item.branchRole === "essential-next")).toBe(
+      true,
+    );
     expect(tree.items.length).toBeGreaterThan(0);
     expect(tree.items[0]).toMatchObject({
       id: expect.any(String),
@@ -30,6 +38,7 @@ describe("generateTree", () => {
       type: expect.any(String),
       reason: expect.any(String),
       connectionType: expect.any(String),
+      branchRole: "essential-next",
       source: "ai",
     });
     expect("children" in tree.items[0]).toBe(false);
@@ -56,6 +65,7 @@ describe("generateTree", () => {
       {
         seed: "Grimy New York 70s",
         seedType: "root",
+        guideSections: [],
         items: [],
       },
       {

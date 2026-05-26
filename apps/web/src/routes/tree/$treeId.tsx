@@ -90,7 +90,7 @@ function ProgressiveGenerationPanel({
       : "The first branches are being shaped now.";
 
   return (
-    <section className="mx-auto w-full max-w-3xl rounded border border-border/70 bg-muted/20 px-4 py-4">
+    <section className="mx-auto w-full max-w-4xl rounded border border-border/70 bg-muted/20 px-4 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           {failed ? (
@@ -129,7 +129,7 @@ function ProgressiveGenerationPanel({
 
 function LoadingBranchCards() {
   return (
-    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
       {[0, 1].map((index) => (
         <div
           key={index}
@@ -165,22 +165,31 @@ function CultureTreeSeedCard({
   const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
 
   return (
-    <section className="relative mx-auto w-full max-w-3xl">
-      <div className="rounded-[1.4rem] border border-primary/20 bg-card/92 px-3 py-2 shadow-[0_14px_38px_-34px_rgba(120,78,18,0.36)] sm:px-4">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-            <SproutIcon className="size-4 shrink-0 translate-y-0.5 text-primary" aria-hidden />
-            <h1 className="font-heading min-w-0 truncate text-2xl leading-tight tracking-tight text-card-foreground md:text-3xl">
-              {tree.seed}
-            </h1>
-            {byline ? (
-              <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
-                {byline}
+    <section className="relative mx-auto w-full max-w-6xl">
+      <div className="rounded-[1.4rem] border border-primary/20 bg-card/92 px-4 py-4 shadow-[0_14px_38px_-34px_rgba(120,78,18,0.36)] sm:px-5">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+              <SproutIcon className="size-4" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-1 font-mono text-[0.58rem] tracking-[0.16em] text-muted-foreground uppercase">
+                Seed
               </p>
-            ) : null}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="font-heading min-w-0 truncate text-3xl leading-tight tracking-tight text-card-foreground md:text-4xl">
+                  {tree.seed}
+                </h1>
+                {byline ? (
+                  <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
+                    {byline}
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
           {onAddItem ? (
-            <div className="shrink-0">
+            <div className="shrink-0 sm:justify-self-end">
               <TreeNodeDrawer
                 triggerLabel="Grow new branch"
                 triggerClassName="text-[0.65rem]"
@@ -191,7 +200,7 @@ function CultureTreeSeedCard({
           ) : null}
         </div>
       </div>
-      <div className="mx-auto mt-2 h-5 w-px bg-gradient-to-b from-primary/35 to-transparent" />
+      <div className="mx-auto mt-3 h-8 w-px bg-gradient-to-b from-primary/35 to-transparent" />
     </section>
   );
 }
@@ -358,7 +367,7 @@ function TreePage() {
 
   const ownerToolbar =
     isOwner && treeIsReady ? (
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 rounded border border-border/50 bg-card/45 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <Button
           type="button"
           variant="ghost"
@@ -372,7 +381,7 @@ function TreePage() {
           ) : null}
           {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
         </Button>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
             Link
           </span>
@@ -438,12 +447,14 @@ function TreePage() {
   };
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col text-foreground">
-      <div className="shrink-0 bg-background px-4 py-3">
-        <div className="mx-auto max-w-6xl">{ownerToolbar}</div>
-      </div>
+    <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
+      {ownerToolbar ? (
+        <div className="shrink-0 border-b border-border/45 bg-background/95 px-4 py-3">
+          <div className="mx-auto max-w-6xl">{ownerToolbar}</div>
+        </div>
+      ) : null}
 
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-4 px-4 pb-10">
+      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
         <CultureTreeSeedCard
           tree={tree}
           ownerUsername={username}

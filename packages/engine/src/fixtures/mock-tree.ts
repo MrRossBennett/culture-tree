@@ -43,6 +43,12 @@ export function mockCultureTreeForRequest(request: TreeRequest): CultureTree {
   const allowedTypes = new Set(data.mediaFilter);
   return CultureTreeSchema.parse({
     ...tree,
+    guideSections: tree.guideSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => allowedTypes.has(item.type)),
+      }))
+      .filter((section) => section.items.length > 0),
     items: tree.items.filter((item) => allowedTypes.has(item.type)),
   });
 }

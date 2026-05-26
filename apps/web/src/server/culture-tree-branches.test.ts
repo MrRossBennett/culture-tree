@@ -22,6 +22,7 @@ const branch: TreeItem = {
 const tree: CultureTree = {
   seed: "Ghost Dog",
   seedType: "root",
+  guideSections: [],
   items: [branch],
 };
 

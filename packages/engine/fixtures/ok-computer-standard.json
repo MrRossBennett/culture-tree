@@ -1,6 +1,56 @@
 {
   "seed": "OK Computer — Radiohead",
   "seedType": "root",
+  "guideSections": [
+    {
+      "id": "start-here",
+      "title": "Start Here",
+      "description": "The strongest first paths from OK Computer.",
+      "items": [
+        {
+          "id": "item_001",
+          "name": "Talk Talk — Spirit of Eden",
+          "type": "album",
+          "year": 1988,
+          "reason": "Both bands abandoned conventional rock structures for ambient, post-rock soundscapes, with Mark Hollis dissolving melody into atmosphere years before Radiohead made alienation feel devotional.",
+          "connectionType": "influence",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Spirit of Eden",
+            "creator": "Talk Talk"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_003",
+          "name": "Koyaanisqatsi",
+          "type": "film",
+          "year": 1982,
+          "reason": "Godfrey Reggio's city symphony turns technology into religious spectacle, the same mix of awe and dread Radiohead found in motorways, screens, and systems too large to love us back.",
+          "connectionType": "thematic",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Koyaanisqatsi"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_007",
+          "name": "Andrei Tarkovsky — Stalker",
+          "type": "film",
+          "year": 1979,
+          "reason": "Tarkovsky turns rusted machinery and spiritual exhaustion into a pilgrimage, matching Radiohead's vision of progress as slow apocalypse rather than triumphant modernity.",
+          "connectionType": "spiritual-kin",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Stalker",
+            "creator": "Andrei Tarkovsky"
+          },
+          "source": "ai"
+        }
+      ]
+    }
+  ],
   "items": [
     {
       "id": "item_001",
@@ -9,6 +59,7 @@
       "year": 1988,
       "reason": "Both bands abandoned conventional rock structures for ambient, post-rock soundscapes, with Mark Hollis dissolving melody into atmosphere years before Radiohead made alienation feel devotional.",
       "connectionType": "influence",
+      "branchRole": "essential-next",
       "searchHint": {
         "title": "Spirit of Eden",
         "creator": "Talk Talk"
@@ -35,6 +86,7 @@
       "year": 1982,
       "reason": "Godfrey Reggio's city symphony turns technology into religious spectacle, the same mix of awe and dread Radiohead found in motorways, screens, and systems too large to love us back.",
       "connectionType": "thematic",
+      "branchRole": "essential-next",
       "searchHint": {
         "title": "Koyaanisqatsi"
       },
@@ -87,6 +139,7 @@
       "year": 1979,
       "reason": "Tarkovsky turns rusted machinery and spiritual exhaustion into a pilgrimage, matching Radiohead's vision of progress as slow apocalypse rather than triumphant modernity.",
       "connectionType": "spiritual-kin",
+      "branchRole": "essential-next",
       "searchHint": {
         "title": "Stalker",
         "creator": "Andrei Tarkovsky"
