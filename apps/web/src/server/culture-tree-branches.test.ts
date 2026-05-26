@@ -98,6 +98,25 @@ describe("Culture Tree Branch mutations", () => {
     expect(countBranchesInSubtree(result.removedBranches)).toBe(1);
   });
 
+  it("deletes a Branch from its Guide Section without affecting unrelated sections", () => {
+    const result = deleteBranchFromCultureTree(guideTree, "similar_1");
+
+    expect(result.removedBranches).toEqual([
+      { ...branch, id: "similar_1", branchRole: "similar-appetite" },
+    ]);
+    expect(result.tree.items.map((item) => item.id)).toEqual(["start_1", "sideways_1", "deep_1"]);
+    expect(result.tree.guideSections).toMatchObject([
+      { id: "start-here", items: [{ id: "start_1" }] },
+      { id: "more-like-this", items: [] },
+      { id: "go-sideways", items: [{ id: "sideways_1" }] },
+      { id: "go-deeper", items: [{ id: "deep_1" }] },
+    ]);
+  });
+
+  it("rejects deleting a Branch that is not in the Culture Tree", () => {
+    expect(() => deleteBranchFromCultureTree(guideTree, "missing")).toThrow("Branch not found.");
+  });
+
   it("removes enrichment data for every Branch in the deleted Subtree", () => {
     expect(
       removeEnrichmentsForBranches(

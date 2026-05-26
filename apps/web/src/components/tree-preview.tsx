@@ -458,7 +458,9 @@ export function TreePreview({
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
 }) {
-  const previewSections = buildPreviewSections(tree).filter((section) => section.items.length > 0);
+  const previewSections = buildPreviewSections(tree).filter(
+    (section) => section.items.length > 0 || section.id !== "unsectioned",
+  );
   const loadingItemIdSet = new Set(loadingItemIds);
 
   return (
@@ -504,58 +506,64 @@ export function TreePreview({
                   ) : null}
                 </div>
                 <motion.div layout className="space-y-6 md:space-y-7">
-                  {itemRows.map((row, rowIndex) =>
-                    row.capacity >= 4 && row.items.length < 4 ? (
-                      <motion.div
-                        layout
-                        key={`${section.id}-tree-row-${rowIndex}`}
-                        className="mx-auto flex max-w-6xl flex-wrap justify-center gap-5 md:gap-6"
-                        style={{ maxWidth: rowMaxWidth(row.capacity) }}
-                      >
-                        <AnimatePresence>
-                          {row.items.map((item, itemIndex) => (
-                            <CultureTreeItemCard
-                              key={item.id}
-                              enrichments={enrichments}
-                              isLoading={loadingItemIdSet.has(item.id)}
-                              isGeneratingNewTree={isGeneratingNewTree}
-                              item={item}
-                              onDeleteItem={onDeleteItem}
-                              onGenerateNewTree={onGenerateNewTree}
-                              onToggleLike={onToggleLike}
-                              revealIndex={row.startIndex + itemIndex}
-                              resolvedEntity={resolvedEntities[item.id]}
-                              style={partialFourUpCardStyle()}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        layout
-                        key={`${section.id}-tree-row-${rowIndex}`}
-                        className="mx-auto grid grid-cols-1 gap-5 md:[grid-template-columns:var(--tree-row-columns)] md:gap-6"
-                        style={rowGridStyle(row.capacity)}
-                      >
-                        <AnimatePresence>
-                          {row.items.map((item, itemIndex) => (
-                            <CultureTreeItemCard
-                              key={item.id}
-                              enrichments={enrichments}
-                              isLoading={loadingItemIdSet.has(item.id)}
-                              isGeneratingNewTree={isGeneratingNewTree}
-                              item={item}
-                              onDeleteItem={onDeleteItem}
-                              onGenerateNewTree={onGenerateNewTree}
-                              onToggleLike={onToggleLike}
-                              revealIndex={row.startIndex + itemIndex}
-                              resolvedEntity={resolvedEntities[item.id]}
-                              style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </motion.div>
-                    ),
+                  {itemRows.length > 0 ? (
+                    itemRows.map((row, rowIndex) =>
+                      row.capacity >= 4 && row.items.length < 4 ? (
+                        <motion.div
+                          layout
+                          key={`${section.id}-tree-row-${rowIndex}`}
+                          className="mx-auto flex max-w-6xl flex-wrap justify-center gap-5 md:gap-6"
+                          style={{ maxWidth: rowMaxWidth(row.capacity) }}
+                        >
+                          <AnimatePresence>
+                            {row.items.map((item, itemIndex) => (
+                              <CultureTreeItemCard
+                                key={item.id}
+                                enrichments={enrichments}
+                                isLoading={loadingItemIdSet.has(item.id)}
+                                isGeneratingNewTree={isGeneratingNewTree}
+                                item={item}
+                                onDeleteItem={onDeleteItem}
+                                onGenerateNewTree={onGenerateNewTree}
+                                onToggleLike={onToggleLike}
+                                revealIndex={row.startIndex + itemIndex}
+                                resolvedEntity={resolvedEntities[item.id]}
+                                style={partialFourUpCardStyle()}
+                              />
+                            ))}
+                          </AnimatePresence>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          layout
+                          key={`${section.id}-tree-row-${rowIndex}`}
+                          className="mx-auto grid grid-cols-1 gap-5 md:[grid-template-columns:var(--tree-row-columns)] md:gap-6"
+                          style={rowGridStyle(row.capacity)}
+                        >
+                          <AnimatePresence>
+                            {row.items.map((item, itemIndex) => (
+                              <CultureTreeItemCard
+                                key={item.id}
+                                enrichments={enrichments}
+                                isLoading={loadingItemIdSet.has(item.id)}
+                                isGeneratingNewTree={isGeneratingNewTree}
+                                item={item}
+                                onDeleteItem={onDeleteItem}
+                                onGenerateNewTree={onGenerateNewTree}
+                                onToggleLike={onToggleLike}
+                                revealIndex={row.startIndex + itemIndex}
+                                resolvedEntity={resolvedEntities[item.id]}
+                                style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
+                              />
+                            ))}
+                          </AnimatePresence>
+                        </motion.div>
+                      ),
+                    )
+                  ) : (
+                    <p className="font-body text-center text-sm text-muted-foreground">
+                      No branches in this section yet.
+                    </p>
                   )}
                 </motion.div>
               </section>

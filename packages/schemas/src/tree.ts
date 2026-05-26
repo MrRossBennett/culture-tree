@@ -173,7 +173,7 @@ export const GuideSectionSchema = z.object({
   id: GuideSectionId,
   title: z.string().trim().min(1),
   description: z.string().trim().min(1).optional(),
-  items: z.array(TreeItemSchema).min(1),
+  items: z.array(TreeItemSchema),
 });
 
 export const CultureTreeSchema = z
@@ -432,10 +432,6 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
       }
 
       const rawItems = Array.isArray(o.items) ? o.items : [];
-      if (rawItems.length === 0) {
-        return null;
-      }
-
       const expectedRole = GUIDE_SECTION_BRANCH_ROLE[idResult.data];
       const items = rawItems
         .map((item, index) => normalizeTreeItem(item, index))
@@ -447,10 +443,6 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
           return true;
         })
         .map((item) => ({ ...item, branchRole: expectedRole }));
-
-      if (items.length === 0) {
-        return null;
-      }
 
       return GuideSectionSchema.parse({
         id: idResult.data,

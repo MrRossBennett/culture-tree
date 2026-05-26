@@ -52,10 +52,14 @@ export function deleteBranchFromCultureTree(
   }
 
   return {
-    tree: {
+    tree: CultureTreeSchema.parse({
       ...tree,
+      guideSections: tree.guideSections.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => item.id !== branchId),
+      })),
       items: tree.items.filter((item) => item.id !== branchId),
-    },
+    }),
     removedBranches: [removed],
   };
 }
