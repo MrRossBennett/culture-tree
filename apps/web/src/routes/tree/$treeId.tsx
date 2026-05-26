@@ -515,16 +515,16 @@ function TreePage() {
         <DialogContent showCloseButton={!seedFromItem.isPending} className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl">
-              {seedFromItem.isPending ? "Generating new tree" : "Generate new tree"}
+              {seedFromItem.isPending ? "Exploring" : "Explore This"}
             </DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">
               {generatingItem ? (
                 <>
-                  Build a fresh tree from{" "}
+                  Build a fresh guide-shaped Culture Tree from{" "}
                   <span className="text-foreground">{generatingItem.name}</span>.
                 </>
               ) : (
-                "Build a fresh tree from this item."
+                "Build a fresh guide-shaped Culture Tree from this Branch."
               )}
             </DialogDescription>
           </DialogHeader>
@@ -547,7 +547,7 @@ function TreePage() {
                   aria-hidden
                 />
                 <p className="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase">
-                  Generating connections…
+                  Exploring…
                 </p>
               </div>
             ) : (
@@ -566,7 +566,7 @@ function TreePage() {
                   });
                 }}
               >
-                Generate tree
+                Explore This
               </Button>
             )}
           </div>

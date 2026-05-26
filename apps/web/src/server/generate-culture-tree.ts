@@ -32,6 +32,7 @@ import {
   parseGenerationFinalData,
   parseGenerationMetadata,
   parseMediaFilter,
+  treeForRevealProgress,
 } from "./progressive-tree-generation-lifecycle";
 import {
   buildAcceptedAiGenerationUsage,
@@ -98,7 +99,7 @@ async function revealFinalTree(
 
     if (!nextItem) {
       await guardedUpdate(treeId, runId, {
-        data: currentTree,
+        data: finalTree,
         generationStatus: "ready",
         generationStage: "Ready",
         generationError: null,
@@ -106,12 +107,7 @@ async function revealFinalTree(
       return;
     }
 
-    const nextTree = CultureTreeSchema.parse({
-      ...currentTree,
-      seed: finalTree.seed,
-      seedType: finalTree.seedType,
-      items: [...currentTree.items, nextItem],
-    });
+    const nextTree = treeForRevealProgress(finalTree, nextIndex + 1);
     const updated = await guardedUpdate(treeId, runId, {
       data: nextTree,
       generationStatus: "revealing",
@@ -129,6 +125,7 @@ async function revealFinalTree(
 
     if (nextTree.items.length >= finalTree.items.length) {
       await guardedUpdate(treeId, runId, {
+        data: finalTree,
         generationStatus: "ready",
         generationStage: "Ready",
         generationError: null,
