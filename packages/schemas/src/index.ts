@@ -2,6 +2,7 @@ export {
   ConnectionType,
   acceptCultureTreeGenerationOutput,
   BranchRole,
+  branchRoleForGuideSection,
   CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
   countCultureTreeNodes,
   CultureTreeSchema,

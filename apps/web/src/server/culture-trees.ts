@@ -7,6 +7,7 @@ import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
+  GuideSectionId,
   type CultureTree,
   type NodeTypeValue,
   type TreeEnrichmentsMap,
@@ -64,7 +65,7 @@ function treeListPreviewItems(
 
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
-  parentNodeId: z.string().min(1),
+  guideSectionId: GuideSectionId,
   node: AddCultureTreeNodeDraftSchema,
 });
 
@@ -200,7 +201,7 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
     const nextNode = await completeTreeItemConnection(tree, draftNode);
     const nextTree = growBranchInCultureTree({
       tree,
-      parentBranchId: data.parentNodeId,
+      guideSectionId: data.guideSectionId,
       branch: nextNode,
     });
     const currentEnrichments = parseTreeEnrichments(row.enrichmentData);

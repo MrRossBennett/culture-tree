@@ -1,4 +1,11 @@
-import type { CultureTree, TreeEnrichmentsMap, TreeItem } from "@repo/schemas";
+import {
+  CultureTreeSchema,
+  branchRoleForGuideSection,
+  type CultureTree,
+  type GuideSectionIdValue,
+  type TreeEnrichmentsMap,
+  type TreeItem,
+} from "@repo/schemas";
 
 export const CULTURE_TREE_SEED_BRANCH_ID = "root";
 
@@ -9,17 +16,30 @@ export type DeleteBranchResult = {
 
 export function growBranchInCultureTree(input: {
   tree: CultureTree;
-  parentBranchId: string;
+  guideSectionId: GuideSectionIdValue;
   branch: TreeItem;
 }): CultureTree {
-  if (input.parentBranchId !== CULTURE_TREE_SEED_BRANCH_ID) {
-    throw new Error("Child Branch growth is not available yet.");
+  const targetSection = input.tree.guideSections.find(
+    (section) => section.id === input.guideSectionId,
+  );
+  if (!targetSection) {
+    throw new Error("Guide Section not found.");
   }
 
-  return {
-    ...input.tree,
-    items: [...input.tree.items, input.branch],
+  const branch = {
+    ...input.branch,
+    branchRole: branchRoleForGuideSection(input.guideSectionId),
   };
+
+  return CultureTreeSchema.parse({
+    ...input.tree,
+    guideSections: input.tree.guideSections.map((section) =>
+      section.id === input.guideSectionId
+        ? { ...section, items: [...section.items, branch] }
+        : section,
+    ),
+    items: [...input.tree.items, branch],
+  });
 }
 
 export function deleteBranchFromCultureTree(

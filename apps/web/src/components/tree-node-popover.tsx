@@ -77,6 +77,7 @@ function typeLabel(type: NodeTypeValue): string {
 interface TreeNodeDrawerProps {
   readonly triggerLabel: string;
   readonly triggerClassName?: string;
+  readonly title?: string;
   readonly isPending?: boolean;
   readonly onSubmit: (input: TreeNodePopoverSubmitInput) => Promise<void>;
 }
@@ -84,6 +85,7 @@ interface TreeNodeDrawerProps {
 export function TreeNodeDrawer({
   triggerLabel,
   triggerClassName,
+  title = "Grow new branch",
   isPending = false,
   onSubmit,
 }: TreeNodeDrawerProps) {
@@ -236,7 +238,7 @@ export function TreeNodeDrawer({
       </Button>
       <DrawerContent className="w-[min(34rem,calc(100vw-1rem))] sm:max-w-lg">
         <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl">Grow new branch</DrawerTitle>
+          <DrawerTitle className="font-heading text-xl">{title}</DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
           <div className="space-y-2">

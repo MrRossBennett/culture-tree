@@ -70,6 +70,10 @@ const GUIDE_SECTION_BRANCH_ROLE: Record<GuideSectionIdValue, BranchRoleValue> = 
   "go-deeper": "deep-cut",
 };
 
+export function branchRoleForGuideSection(id: GuideSectionIdValue): BranchRoleValue {
+  return GUIDE_SECTION_BRANCH_ROLE[id];
+}
+
 export const SearchHintSchema = z.object({
   title: z
     .string()

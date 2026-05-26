@@ -18,6 +18,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
+import { TreeNodeDrawer, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
 type TreeRow = {
@@ -438,12 +439,19 @@ export function TreePreview({
   isGeneratingNewTree = false,
   onDeleteItem,
   onGenerateNewTree,
+  onAddItem,
   onToggleLike,
   resolvedEntities = {},
+  isAddItemPending = false,
 }: {
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
   readonly loadingItemIds?: readonly string[];
+  readonly isAddItemPending?: boolean;
+  readonly onAddItem?: (
+    guideSectionId: GuideSectionIdValue,
+    node: TreeNodePopoverSubmitInput,
+  ) => Promise<void>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
@@ -461,6 +469,8 @@ export function TreePreview({
           {previewSections.map((section) => {
             const itemRows = splitItemsIntoTreeRows(section.items);
             const isStartHere = section.id === "start-here";
+            const growSectionId =
+              section.id === "unsectioned" ? null : (section.id as GuideSectionIdValue);
 
             return (
               <section key={section.id} className="mx-auto w-full max-w-7xl">
@@ -480,6 +490,17 @@ export function TreePreview({
                     <p className="font-body mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground italic md:text-base">
                       {section.description}
                     </p>
+                  ) : null}
+                  {growSectionId && onAddItem ? (
+                    <div className="mt-3">
+                      <TreeNodeDrawer
+                        triggerLabel="Grow Branch"
+                        triggerClassName="text-[0.6rem]"
+                        isPending={isAddItemPending}
+                        title={`Grow into ${section.title}`}
+                        onSubmit={(node) => onAddItem(growSectionId, node)}
+                      />
+                    </div>
                   ) : null}
                 </div>
                 <motion.div layout className="space-y-6 md:space-y-7">

@@ -1,5 +1,11 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import type { CultureTree, NodeTypeValue, TreeItem } from "@repo/schemas";
+import {
+  branchRoleForGuideSection,
+  type CultureTree,
+  type GuideSectionIdValue,
+  type NodeTypeValue,
+  type TreeItem,
+} from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { ButtonGroup } from "@repo/ui/components/button-group";
 import {
@@ -25,7 +31,7 @@ import {
   CulturalMixSelector,
   mediaFilterFromSelectedNodeTypes,
 } from "~/components/node-type-filter-list";
-import { TreeNodeDrawer, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
+import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import { TreePreview } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import {
@@ -154,13 +160,9 @@ function LoadingBranchCards() {
 function CultureTreeSeedCard({
   tree,
   ownerUsername,
-  isAddItemPending = false,
-  onAddItem,
 }: {
   readonly tree: CultureTree;
   readonly ownerUsername?: string | null;
-  readonly isAddItemPending?: boolean;
-  readonly onAddItem?: (parentItemId: string, node: TreeNodePopoverSubmitInput) => Promise<void>;
 }) {
   const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
 
@@ -188,16 +190,6 @@ function CultureTreeSeedCard({
               </div>
             </div>
           </div>
-          {onAddItem ? (
-            <div className="shrink-0 sm:justify-self-end">
-              <TreeNodeDrawer
-                triggerLabel="Grow new branch"
-                triggerClassName="text-[0.65rem]"
-                isPending={isAddItemPending}
-                onSubmit={(node) => onAddItem("root", node)}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
       <div className="mx-auto mt-3 h-8 w-px bg-gradient-to-b from-primary/35 to-transparent" />
@@ -205,7 +197,12 @@ function CultureTreeSeedCard({
   );
 }
 
-function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): TreeItem {
+type PendingTreeItem = TreeItem & { guideSectionId: GuideSectionIdValue };
+
+function pendingTreeItemFromInput(
+  input: TreeNodePopoverSubmitInput,
+  guideSectionId: GuideSectionIdValue,
+): PendingTreeItem {
   const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const { identity, searchHint, snapshot } = input.result;
 
@@ -216,10 +213,30 @@ function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): TreeItem {
     year: snapshot.year,
     reason: "",
     connectionType: input.connectionType,
+    branchRole: branchRoleForGuideSection(guideSectionId),
     searchHint,
     identity,
     snapshot,
     source: "user",
+    guideSectionId,
+  };
+}
+
+function treeWithPendingItems(tree: CultureTree, pendingItems: readonly PendingTreeItem[]) {
+  if (pendingItems.length === 0) {
+    return tree;
+  }
+
+  return {
+    ...tree,
+    guideSections: tree.guideSections.map((section) => ({
+      ...section,
+      items: [
+        ...section.items,
+        ...pendingItems.filter((item) => item.guideSectionId === section.id),
+      ],
+    })),
+    items: [...tree.items, ...pendingItems],
   };
 }
 
@@ -235,7 +252,7 @@ function TreePage() {
   ]);
   const [generationTone, setGenerationTone] = useState<CultureTreeTone>("mixed");
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
-  const [pendingItems, setPendingItems] = useState<TreeItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
   const treeIsReady = generation.status === "ready";
 
   const enrich = useMutation({
@@ -275,12 +292,12 @@ function TreePage() {
 
   const addItem = useMutation({
     mutationFn: (input: {
-      parentItemId: string;
+      guideSectionId: GuideSectionIdValue;
       node: TreeNodePopoverSubmitInput;
       pendingItemId: string;
     }) => {
-      const { parentItemId, node } = input;
-      return $addCultureTreeNode({ data: { treeId, parentNodeId: parentItemId, node } });
+      const { guideSectionId, node } = input;
+      return $addCultureTreeNode({ data: { treeId, guideSectionId, node } });
     },
     onSuccess: async (result, variables) => {
       if (!result.ok) {
@@ -423,8 +440,7 @@ function TreePage() {
       </div>
     ) : null;
 
-  const previewTree =
-    pendingItems.length > 0 ? { ...tree, items: [...tree.items, ...pendingItems] } : tree;
+  const previewTree = treeWithPendingItems(tree, pendingItems);
   const pendingItemIds = pendingItems.map((item) => item.id);
   const generationIsActive = isGenerationActive(generation.status);
   const generationIsTerminal = isGenerationTerminal(generation.status);
@@ -440,10 +456,13 @@ function TreePage() {
     return () => window.clearInterval(id);
   }, [generationIsActive, router]);
 
-  const handleAddItem = async (parentItemId: string, node: TreeNodePopoverSubmitInput) => {
-    const pendingItem = pendingTreeItemFromInput(node);
+  const handleAddItem = async (
+    guideSectionId: GuideSectionIdValue,
+    node: TreeNodePopoverSubmitInput,
+  ) => {
+    const pendingItem = pendingTreeItemFromInput(node, guideSectionId);
     setPendingItems((items) => [...items, pendingItem]);
-    await addItem.mutateAsync({ parentItemId, node, pendingItemId: pendingItem.id });
+    await addItem.mutateAsync({ guideSectionId, node, pendingItemId: pendingItem.id });
   };
 
   return (
@@ -455,18 +474,7 @@ function TreePage() {
       ) : null}
 
       <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
-        <CultureTreeSeedCard
-          tree={tree}
-          ownerUsername={username}
-          isAddItemPending={addItem.isPending}
-          onAddItem={
-            isOwner && treeIsReady
-              ? async (parentItemId, node) => {
-                  await handleAddItem(parentItemId, node);
-                }
-              : undefined
-          }
-        />
+        <CultureTreeSeedCard tree={tree} ownerUsername={username} />
         {!treeIsReady ? (
           <ProgressiveGenerationPanel
             status={generation.status}
@@ -481,8 +489,16 @@ function TreePage() {
           <TreePreview
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
+            isAddItemPending={addItem.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
+            onAddItem={
+              isOwner && treeIsReady
+                ? async (guideSectionId, node) => {
+                    await handleAddItem(guideSectionId, node);
+                  }
+                : undefined
+            }
             onToggleLike={async (entityId, liked) => {
               await toggleLike.mutateAsync({ entityId, liked });
             }}
