@@ -42,6 +42,50 @@ import {
 
 const REVEAL_DELAY_MS = 700;
 
+export const StartTreeFromScratchInputSchema = z.object({
+  title: z.string().trim().min(1).max(140),
+  description: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
+});
+
+export type StartTreeFromScratchInput = z.infer<typeof StartTreeFromScratchInputSchema>;
+
+export function buildManualCultureTreeDraft(input: StartTreeFromScratchInput): CultureTree {
+  return CultureTreeSchema.parse({
+    title: input.title,
+    description: input.description,
+    guideSections: [],
+    items: [],
+  });
+}
+
+export function buildManualCultureTreeInsert(input: {
+  treeId: string;
+  userId: string;
+  input: StartTreeFromScratchInput;
+}): typeof cultureTree.$inferInsert {
+  return {
+    id: input.treeId,
+    userId: input.userId,
+    data: buildManualCultureTreeDraft(input.input),
+    seedQuery: input.input.title,
+    depth: "standard",
+    tone: "mixed",
+    mediaFilter: null,
+    isPublic: false,
+    generationStatus: "ready",
+    generationRunId: null,
+    generationStage: "Ready",
+    generationError: null,
+    generationFinalData: null,
+    generationUpdatedAt: new Date(),
+  };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -299,6 +343,21 @@ export const $generateCultureTree = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) =>
     startProgressiveCultureTree(context.user, data, "direct_generate_tree"),
   );
+
+export const $startTreeFromScratch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(StartTreeFromScratchInputSchema)
+  .handler(async ({ data, context }) => {
+    const treeId = nanoid();
+    await db.insert(cultureTree).values(
+      buildManualCultureTreeInsert({
+        treeId,
+        userId: context.user.id,
+        input: data,
+      }),
+    );
+    return { ok: true as const, treeId };
+  });
 
 export const $retryCultureTreeGeneration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

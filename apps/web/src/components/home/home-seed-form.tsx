@@ -3,7 +3,7 @@ import type { NodeTypeValue, TreeRequest } from "@repo/schemas";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { LoaderCircleIcon } from "lucide-react";
+import { LoaderCircleIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ import {
 } from "~/components/node-type-filter-list";
 import { useOpenSignIn } from "~/components/sign-in-dialog-host";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
-import { $generateCultureTree } from "~/server/generate-culture-tree";
+import { $generateCultureTree, $startTreeFromScratch } from "~/server/generate-culture-tree";
 
 function SeedCountLine() {
   const { data } = useQuery(myCultureTreesQueryOptions());
@@ -26,8 +26,8 @@ function SeedCountLine() {
   return (
     <p className="text-center font-mono text-[0.7rem] text-muted-foreground">
       {n === 0
-        ? "No seeds planted yet — your first tree starts above."
-        : `${n} seed${n === 1 ? "" : "s"} planted`}
+        ? "No trees yet. Start with a Seed or build one by hand."
+        : `${n} culture tree${n === 1 ? "" : "s"} started`}
     </p>
   );
 }
@@ -48,6 +48,8 @@ export function HomeSeedForm({
   const depth: TreeRequest["depth"] = "standard";
   const [tone, setTone] = useState<CultureTreeTone>("mixed");
   const [selectedTypes, setSelectedTypes] = useState<NodeTypeValue[]>([...CULTURE_TREE_NODE_TYPES]);
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualDescription, setManualDescription] = useState("");
   const loggedIn = Boolean(user);
 
   const generate = useMutation({
@@ -77,6 +79,32 @@ export function HomeSeedForm({
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not generate tree.");
+    },
+  });
+
+  const startFromScratch = useMutation({
+    mutationFn: async () => {
+      const title = manualTitle.trim();
+      if (!title) {
+        throw new Error("Name the tree first.");
+      }
+      return $startTreeFromScratch({
+        data: {
+          title,
+          description: manualDescription.trim() || undefined,
+        },
+      });
+    },
+    onSuccess: (result) => {
+      const { treeId } = result;
+      setManualTitle("");
+      setManualDescription("");
+      void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      toast.success("Your Culture Tree is ready to curate.");
+      void navigate({ to: "/tree/$treeId", params: { treeId } });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not start that tree.");
     },
   });
 
@@ -149,6 +177,72 @@ export function HomeSeedForm({
         />
 
         {loggedIn ? <SeedCountLine /> : null}
+      </form>
+
+      <form
+        className="border-t border-border/55 pt-5"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!loggedIn) {
+            openSignIn();
+            return;
+          }
+          if (!manualTitle.trim() || startFromScratch.isPending) return;
+          startFromScratch.mutate();
+        }}
+      >
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="grid gap-2">
+            <label
+              htmlFor="manual-tree-title"
+              className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase"
+            >
+              Build from scratch
+            </label>
+            <input
+              id="manual-tree-title"
+              value={manualTitle}
+              onChange={(e) => setManualTitle(e.target.value)}
+              placeholder="Name a Culture Tree you want to curate"
+              maxLength={140}
+              className={cn(
+                "h-11 rounded-sm border border-border/70 bg-card/55 px-3 text-sm text-foreground transition-colors outline-none",
+                "placeholder:text-muted-foreground/65 focus:border-primary/70",
+              )}
+            />
+            <input
+              aria-label="Optional tree description"
+              value={manualDescription}
+              onChange={(e) => setManualDescription(e.target.value)}
+              placeholder="Optional description"
+              maxLength={500}
+              className={cn(
+                "h-10 rounded-sm border border-border/50 bg-background/50 px-3 text-sm text-foreground transition-colors outline-none",
+                "placeholder:text-muted-foreground/60 focus:border-primary/60",
+              )}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={startFromScratch.isPending}
+            className={cn(
+              "inline-flex h-11 items-center justify-center rounded-sm border px-5 font-mono text-[0.65rem] tracking-[0.1em] uppercase transition-colors",
+              manualTitle.trim()
+                ? "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
+                : "border-border/70 bg-card/50 text-muted-foreground",
+            )}
+          >
+            {startFromScratch.isPending ? (
+              <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <>
+                <PlusIcon className="size-3.5" aria-hidden />
+                Start Tree
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </section>
   );
