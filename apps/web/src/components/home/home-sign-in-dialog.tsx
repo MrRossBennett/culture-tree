@@ -35,7 +35,7 @@ export function HomeSignInDialog({ open, onOpenChange }: HomeSignInDialogProps) 
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">Sign in</DialogTitle>
           <DialogDescription className="font-body text-base">
-            Sign in with Google to plant your first seed. Your prompt stays right here.
+            Sign in with Google to start your first Culture Tree. Your prompt stays right here.
           </DialogDescription>
         </DialogHeader>
         <SignInSocialButton

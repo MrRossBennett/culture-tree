@@ -3,7 +3,7 @@ import type { NodeTypeValue, TreeRequest } from "@repo/schemas";
 import { cn } from "@repo/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { LoaderCircleIcon, PlusIcon } from "lucide-react";
+import { LoaderCircleIcon, PlusIcon, SparklesIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -56,7 +56,7 @@ export function HomeSeedForm({
     mutationFn: async () => {
       const query = prompt.trim();
       if (!query) {
-        throw new Error("Enter a seed first.");
+        throw new Error("Enter a Seed first.");
       }
       return $generateCultureTree({
         data: {
@@ -74,7 +74,7 @@ export function HomeSeedForm({
       }
       const { treeId } = result;
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
-      toast.success("Your culture tree is growing.");
+      toast.success("Your AI-assisted Culture Tree is growing.");
       void navigate({ to: "/tree/$treeId", params: { treeId } });
     },
     onError: (err: Error) => {
@@ -124,10 +124,17 @@ export function HomeSeedForm({
         }}
       >
         <div className="relative rounded-lg border border-border/70 bg-card/35 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.16)] transition-colors focus-within:border-primary/70 sm:p-6">
+          <label
+            htmlFor="generate-tree-seed"
+            className="mb-3 block font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase"
+          >
+            Generate Tree with AI
+          </label>
           <input
+            id="generate-tree-seed"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Enter an album, film, book, era..."
+            placeholder="Enter a Seed: album, film, book, era..."
             maxLength={200}
             className={cn(
               "font-heading w-full bg-transparent text-3xl text-foreground italic outline-none sm:text-4xl",
@@ -143,7 +150,7 @@ export function HomeSeedForm({
             onMouseLeave={() => onSeedHover?.(false)}
             className={cn(
               "absolute right-4 bottom-4 inline-flex min-h-12 items-center justify-center font-mono text-xs tracking-[0.12em] uppercase transition-colors sm:right-6 sm:bottom-1/2 sm:translate-y-1/2",
-              "rounded-sm border px-6 py-3",
+              "gap-2 rounded-sm border px-6 py-3",
               prompt.trim()
                 ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
                 : "border-primary/70 bg-primary text-primary-foreground opacity-65 hover:opacity-80",
@@ -152,7 +159,10 @@ export function HomeSeedForm({
             {generate.isPending ? (
               <LoaderCircleIcon className="size-3.5 animate-spin" />
             ) : (
-              "Plant Seed →"
+              <>
+                <SparklesIcon className="size-3.5" aria-hidden />
+                Generate Tree
+              </>
             )}
           </button>
         </div>
@@ -228,6 +238,7 @@ export function HomeSeedForm({
             disabled={startFromScratch.isPending}
             className={cn(
               "inline-flex h-11 items-center justify-center rounded-sm border px-5 font-mono text-[0.65rem] tracking-[0.1em] uppercase transition-colors",
+              "gap-2",
               manualTitle.trim()
                 ? "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
                 : "border-border/70 bg-card/50 text-muted-foreground",

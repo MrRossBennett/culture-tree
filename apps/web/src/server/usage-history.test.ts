@@ -42,6 +42,29 @@ describe("Usage History", () => {
     expect(usageTypeForGenerateTreeAction("generate_tree_from_branch")).toBe("generate_tree");
   });
 
+  it("records AI-assisted Start Tree from a Seed as Generate Tree usage", () => {
+    const usageType = usageTypeForGenerateTreeAction("direct_generate_tree");
+    if (!usageType) {
+      throw new Error("direct Generate Tree should record AI usage.");
+    }
+    const usage = buildAcceptedAiGenerationUsage({
+      id: "usage_start_tree",
+      person: { id: "person_start_tree", email: "free@example.com" },
+      cultureTreeId: "tree_start_tree",
+      usageType,
+      proAllowlist: [],
+      now: new Date("2026-04-30T09:00:00.000Z"),
+    });
+
+    expect(usage).toMatchObject({
+      usageType: "generate_tree",
+      effectivePlan: PLANS.free,
+      cultureTreeId: "tree_start_tree",
+      allowancePeriodStart: null,
+      allowancePeriodEnd: null,
+    });
+  });
+
   it("records paid Allowance Period when one applies", () => {
     const usage = buildAcceptedAiGenerationUsage({
       id: "usage_456",
