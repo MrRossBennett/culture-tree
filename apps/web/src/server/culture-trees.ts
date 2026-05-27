@@ -77,6 +77,19 @@ const SearchCultureTreeNodesInputSchema = z.object({
 
 type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: AllowanceLimitReached };
 
+export function canReadCultureTree(input: {
+  readonly currentUserId?: string | null;
+  readonly ownerUserId: string;
+  readonly isPublic: boolean;
+  readonly generationStatus: string;
+}): boolean {
+  if (input.currentUserId === input.ownerUserId) {
+    return true;
+  }
+
+  return input.isPublic && input.generationStatus === "ready";
+}
+
 export const $getCultureTreeById = createServerFn({ method: "GET" })
   .inputValidator(z.object({ treeId: z.string().min(1) }))
   .handler(async ({ data: { treeId } }) => {
@@ -105,7 +118,12 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
       return null;
     }
     const generation = parseGenerationMetadata(row);
-    const allowed = (row.isPublic && generation.status === "ready") || user?.id === row.userId;
+    const allowed = canReadCultureTree({
+      currentUserId: user?.id,
+      ownerUserId: row.userId,
+      isPublic: row.isPublic,
+      generationStatus: generation.status,
+    });
     if (!allowed) {
       return null;
     }
