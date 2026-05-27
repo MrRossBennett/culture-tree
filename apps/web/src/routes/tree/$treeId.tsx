@@ -18,7 +18,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
 import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,7 +40,6 @@ import {
   $getCultureTreeById,
   $setCultureTreePublic,
 } from "~/server/culture-trees";
-import { $enrichExistingCultureTree } from "~/server/enrich-culture-tree";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
 import { $retryCultureTreeGeneration, $seedTreeFromItem } from "~/server/generate-culture-tree";
 import {
@@ -160,40 +159,90 @@ function LoadingBranchCards() {
 function CultureTreeSeedCard({
   tree,
   ownerUsername,
+  visibilityControl,
 }: {
   readonly tree: CultureTree;
   readonly ownerUsername?: string | null;
+  readonly visibilityControl?: ReactNode;
 }) {
   const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
 
   return (
-    <section className="relative mx-auto w-full max-w-6xl">
-      <div className="rounded-[1.4rem] border border-primary/20 bg-card/92 px-4 py-4 shadow-[0_14px_38px_-34px_rgba(120,78,18,0.36)] sm:px-5">
-        <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
-              <SproutIcon className="size-4" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p className="mb-1 font-mono text-[0.58rem] tracking-[0.16em] text-muted-foreground uppercase">
-                Seed
-              </p>
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h1 className="font-heading min-w-0 truncate text-3xl leading-tight tracking-tight text-card-foreground md:text-4xl">
-                  {tree.seed}
-                </h1>
-                {byline ? (
-                  <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
-                    {byline}
-                  </p>
-                ) : null}
-              </div>
+    <section className="w-full">
+      <div className="flex min-w-0 flex-col gap-4 border-b border-border/55 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/8 text-primary">
+            <SproutIcon className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="mb-1 font-mono text-[0.58rem] tracking-[0.16em] text-muted-foreground uppercase">
+              Seed
+            </p>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="font-heading min-w-0 truncate text-3xl leading-tight tracking-tight text-foreground md:text-4xl">
+                {tree.seed}
+              </h1>
+              {byline ? (
+                <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
+                  {byline}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
+        {visibilityControl ? <div className="shrink-0 sm:pb-1">{visibilityControl}</div> : null}
       </div>
-      <div className="mx-auto mt-3 h-8 w-px bg-gradient-to-b from-primary/35 to-transparent" />
     </section>
+  );
+}
+
+function TreeVisibilityToggle({
+  isPublic,
+  isPending,
+  onChange,
+}: {
+  readonly isPublic: boolean;
+  readonly isPending: boolean;
+  readonly onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
+        Link
+      </span>
+      <ButtonGroup aria-label="Tree link visibility" className="rounded">
+        <Button
+          type="button"
+          size="xs"
+          variant={isPublic ? "outline" : "default"}
+          aria-pressed={!isPublic}
+          disabled={isPending}
+          onClick={() => {
+            if (isPublic) {
+              onChange(false);
+            }
+          }}
+          className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+        >
+          Private
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant={isPublic ? "default" : "outline"}
+          aria-pressed={isPublic}
+          disabled={isPending}
+          onClick={() => {
+            if (!isPublic) {
+              onChange(true);
+            }
+          }}
+          className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+        >
+          Public
+        </Button>
+      </ButtonGroup>
+    </div>
   );
 }
 
@@ -258,17 +307,6 @@ function TreePage() {
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
   const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
   const treeIsReady = generation.status === "ready";
-
-  const enrich = useMutation({
-    mutationFn: () => $enrichExistingCultureTree({ data: { treeId } }),
-    onSuccess: async () => {
-      toast.success("Media and links updated.");
-      await router.invalidate();
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Could not enrich this tree.");
-    },
-  });
 
   const retryGeneration = useMutation({
     mutationFn: () => $retryCultureTreeGeneration({ data: { treeId } }),
@@ -386,64 +424,6 @@ function TreePage() {
     </section>
   ) : null;
 
-  const ownerToolbar =
-    isOwner && treeIsReady ? (
-      <div className="flex flex-col gap-3 rounded border border-border/50 bg-card/45 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={enrich.isPending}
-          onClick={() => enrich.mutate()}
-          className="inline-flex items-center gap-2 font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase hover:text-foreground"
-        >
-          {enrich.isPending ? (
-            <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" aria-hidden />
-          ) : null}
-          {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
-        </Button>
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
-            Link
-          </span>
-          <ButtonGroup aria-label="Tree link visibility" className="rounded">
-            <Button
-              type="button"
-              size="xs"
-              variant={isPublic ? "outline" : "default"}
-              aria-pressed={!isPublic}
-              disabled={setPublic.isPending}
-              onClick={() => {
-                if (!isPublic) {
-                  return;
-                }
-                setPublic.mutate(false);
-              }}
-              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-            >
-              Private
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant={isPublic ? "default" : "outline"}
-              aria-pressed={isPublic}
-              disabled={setPublic.isPending}
-              onClick={() => {
-                if (isPublic) {
-                  return;
-                }
-                setPublic.mutate(true);
-              }}
-              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-            >
-              Public
-            </Button>
-          </ButtonGroup>
-        </div>
-      </div>
-    ) : null;
-
   const previewTree = treeWithPendingItems(tree, pendingItems);
   const pendingItemIds = pendingItems.map((item) => item.id);
   const generationIsActive = isGenerationActive(generation.status);
@@ -471,14 +451,20 @@ function TreePage() {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
-      {ownerToolbar ? (
-        <div className="shrink-0 border-b border-border/45 bg-background/95 px-4 py-3">
-          <div className="mx-auto max-w-6xl">{ownerToolbar}</div>
-        </div>
-      ) : null}
-
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
-        <CultureTreeSeedCard tree={tree} ownerUsername={username} />
+      <div className="flex w-full flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
+        <CultureTreeSeedCard
+          tree={tree}
+          ownerUsername={username}
+          visibilityControl={
+            isOwner && treeIsReady ? (
+              <TreeVisibilityToggle
+                isPublic={isPublic}
+                isPending={setPublic.isPending}
+                onChange={(next) => setPublic.mutate(next)}
+              />
+            ) : undefined
+          }
+        />
         {!treeIsReady ? (
           <ProgressiveGenerationPanel
             status={generation.status}

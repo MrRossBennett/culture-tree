@@ -44,8 +44,6 @@ export function nodeTypeIcon(type: NodeTypeValue, className: string) {
   }
 }
 
-const SQUARE_TYPES: ReadonlySet<NodeTypeValue> = new Set(["album", "person", "song"]);
-
 export function NodeThumbnail({
   type,
   src,
@@ -57,8 +55,6 @@ export function NodeThumbnail({
   readonly size?: "sm" | "md";
   readonly className?: string;
 }) {
-  const isSquare = SQUARE_TYPES.has(type);
-  const isAlbum = type === "album";
   const [failedSrc, setFailedSrc] = useState<string | undefined>();
   const displaySrc = src && failedSrc !== src ? src : undefined;
 
@@ -76,11 +72,7 @@ export function NodeThumbnail({
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, scale: 0.992, filter: "blur(6px)" }}
             transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-            className={cn(
-              "shrink-0 object-cover",
-              isSquare ? cn("size-10", !isAlbum) : "max-h-20 w-12 self-start object-top",
-              className,
-            )}
+            className={cn("shrink-0 object-cover", className)}
           />
         ) : (
           <motion.div
@@ -91,8 +83,7 @@ export function NodeThumbnail({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.24, ease: "easeOut" }}
             className={cn(
-              "flex size-10 shrink-0 items-center justify-center bg-muted/20 text-muted-foreground",
-              !isAlbum,
+              "flex shrink-0 items-center justify-center bg-muted/20 text-muted-foreground",
               className,
             )}
           >
@@ -116,13 +107,7 @@ export function NodeThumbnail({
           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
           exit={{ opacity: 0, scale: 0.992, filter: "blur(6px)" }}
           transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
-          className={cn(
-            "shrink-0",
-            isSquare
-              ? cn("size-22 object-cover md:size-24", !isAlbum)
-              : "max-h-40 w-22 self-start object-contain object-top md:max-h-48 md:w-24",
-            className,
-          )}
+          className={cn("shrink-0 object-cover", className)}
         />
       ) : (
         <motion.div
@@ -133,12 +118,11 @@ export function NodeThumbnail({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.24, ease: "easeOut" }}
           className={cn(
-            "flex size-22 shrink-0 items-center justify-center bg-muted/20 text-muted-foreground md:size-24",
-            !isAlbum,
+            "flex shrink-0 items-center justify-center bg-muted/20 text-muted-foreground",
             className,
           )}
         >
-          {nodeTypeIcon(type, "size-6 opacity-50 md:size-7")}
+          {nodeTypeIcon(type, "size-6 opacity-50")}
         </motion.div>
       )}
     </AnimatePresence>
