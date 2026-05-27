@@ -14,7 +14,7 @@ describe("generateTree", () => {
     }
   });
 
-  it("returns a tree with required recommendation Guide Sections when MOCK_ENGINE is enabled", async () => {
+  it("returns a generated tree with recommendation Guide Sections when MOCK_ENGINE is enabled", async () => {
     process.env.MOCK_ENGINE = "true";
 
     const tree = await generateTree({
