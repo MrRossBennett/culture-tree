@@ -1,10 +1,17 @@
 import { type ExternalNodeSearchResult, type NodeTypeValue } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@repo/ui/components/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@repo/ui/components/dialog";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import { LoaderCircleIcon, SearchIcon, XIcon } from "lucide-react";
+import { LoaderCircleIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
@@ -74,25 +81,29 @@ function typeLabel(type: NodeTypeValue): string {
     .join(" ");
 }
 
-interface TreeNodeDrawerProps {
+interface TreeNodeDialogProps {
   readonly triggerLabel: string;
   readonly triggerClassName?: string;
   readonly triggerIcon?: ReactNode;
   readonly triggerVariant?: "amber" | "default" | "outline" | "secondary" | "ghost";
   readonly title?: string;
   readonly isPending?: boolean;
+  readonly isAiPending?: boolean;
+  readonly onAiSubmit?: (input: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onSubmit: (input: TreeNodePopoverSubmitInput) => Promise<void>;
 }
 
-export function TreeNodeDrawer({
+export function TreeNodeDialog({
   triggerLabel,
   triggerClassName,
   triggerIcon,
-  triggerVariant = "amber",
-  title = "Grow Branch",
+  triggerVariant = "outline",
+  title = "Add Branch",
   isPending = false,
+  isAiPending = false,
+  onAiSubmit,
   onSubmit,
-}: TreeNodeDrawerProps) {
+}: TreeNodeDialogProps) {
   const [open, setOpen] = useState(false);
   const searchId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -183,6 +194,7 @@ export function TreeNodeDrawer({
     activeResultType == null
       ? results
       : results.filter((result) => result.snapshot.type === activeResultType);
+  const suggestedAiResult = filteredResults.at(0);
 
   useEffect(() => {
     const resultsPane = resultsPaneRef.current;
@@ -207,26 +219,37 @@ export function TreeNodeDrawer({
     };
   }, [filteredResults, open]);
 
-  const handleSelectResult = async (result: ExternalNodeSearchResult) => {
-    if (isPending) {
+  const handleSubmitResult = async (
+    result: ExternalNodeSearchResult,
+    submit: (input: TreeNodePopoverSubmitInput) => Promise<void>,
+  ) => {
+    if (isPending || isAiPending) {
       return;
     }
 
-    setQuery("");
-    setResults([]);
-    setActiveResultType(null);
-    setSearchError(null);
-    inputRef.current?.focus();
-    await onSubmit({
+    await submit({
       kind: "search-result",
       result,
       connectionType: DEFAULT_CONNECTION_TYPE,
       reason: "",
     });
+    setOpen(false);
+  };
+
+  const handleSelectResult = async (result: ExternalNodeSearchResult) => {
+    await handleSubmitResult(result, onSubmit);
+  };
+
+  const handleAiSubmit = async () => {
+    if (!onAiSubmit || !suggestedAiResult) {
+      return;
+    }
+
+    await handleSubmitResult(suggestedAiResult, onAiSubmit);
   };
 
   return (
-    <Drawer open={open} onOpenChange={setOpen} direction="right">
+    <Dialog open={open} onOpenChange={setOpen}>
       <Button
         type="button"
         variant={triggerVariant}
@@ -237,11 +260,14 @@ export function TreeNodeDrawer({
         {triggerIcon ? <span data-icon="inline-start">{triggerIcon}</span> : null}
         {triggerLabel}
       </Button>
-      <DrawerContent className="w-[min(34rem,calc(100vw-1rem))] sm:max-w-lg">
-        <DrawerHeader>
-          <DrawerTitle className="font-heading text-xl">{title}</DrawerTitle>
-        </DrawerHeader>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+      <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] overflow-hidden rounded-xl p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b border-border/60 px-5 pt-5 pb-4">
+          <DialogTitle className="font-heading text-xl">{title}</DialogTitle>
+          <DialogDescription>
+            Find a recognized cultural subject and add it as the next Branch.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 space-y-4 overflow-y-auto px-5 pb-5">
           <div className="space-y-2">
             <Label
               htmlFor={searchId}
@@ -249,33 +275,60 @@ export function TreeNodeDrawer({
             >
               Search
             </Label>
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/60" />
-              <Input
-                id={searchId}
-                ref={inputRef}
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.currentTarget.value);
-                }}
-                placeholder="A film, album, book, artist, place…"
-                className="font-body h-11 pr-9 pl-9 text-sm"
-                maxLength={160}
-              />
-              {query ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    setResults([]);
-                    setActiveResultType(null);
-                    setSearchError(null);
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  id={searchId}
+                  ref={inputRef}
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.currentTarget.value);
                   }}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label="Clear search"
-                >
-                  <XIcon className="size-4" />
-                </button>
+                  placeholder="A film, album, book, artist, place..."
+                  className="font-body h-11 pr-9 pl-9 text-sm"
+                  maxLength={160}
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      setResults([]);
+                      setActiveResultType(null);
+                      setSearchError(null);
+                    }}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <XIcon className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+              {onAiSubmit ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="amber"
+                        size="icon-lg"
+                        disabled={!suggestedAiResult || isPending || isAiPending}
+                        aria-label="Grow with AI"
+                        onClick={() => {
+                          void handleAiSubmit();
+                        }}
+                      />
+                    }
+                  >
+                    {isAiPending ? (
+                      <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <SparklesIcon className="size-4" aria-hidden />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>Grow with AI</TooltipContent>
+                </Tooltip>
               ) : null}
             </div>
           </div>
@@ -296,7 +349,7 @@ export function TreeNodeDrawer({
                     types={resultTypeFilters}
                     selectedTypes={activeResultType ? [activeResultType] : []}
                     allSelected={activeResultType == null}
-                    disabled={isPending}
+                    disabled={isPending || isAiPending}
                     onSelectAll={() => setActiveResultType(null)}
                     onToggleType={(type) =>
                       setActiveResultType((current) => (current === type ? null : type))
@@ -313,13 +366,13 @@ export function TreeNodeDrawer({
                 <div className="relative">
                   <div
                     ref={resultsPaneRef}
-                    className="max-h-[calc(100vh-18rem)] space-y-1.5 overflow-y-auto pr-1"
+                    className="max-h-[min(24rem,calc(100vh-19rem))] space-y-1.5 overflow-y-auto pr-1"
                   >
                     {filteredResults.map((result) => (
                       <ResultRow
                         key={`${result.identity.source}:${result.identity.externalId}`}
                         result={result}
-                        disabled={isPending}
+                        disabled={isPending || isAiPending}
                         onSelect={(next) => {
                           void handleSelectResult(next);
                         }}
@@ -338,7 +391,7 @@ export function TreeNodeDrawer({
                 <div className="flex min-h-28 items-center justify-center rounded-xl border border-border/60 bg-card/30">
                   <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
-                    Looking for matches…
+                    Looking for matches...
                   </span>
                 </div>
               ) : !showSearching && trimmedQuery.length >= 2 ? (
@@ -347,8 +400,8 @@ export function TreeNodeDrawer({
             </div>
           ) : null}
         </div>
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   );
 }
 

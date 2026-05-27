@@ -30,7 +30,7 @@ import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
-import { TreeNodeDrawer } from "~/components/tree-node-popover";
+import { TreeNodeDialog } from "~/components/tree-node-popover";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
@@ -593,28 +593,16 @@ export function TreePreview({
           <span />
         )}
         {onAddItem || onGrowItem ? (
-          <div className="flex flex-wrap justify-end gap-2">
-            {onAddItem ? (
-              <TreeNodeDrawer
-                triggerLabel="Add to Tree"
-                triggerIcon={<PlusIcon className="size-3.5" />}
-                triggerVariant="outline"
-                title="Add to Tree"
-                isPending={isAddItemPending}
-                onSubmit={onAddItem}
-              />
-            ) : null}
-            {onGrowItem ? (
-              <TreeNodeDrawer
-                triggerLabel="Grow Branch"
-                triggerIcon={<SparklesIcon className="size-3.5" />}
-                triggerVariant="amber"
-                title="Grow Branch with AI"
-                isPending={isGrowItemPending}
-                onSubmit={onGrowItem}
-              />
-            ) : null}
-          </div>
+          <TreeNodeDialog
+            triggerLabel="Add Branch"
+            triggerIcon={<PlusIcon className="size-3.5" />}
+            triggerVariant="outline"
+            title="Add Branch"
+            isPending={isAddItemPending}
+            isAiPending={isGrowItemPending}
+            onSubmit={(onAddItem ?? onGrowItem)!}
+            onAiSubmit={onGrowItem}
+          />
         ) : null}
       </div>
       {boardItems.length > 0 ? (
