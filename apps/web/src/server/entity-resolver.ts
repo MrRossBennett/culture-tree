@@ -20,6 +20,10 @@ type ResolvedEntitySummary = {
 export type TreeResolvedEntitiesMap = Record<string, ResolvedEntitySummary>;
 
 const EntityLikeInputSchema = z.object({ entityId: z.string().min(1) });
+const AddLikedEntityToTreeInputSchema = z.object({
+  entityId: z.string().min(1),
+  targetTreeId: z.string().min(1),
+});
 
 export const $likeEntity = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -42,4 +46,17 @@ export const $listMyLikedEntities = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { listLikedEntitiesForUser } = await import("./entity-resolver.server");
     return listLikedEntitiesForUser(context.user.id);
+  });
+
+export const $addLikedEntityToTree = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddLikedEntityToTreeInputSchema)
+  .handler(async ({ data, context }) => {
+    const { addLikedBranchToTree } = await import("./liked-branch-add-to-tree");
+    await addLikedBranchToTree({
+      entityId: data.entityId,
+      targetTreeId: data.targetTreeId,
+      person: context.user,
+    });
+    return { ok: true as const };
   });
