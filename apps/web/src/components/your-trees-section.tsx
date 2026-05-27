@@ -95,10 +95,12 @@ function TreeThumbnailStack({
 /** Inner block: matches `HomeSuggestions` label scale + `space-y-4`; rows echo suggestion chip border/type scale. */
 export function YourTreesSection({
   count,
+  isLoading = false,
   trees,
-  emptyMessage = "No trees yet — plant one from the home page.",
+  emptyMessage = "Create a Culture Tree to start shaping your library.",
 }: {
   readonly count: number;
+  readonly isLoading?: boolean;
   readonly trees: readonly YourTreesListItem[];
   readonly emptyMessage?: string;
 }) {
@@ -113,7 +115,23 @@ export function YourTreesSection({
         </p>
       </div>
 
-      {trees.length === 0 ? (
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[0, 1].map((index) => (
+            <div
+              key={index}
+              className="min-h-64 rounded-[1.4rem] border border-border/70 bg-card/70 p-4"
+            >
+              <div className="mb-4 flex gap-2">
+                <div className="h-6 w-20 animate-pulse rounded-full bg-muted" />
+                <div className="h-6 w-24 animate-pulse rounded-full bg-muted" />
+              </div>
+              <div className="h-28 animate-pulse rounded-md bg-muted/55" />
+              <div className="mt-4 h-6 w-2/3 animate-pulse rounded-full bg-muted" />
+            </div>
+          ))}
+        </div>
+      ) : trees.length === 0 ? (
         <p className="font-body text-sm font-normal tracking-tight text-muted-foreground">
           {emptyMessage}
         </p>
@@ -163,7 +181,7 @@ export function YourTreesSection({
 /** Home: same shell as `HomeSuggestions` (`relative z-10 mx-auto max-w-3xl px-4 sm:px-6 md:px-0`). */
 export function HomeYourTrees() {
   const { data: user } = useQuery(authQueryOptions());
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     ...myCultureTreesQueryOptions(),
     enabled: Boolean(user),
   });
@@ -174,7 +192,7 @@ export function HomeYourTrees() {
 
   return (
     <section className="relative z-10 mx-auto w-full max-w-3xl px-4 sm:px-6 md:px-0">
-      <YourTreesSection count={data?.count ?? 0} trees={data?.trees ?? []} />
+      <YourTreesSection count={data?.count ?? 0} isLoading={isLoading} trees={data?.trees ?? []} />
     </section>
   );
 }
