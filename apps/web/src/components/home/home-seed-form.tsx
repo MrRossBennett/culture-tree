@@ -105,6 +105,10 @@ export function HomeSeedForm({
       });
     },
     onSuccess: (result) => {
+      if (!result.ok) {
+        toast.error(result.limitReached.message);
+        return;
+      }
       const { treeId } = result;
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       toast.success("Your Culture Tree is ready to curate.");

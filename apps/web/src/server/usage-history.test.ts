@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildAcceptedAiGenerationUsage,
+  buildAcceptedTreeCreationUsage,
   currentAllowancePeriod,
   usageTypeForGenerateTreeAction,
 } from "./usage-history";
@@ -29,6 +30,27 @@ describe("Usage History", () => {
       id: "usage_123",
       personId: "person_123",
       usageType: "generate_tree",
+      effectivePlan: PLANS.free,
+      cultureTreeId: "tree_123",
+      allowancePeriodStart: null,
+      allowancePeriodEnd: null,
+      createdAt: new Date("2026-04-30T09:00:00.000Z"),
+    });
+  });
+
+  it("records accepted Tree Creation usage separately from AI Generation usage", () => {
+    const usage = buildAcceptedTreeCreationUsage({
+      id: "usage_create_tree",
+      person: { id: "person_123", email: "free@example.com" },
+      cultureTreeId: "tree_123",
+      proAllowlist: [],
+      now: new Date("2026-04-30T09:00:00.000Z"),
+    });
+
+    expect(usage).toEqual({
+      id: "usage_create_tree",
+      personId: "person_123",
+      usageType: "create_tree",
       effectivePlan: PLANS.free,
       cultureTreeId: "tree_123",
       allowancePeriodStart: null,

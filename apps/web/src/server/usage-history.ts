@@ -2,6 +2,7 @@ import {
   ENTITLEMENTS,
   resolveEffectivePlan,
   type AiGenerationUsageType,
+  type Entitlement,
   type ProAllowlistSource,
 } from "@repo/entitlements";
 
@@ -13,7 +14,7 @@ export type GenerateTreeUsageAction =
 export type UsageHistoryRecord = {
   id: string;
   personId: string;
-  usageType: AiGenerationUsageType;
+  usageType: Entitlement;
   effectivePlan: string;
   cultureTreeId: string;
   allowancePeriodStart: Date | null;
@@ -24,6 +25,14 @@ export type UsageHistoryRecord = {
 export type AllowancePeriod = {
   start: Date;
   end: Date;
+};
+
+export type BuildAcceptedTreeCreationUsageInput = {
+  id: string;
+  person: { id: string; email?: string | null };
+  cultureTreeId: string;
+  proAllowlist?: ProAllowlistSource;
+  now?: Date;
 };
 
 export type BuildAcceptedAiGenerationUsageInput = {
@@ -53,6 +62,26 @@ export function usageTypeForGenerateTreeAction(
     case "retry_generation":
       return null;
   }
+}
+
+export function buildAcceptedTreeCreationUsage(
+  input: BuildAcceptedTreeCreationUsageInput,
+): UsageHistoryRecord {
+  const plan = resolveEffectivePlan({
+    person: input.person,
+    proAllowlist: input.proAllowlist,
+  });
+
+  return {
+    id: input.id,
+    personId: input.person.id,
+    usageType: ENTITLEMENTS.createTree,
+    effectivePlan: plan.key,
+    cultureTreeId: input.cultureTreeId,
+    allowancePeriodStart: null,
+    allowancePeriodEnd: null,
+    createdAt: input.now ?? new Date(),
+  };
 }
 
 export function buildAcceptedAiGenerationUsage(

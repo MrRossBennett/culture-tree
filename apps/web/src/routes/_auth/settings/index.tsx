@@ -37,8 +37,12 @@ function SettingsIndex() {
         {summary.usage.kind === "free" ? (
           <div className="font-body space-y-2 text-sm text-muted-foreground">
             <p>
-              Generated trees used: {summary.usage.generatedTreesUsed} /{" "}
-              {summary.usage.generatedTreeLimit ?? "unlimited"}
+              Culture Trees created: {summary.usage.cultureTreesCreated} /{" "}
+              {summary.usage.treeCreationLimit ?? "unlimited"}
+            </p>
+            <p>
+              AI-generated trees used: {summary.usage.generatedTreesUsed} /{" "}
+              {summary.usage.aiGeneratedTreeLimit ?? "unlimited"}
             </p>
             <p>
               Grow Branch allowance: {summary.usage.growBranchPerCultureTree ?? "unlimited"} per

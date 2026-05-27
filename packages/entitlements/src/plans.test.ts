@@ -19,10 +19,12 @@ describe("Plan Configuration", () => {
 
   it("defines current Free and Pro allowances in app-owned configuration", () => {
     expect(PLAN_CONFIG.free.allowances).toMatchObject({
+      lifetimeTreeCreations: 3,
       lifetimeGenerateTree: 3,
       growBranchPerCultureTree: 3,
       sharedAiGenerationsPerAllowancePeriod: null,
     });
+    expect(PLAN_CONFIG.pro.allowances.lifetimeTreeCreations).toBe(null);
     expect(PLAN_CONFIG.pro.allowances.lifetimeGenerateTree).toBe(null);
     expect(PLAN_CONFIG.pro.allowances.growBranchPerCultureTree).toBe(null);
     expect(PLAN_CONFIG.pro.allowances.sharedAiGenerationsPerAllowancePeriod).toBeGreaterThan(0);
@@ -31,10 +33,18 @@ describe("Plan Configuration", () => {
   it("keeps Generate Tree and Grow Branch as the initial AI Generation usage types", () => {
     expect(AI_GENERATION_USAGE_TYPES).toEqual(["generate_tree", "grow_branch"]);
     expect(PLAN_CONFIG.free.entitlements).toEqual(
-      expect.arrayContaining([ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch]),
+      expect.arrayContaining([
+        ENTITLEMENTS.createTree,
+        ENTITLEMENTS.generateTree,
+        ENTITLEMENTS.growBranch,
+      ]),
     );
     expect(PLAN_CONFIG.pro.entitlements).toEqual(
-      expect.arrayContaining([ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch]),
+      expect.arrayContaining([
+        ENTITLEMENTS.createTree,
+        ENTITLEMENTS.generateTree,
+        ENTITLEMENTS.growBranch,
+      ]),
     );
   });
 });

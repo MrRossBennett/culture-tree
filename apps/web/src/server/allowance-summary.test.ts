@@ -8,6 +8,7 @@ describe("Allowance Summary", () => {
     expect(
       buildAllowanceSummary({
         person: { email: "free@example.com" },
+        treeCreationUsageCount: 2,
         generatedTreeUsageCount: 2,
         paidAiGenerationUsageCountForAllowancePeriod: 0,
         allowancePeriod: {
@@ -19,8 +20,10 @@ describe("Allowance Summary", () => {
       effectivePlan: { key: PLANS.free, label: "Free Plan" },
       usage: {
         kind: "free",
+        cultureTreesCreated: 2,
+        treeCreationLimit: 3,
         generatedTreesUsed: 2,
-        generatedTreeLimit: 3,
+        aiGeneratedTreeLimit: 3,
         growBranchPerCultureTree: 3,
         deletionDoesNotRestoreUsage: true,
       },
@@ -32,6 +35,7 @@ describe("Allowance Summary", () => {
       buildAllowanceSummary({
         person: { email: "pro@example.com" },
         proAllowlist: "pro@example.com",
+        treeCreationUsageCount: 99,
         generatedTreeUsageCount: 99,
         paidAiGenerationUsageCountForAllowancePeriod: 12,
         allowancePeriod: {

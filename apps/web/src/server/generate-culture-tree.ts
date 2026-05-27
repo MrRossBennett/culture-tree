@@ -15,7 +15,10 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { prepareGenerateTreeAllowanceDecision } from "./ai-generation-usage";
+import {
+  prepareGenerateTreeAllowanceDecision,
+  prepareTreeCreationAllowanceDecision,
+} from "./ai-generation-usage";
 import type { AllowanceLimitReached } from "./allowance-gates";
 import {
   enrichCommittedBranchesOnCultureTree,
@@ -36,6 +39,7 @@ import {
 } from "./progressive-tree-generation-lifecycle";
 import {
   buildAcceptedAiGenerationUsage,
+  buildAcceptedTreeCreationUsage,
   usageTypeForGenerateTreeAction,
   type GenerateTreeUsageAction,
 } from "./usage-history";
@@ -286,6 +290,20 @@ async function startProgressiveCultureTree(
     return { ok: true, treeId: existing.id };
   }
 
+  const { allowance: treeCreationAllowance } = await prepareTreeCreationAllowanceDecision({
+    person,
+    proAllowlist: process.env.PRO_ALLOWLIST,
+  });
+  if (!treeCreationAllowance.allowed) {
+    return {
+      ok: false,
+      limitReached: withLimitReachedMessage({
+        action: "create_tree",
+        limitReached: treeCreationAllowance.limitReached,
+      }),
+    };
+  }
+
   const { allowance, allowancePeriod } = await prepareGenerateTreeAllowanceDecision({
     person,
     proAllowlist: process.env.PRO_ALLOWLIST,
@@ -319,6 +337,15 @@ async function startProgressiveCultureTree(
       generationUpdatedAt: new Date(),
     });
 
+    await tx.insert(usageHistory).values(
+      buildAcceptedTreeCreationUsage({
+        id: nanoid(),
+        person,
+        cultureTreeId: treeId,
+        proAllowlist: process.env.PRO_ALLOWLIST,
+      }),
+    );
+
     if (usageType) {
       await tx.insert(usageHistory).values(
         buildAcceptedAiGenerationUsage({
@@ -348,14 +375,38 @@ export const $startTreeFromScratch = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(StartTreeFromScratchInputSchema)
   .handler(async ({ data, context }) => {
+    const { allowance } = await prepareTreeCreationAllowanceDecision({
+      person: context.user,
+      proAllowlist: process.env.PRO_ALLOWLIST,
+    });
+    if (!allowance.allowed) {
+      return {
+        ok: false as const,
+        limitReached: withLimitReachedMessage({
+          action: "create_tree",
+          limitReached: allowance.limitReached,
+        }),
+      };
+    }
+
     const treeId = nanoid();
-    await db.insert(cultureTree).values(
-      buildManualCultureTreeInsert({
-        treeId,
-        userId: context.user.id,
-        input: data,
-      }),
-    );
+    await db.transaction(async (tx) => {
+      await tx.insert(cultureTree).values(
+        buildManualCultureTreeInsert({
+          treeId,
+          userId: context.user.id,
+          input: data,
+        }),
+      );
+      await tx.insert(usageHistory).values(
+        buildAcceptedTreeCreationUsage({
+          id: nanoid(),
+          person: context.user,
+          cultureTreeId: treeId,
+          proAllowlist: process.env.PRO_ALLOWLIST,
+        }),
+      );
+    });
     return { ok: true as const, treeId };
   });
 

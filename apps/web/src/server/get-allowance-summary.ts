@@ -1,7 +1,11 @@
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { createServerFn } from "@tanstack/react-start";
 
-import { countGeneratedTreeUsage, countPaidAiGenerationUsage } from "./ai-generation-usage";
+import {
+  countGeneratedTreeUsage,
+  countPaidAiGenerationUsage,
+  countTreeCreationUsage,
+} from "./ai-generation-usage";
 import { buildAllowanceSummary } from "./allowance-summary";
 import { currentAllowancePeriod } from "./usage-history";
 
@@ -13,6 +17,7 @@ export const $getAllowanceSummary = createServerFn({ method: "GET" })
     return buildAllowanceSummary({
       person: context.user,
       proAllowlist: process.env.PRO_ALLOWLIST,
+      treeCreationUsageCount: await countTreeCreationUsage(context.user.id),
       generatedTreeUsageCount: await countGeneratedTreeUsage(context.user.id),
       paidAiGenerationUsageCountForAllowancePeriod: await countPaidAiGenerationUsage({
         personId: context.user.id,

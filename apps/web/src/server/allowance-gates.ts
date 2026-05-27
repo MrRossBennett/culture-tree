@@ -17,6 +17,16 @@ export type GenerateTreeLimitReached = {
   message: string;
 };
 
+export type TreeCreationLimitReached = {
+  code: "limit_reached";
+  allowance: "free_lifetime_tree_creation";
+  usageType: typeof ENTITLEMENTS.createTree;
+  limit: number;
+  used: number;
+  remaining: 0;
+  message: string;
+};
+
 export type GrowBranchLimitReached = {
   code: "limit_reached";
   allowance: "free_per_tree_grow_branch";
@@ -38,9 +48,23 @@ export type ProSharedAiGenerationLimitReached = {
 };
 
 export type AllowanceLimitReached =
+  | TreeCreationLimitReached
   | GenerateTreeLimitReached
   | GrowBranchLimitReached
   | ProSharedAiGenerationLimitReached;
+
+export type TreeCreationAllowanceResult =
+  | {
+      allowed: true;
+      effectivePlan: PlanKey;
+      usageType: typeof ENTITLEMENTS.createTree;
+      remaining: number | null;
+    }
+  | {
+      allowed: false;
+      effectivePlan: PlanKey;
+      limitReached: TreeCreationLimitReached;
+    };
 
 export type GenerateTreeAllowanceResult =
   | {
@@ -73,6 +97,12 @@ export type DecideGenerateTreeAllowanceInput = {
   proAllowlist?: ProAllowlistSource;
   generatedTreeUsageCount: number;
   paidAiGenerationUsageCountForAllowancePeriod?: number;
+};
+
+export type DecideTreeCreationAllowanceInput = {
+  person: { email?: string | null } | null | undefined;
+  proAllowlist?: ProAllowlistSource;
+  treeCreationUsageCount: number;
 };
 
 export type DecideGrowBranchAllowanceInput = {
@@ -134,6 +164,49 @@ function decideProSharedAiGenerationAllowance<
   };
 }
 
+export function decideTreeCreationAllowance(
+  input: DecideTreeCreationAllowanceInput,
+): TreeCreationAllowanceResult {
+  const plan = resolveEffectivePlan({
+    person: input.person,
+    proAllowlist: input.proAllowlist,
+  });
+
+  const limit = plan.allowances.lifetimeTreeCreations;
+  if (limit == null) {
+    return {
+      allowed: true,
+      effectivePlan: plan.key,
+      usageType: ENTITLEMENTS.createTree,
+      remaining: null,
+    };
+  }
+
+  const remaining = Math.max(limit - input.treeCreationUsageCount, 0);
+  if (remaining > 0) {
+    return {
+      allowed: true,
+      effectivePlan: plan.key,
+      usageType: ENTITLEMENTS.createTree,
+      remaining,
+    };
+  }
+
+  return {
+    allowed: false,
+    effectivePlan: PLANS.free,
+    limitReached: {
+      code: "limit_reached",
+      allowance: "free_lifetime_tree_creation",
+      usageType: ENTITLEMENTS.createTree,
+      limit,
+      used: input.treeCreationUsageCount,
+      remaining: 0,
+      message: "Free Plan includes 3 Culture Trees.",
+    },
+  };
+}
+
 export function decideGenerateTreeAllowance(
   input: DecideGenerateTreeAllowanceInput,
 ): GenerateTreeAllowanceResult {
@@ -179,7 +252,7 @@ export function decideGenerateTreeAllowance(
       limit,
       used: input.generatedTreeUsageCount,
       remaining: 0,
-      message: "Free Plan includes 3 generated Culture Trees.",
+      message: "Free Plan includes 3 AI-generated Culture Trees.",
     },
   };
 }
