@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
 import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -26,11 +26,12 @@ import {
   mediaFilterFromSelectedNodeTypes,
 } from "~/components/node-type-filter-list";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
-import { TreePreview } from "~/components/tree-preview";
+import { TreePreview, type AddToTreeTarget } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import {
   $addCultureTreeNode,
   $addManualCultureTreeBranch,
+  $addPublicCultureTreeBranchToMyTree,
   $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
@@ -59,6 +60,7 @@ export const Route = createFileRoute("/tree/$treeId")({
       enrichments: row.enrichments,
       resolvedEntities: row.resolvedEntities,
       isOwner: user?.id === row.userId,
+      viewerUserId: user?.id ?? null,
       isPublic: row.isPublic,
       generation: row.generation,
     };
@@ -282,8 +284,17 @@ function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { tree, username, enrichments, resolvedEntities, isOwner, treeId, isPublic, generation } =
-    Route.useLoaderData();
+  const {
+    tree,
+    username,
+    enrichments,
+    resolvedEntities,
+    isOwner,
+    viewerUserId,
+    treeId,
+    isPublic,
+    generation,
+  } = Route.useLoaderData();
   const [generatingItem, setGeneratingItem] = useState<TreeItem | null>(null);
   const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
     ...CULTURE_TREE_NODE_TYPES,
@@ -292,6 +303,16 @@ function TreePage() {
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
   const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
   const treeIsReady = generation.status === "ready";
+  const myTrees = useQuery({
+    ...myCultureTreesQueryOptions(),
+    enabled: Boolean(viewerUserId && !isOwner && treeIsReady),
+  });
+  const addToTreeTargets: AddToTreeTarget[] = (myTrees.data?.trees ?? [])
+    .filter((target) => target.id !== treeId && target.generationStatus === "ready")
+    .map((target) => ({
+      id: target.id,
+      title: target.listTitle,
+    }));
 
   const retryGeneration = useMutation({
     mutationFn: () => $retryCultureTreeGeneration({ data: { treeId } }),
@@ -329,6 +350,25 @@ function TreePage() {
     },
     onError: (err: Error, variables) => {
       setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+      toast.error(err.message || "Could not add that branch.");
+    },
+  });
+
+  const addPublicBranch = useMutation({
+    mutationFn: (input: { item: TreeItem; targetTreeId: string }) => {
+      return $addPublicCultureTreeBranchToMyTree({
+        data: {
+          sourceTreeId: treeId,
+          sourceBranchId: input.item.id,
+          targetTreeId: input.targetTreeId,
+        },
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Branch added to your tree.");
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+    },
+    onError: (err: Error) => {
       toast.error(err.message || "Could not add that branch.");
     },
   });
@@ -476,9 +516,11 @@ function TreePage() {
         ) : null}
         {previewTree.items.length > 0 ? (
           <TreePreview
+            addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
+            isAddingBranchToTree={addPublicBranch.isPending}
             isGrowItemPending={growItem.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
@@ -486,6 +528,13 @@ function TreePage() {
               isOwner && treeIsReady
                 ? async (node) => {
                     await handleAddItem(node);
+                  }
+                : undefined
+            }
+            onAddBranchToTree={
+              !isOwner && viewerUserId && treeIsReady
+                ? async (item, targetTreeId) => {
+                    await addPublicBranch.mutateAsync({ item, targetTreeId });
                   }
                 : undefined
             }
@@ -513,9 +562,11 @@ function TreePage() {
           <LoadingBranchCards />
         ) : (
           <TreePreview
+            addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
+            isAddingBranchToTree={addPublicBranch.isPending}
             isGrowItemPending={growItem.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
@@ -523,6 +574,13 @@ function TreePage() {
               isOwner && treeIsReady
                 ? async (node) => {
                     await handleAddItem(node);
+                  }
+                : undefined
+            }
+            onAddBranchToTree={
+              !isOwner && viewerUserId && treeIsReady
+                ? async (item, targetTreeId) => {
+                    await addPublicBranch.mutateAsync({ item, targetTreeId });
                   }
                 : undefined
             }

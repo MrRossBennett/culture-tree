@@ -27,6 +27,7 @@ import { getResolvedEntitiesForTree } from "./entity-resolver.server";
 import { growBranch } from "./grow-branch";
 import { manualAddToTree } from "./manual-add-to-tree";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
+import { addPublicBranchToTree } from "./public-branch-add-to-tree";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
   const seed = tree.seed?.trim();
@@ -64,6 +65,12 @@ const AddCultureTreeNodeInputSchema = z.object({
 const AddManualCultureTreeBranchInputSchema = z.object({
   treeId: z.string().min(1),
   node: AddCultureTreeNodeDraftSchema,
+});
+
+const AddPublicCultureTreeBranchInputSchema = z.object({
+  sourceTreeId: z.string().min(1),
+  sourceBranchId: z.string().min(1),
+  targetTreeId: z.string().min(1),
 });
 
 const DeleteCultureTreeNodeInputSchema = z.object({
@@ -199,6 +206,19 @@ export const $addManualCultureTreeBranch = createServerFn({ method: "POST" })
     await manualAddToTree({
       treeId: data.treeId,
       node: data.node,
+      person: context.user,
+    });
+    return { ok: true as const };
+  });
+
+export const $addPublicCultureTreeBranchToMyTree = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddPublicCultureTreeBranchInputSchema)
+  .handler(async ({ data, context }) => {
+    await addPublicBranchToTree({
+      sourceTreeId: data.sourceTreeId,
+      sourceBranchId: data.sourceBranchId,
+      targetTreeId: data.targetTreeId,
       person: context.user,
     });
     return { ok: true as const };

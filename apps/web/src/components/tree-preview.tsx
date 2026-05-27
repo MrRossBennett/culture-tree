@@ -13,6 +13,13 @@ import {
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@repo/ui/components/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
 import {
@@ -58,6 +65,11 @@ type PreviewBoardItem = {
   sectionId: PreviewSection["id"];
   sectionTitle: string;
   item: TreeItem;
+};
+
+export type AddToTreeTarget = {
+  readonly id: string;
+  readonly title: string;
 };
 
 function buildPreviewSections(tree: CultureTree): PreviewSection[] {
@@ -288,19 +300,25 @@ export function CultureTreeItemCard({
 }
 
 function BranchFocusDialog({
+  addToTreeTargets = [],
   item,
   enrichments,
+  isAddingToTree = false,
   isGeneratingNewTree,
   onClose,
+  onAddToTree,
   onDeleteItem,
   onGenerateNewTree,
   onToggleLike,
   resolvedEntity,
 }: {
+  readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly item: TreeItem | null;
   readonly enrichments: TreeEnrichmentsMap;
+  readonly isAddingToTree?: boolean;
   readonly isGeneratingNewTree: boolean;
   readonly onClose: () => void;
+  readonly onAddToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
@@ -309,6 +327,8 @@ function BranchFocusDialog({
   const media = item ? enrichments[item.id] : undefined;
   const itemHeading = item ? headingFromSearchHint(item.name, item.searchHint) : null;
   const coverSrc = item ? coverSrcForItem({ item, enrichments, resolvedEntity }) : undefined;
+  const [targetTreeId, setTargetTreeId] = useState("");
+  const resolvedTargetTreeId = targetTreeId || addToTreeTargets[0]?.id || "";
 
   return (
     <Dialog open={item != null} onOpenChange={(open) => !open && onClose()}>
@@ -437,6 +457,49 @@ function BranchFocusDialog({
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
+                  {onAddToTree && item ? (
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <Select
+                        value={resolvedTargetTreeId}
+                        onValueChange={(value) => setTargetTreeId(value ?? "")}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          className="max-w-44 rounded-full border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)]"
+                          disabled={isAddingToTree || addToTreeTargets.length === 0}
+                        >
+                          <SelectValue placeholder="Choose tree" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {addToTreeTargets.map((target) => (
+                            <SelectItem key={target.id} value={target.id}>
+                              {target.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isAddingToTree || !resolvedTargetTreeId}
+                        className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
+                        onClick={() => {
+                          if (!resolvedTargetTreeId) {
+                            return;
+                          }
+                          void onAddToTree(item, resolvedTargetTreeId);
+                        }}
+                      >
+                        {isAddingToTree ? (
+                          <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          <PlusIcon className="size-3.5" aria-hidden />
+                        )}
+                        Add to Tree
+                      </Button>
+                    </div>
+                  ) : null}
                   {resolvedEntity ? (
                     <Button
                       type="button"
@@ -503,12 +566,15 @@ function BranchFocusDialog({
 }
 
 export function TreePreview({
+  addToTreeTargets = [],
   tree,
   enrichments = {},
   loadingItemIds = [],
   isAddItemPending = false,
+  isAddingBranchToTree = false,
   isGrowItemPending = false,
   isGeneratingNewTree = false,
+  onAddBranchToTree,
   onAddItem,
   onDeleteItem,
   onGenerateNewTree,
@@ -516,11 +582,14 @@ export function TreePreview({
   onToggleLike,
   resolvedEntities = {},
 }: {
+  readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
   readonly loadingItemIds?: readonly string[];
   readonly isAddItemPending?: boolean;
+  readonly isAddingBranchToTree?: boolean;
   readonly isGrowItemPending?: boolean;
+  readonly onAddBranchToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
   readonly onAddItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
@@ -633,9 +702,12 @@ export function TreePreview({
         <p className="font-body mt-4 text-center text-sm text-muted-foreground">No items yet.</p>
       )}
       <BranchFocusDialog
+        addToTreeTargets={addToTreeTargets}
         enrichments={enrichments}
+        isAddingToTree={isAddingBranchToTree}
         isGeneratingNewTree={isGeneratingNewTree}
         item={selectedItem}
+        onAddToTree={onAddBranchToTree}
         onClose={() => setSelectedItem(null)}
         onDeleteItem={onDeleteItem}
         onGenerateNewTree={onGenerateNewTree}
