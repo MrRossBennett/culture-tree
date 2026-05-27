@@ -160,7 +160,7 @@ export const TreeItemSchema: z.ZodType<TreeItem> = z.object({
   name: z.string().trim().min(1),
   type: NodeType,
   year: z.number().int().optional(),
-  reason: z.string(),
+  reason: z.string().default(""),
   connectionType: ConnectionType,
   branchRole: BranchRole.optional(),
   searchHint: SearchHintSchema,
@@ -178,8 +178,11 @@ export const GuideSectionSchema = z.object({
 
 export const CultureTreeSchema = z
   .object({
-    seed: z.string().trim().min(1),
-    seedType: z.literal("root").or(NodeType),
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
+    notes: z.string().trim().min(1).optional(),
+    seed: z.string().trim().min(1).optional(),
+    seedType: z.literal("root").or(NodeType).optional(),
     guideSections: z.array(GuideSectionSchema).default([]),
     items: z.array(TreeItemSchema).default([]),
   })
@@ -252,7 +255,7 @@ export type GuideSection = z.infer<typeof GuideSectionSchema>;
 
 /** Total Branches in the tree, plus the Seed. */
 export function countCultureTreeNodes(tree: CultureTree): number {
-  return 1 + tree.items.length;
+  return (tree.seed ? 1 : 0) + tree.items.length;
 }
 
 const DEFAULT_ITEM_CONNECTION: ConnectionTypeValue = "thematic";
@@ -464,6 +467,22 @@ function normalizeGuideSections(raw: unknown): GuideSection[] {
   );
 }
 
+function hasCultureTreeShape(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") {
+    return false;
+  }
+
+  const o = raw as Record<string, unknown>;
+  return (
+    "seed" in o ||
+    "title" in o ||
+    "description" in o ||
+    "notes" in o ||
+    "guideSections" in o ||
+    "items" in o
+  );
+}
+
 export function formatGuideSectionTitle(id: GuideSectionIdValue): string {
   switch (id) {
     case "start-here":
@@ -483,7 +502,7 @@ export function formatGuideSectionTitle(id: GuideSectionIdValue): string {
 export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): CultureTree {
   const fallbackSeed = seedLabel.trim() || "Culture tree";
   const parsed = CultureTreeSchema.safeParse(raw);
-  if (parsed.success) {
+  if (parsed.success && hasCultureTreeShape(raw)) {
     return finalizeSearchHints(parsed.data);
   }
 

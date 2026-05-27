@@ -2,10 +2,50 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
+  countCultureTreeNodes,
   CultureTreeSchema,
   GUIDE_SECTION_DISPLAY_ORDER,
   acceptCultureTreeGenerationOutput,
 } from "./tree";
+
+describe("CultureTreeSchema", () => {
+  it("accepts a manually authored tree without a Seed or Guide Sections", () => {
+    const tree = CultureTreeSchema.parse({
+      title: "Private canon",
+      description: "A hand-built map of references I keep returning to.",
+      notes: "Start with the films, then add criticism later.",
+      items: [
+        {
+          id: "item_1",
+          name: "Le Samourai",
+          type: "film",
+          connectionType: "spiritual-kin",
+          searchHint: { title: "Le Samourai" },
+          source: "user",
+        },
+      ],
+    });
+
+    expect(tree.seed).toBeUndefined();
+    expect(tree.seedType).toBeUndefined();
+    expect(tree.guideSections).toEqual([]);
+    expect(tree.items).toHaveLength(1);
+    expect(tree.items[0]?.reason).toBe("");
+    expect(countCultureTreeNodes(tree)).toBe(1);
+  });
+
+  it("counts the Seed only when the tree has one", () => {
+    expect(
+      countCultureTreeNodes(
+        CultureTreeSchema.parse({
+          seed: "Ghost Dog",
+          seedType: "root",
+          items: [],
+        }),
+      ),
+    ).toBe(1);
+  });
+});
 
 describe("acceptCultureTreeGenerationOutput", () => {
   it("accepts Guide Sections and derives Branches for shared Branch workflows", () => {
