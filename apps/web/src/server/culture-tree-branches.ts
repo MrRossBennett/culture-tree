@@ -1,6 +1,6 @@
 import {
-  CultureTreeSchema,
-  branchRoleForGuideSection,
+  addBranchToGuideSection,
+  removeBranchFromGuideSections,
   type CultureTree,
   type GuideSectionIdValue,
   type TreeEnrichmentsMap,
@@ -17,27 +17,7 @@ export function growBranchInCultureTree(input: {
   guideSectionId: GuideSectionIdValue;
   branch: TreeItem;
 }): CultureTree {
-  const targetSection = input.tree.guideSections.find(
-    (section) => section.id === input.guideSectionId,
-  );
-  if (!targetSection) {
-    throw new Error("Guide Section not found.");
-  }
-
-  const branch = {
-    ...input.branch,
-    branchRole: branchRoleForGuideSection(input.guideSectionId),
-  };
-
-  return CultureTreeSchema.parse({
-    ...input.tree,
-    guideSections: input.tree.guideSections.map((section) =>
-      section.id === input.guideSectionId
-        ? { ...section, items: [...section.items, branch] }
-        : section,
-    ),
-    items: [...input.tree.items, branch],
-  });
+  return addBranchToGuideSection(input);
 }
 
 export function deleteBranchFromCultureTree(
@@ -50,14 +30,7 @@ export function deleteBranchFromCultureTree(
   }
 
   return {
-    tree: CultureTreeSchema.parse({
-      ...tree,
-      guideSections: tree.guideSections.map((section) => ({
-        ...section,
-        items: section.items.filter((item) => item.id !== branchId),
-      })),
-      items: tree.items.filter((item) => item.id !== branchId),
-    }),
+    tree: removeBranchFromGuideSections(tree, branchId),
     removedBranches: [removed],
   };
 }

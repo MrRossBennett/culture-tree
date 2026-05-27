@@ -1,6 +1,6 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
 import {
-  branchRoleForGuideSection,
+  branchForGuideSection,
   type CultureTree,
   type GuideSectionIdValue,
   type NodeTypeValue,
@@ -207,17 +207,21 @@ function pendingTreeItemFromInput(
   const { identity, searchHint, snapshot } = input.result;
 
   return {
-    id,
-    name: snapshot.name,
-    type: snapshot.type,
-    year: snapshot.year,
-    reason: "",
-    connectionType: input.connectionType,
-    branchRole: branchRoleForGuideSection(guideSectionId),
-    searchHint,
-    identity,
-    snapshot,
-    source: "user",
+    ...branchForGuideSection({
+      guideSectionId,
+      branch: {
+        id,
+        name: snapshot.name,
+        type: snapshot.type,
+        year: snapshot.year,
+        reason: "",
+        connectionType: input.connectionType,
+        searchHint,
+        identity,
+        snapshot,
+        source: "user",
+      },
+    }),
     guideSectionId,
   };
 }

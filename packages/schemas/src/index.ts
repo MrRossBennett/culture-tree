@@ -35,6 +35,16 @@ export {
   type TreeNodeSnapshot,
 } from "./tree";
 
+export {
+  addBranchToGuideSection,
+  branchForGuideSection,
+  cultureTreeWithGuideSectionItems,
+  cultureTreeWithRevealedBranches,
+  filterCultureTreeToNodeTypes,
+  guideSectionsIncludeCore,
+  removeBranchFromGuideSections,
+} from "./guide-sections";
+
 export { TreeRequestSchema, type TreeRequest } from "./input";
 
 export {

@@ -1,4 +1,10 @@
-import { CultureTreeSchema, NodeType, TreeRequestSchema, type CultureTree } from "@repo/schemas";
+import {
+  CultureTreeSchema,
+  NodeType,
+  TreeRequestSchema,
+  cultureTreeWithRevealedBranches,
+  type CultureTree,
+} from "@repo/schemas";
 import { z } from "zod";
 
 export const GenerationStatusSchema = z.enum(["queued", "running", "revealing", "ready", "failed"]);
@@ -91,21 +97,5 @@ export function nextRevealItemIndex(currentItemCount: number): number {
 }
 
 export function treeForRevealProgress(finalTree: CultureTree, revealedItemCount: number) {
-  if (revealedItemCount >= finalTree.items.length) {
-    return CultureTreeSchema.parse(finalTree);
-  }
-
-  const revealedItemIds = new Set(
-    finalTree.items.slice(0, revealedItemCount).map((item) => item.id),
-  );
-
-  return CultureTreeSchema.parse({
-    seed: finalTree.seed,
-    seedType: finalTree.seedType,
-    guideSections: finalTree.guideSections.map((section) => ({
-      ...section,
-      items: section.items.filter((item) => revealedItemIds.has(item.id)),
-    })),
-    items: finalTree.items.slice(0, revealedItemCount),
-  });
+  return cultureTreeWithRevealedBranches(finalTree, revealedItemCount);
 }

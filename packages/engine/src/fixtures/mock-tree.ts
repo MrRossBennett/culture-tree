@@ -1,7 +1,7 @@
 import {
-  CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
   CultureTreeSchema,
   TreeRequestSchema,
+  filterCultureTreeToNodeTypes,
   type CultureTree,
   type TreeRequest,
 } from "@repo/schemas";
@@ -41,18 +41,5 @@ export function mockCultureTreeForRequest(request: TreeRequest): CultureTree {
     return tree;
   }
 
-  const allowedTypes = new Set(data.mediaFilter);
-  const guideSections = tree.guideSections.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => allowedTypes.has(item.type)),
-  }));
-  const hasCoreGuideSections = CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((sectionId) =>
-    guideSections.some((section) => section.id === sectionId),
-  );
-
-  return CultureTreeSchema.parse({
-    ...tree,
-    guideSections: hasCoreGuideSections ? guideSections : [],
-    items: tree.items.filter((item) => allowedTypes.has(item.type)),
-  });
+  return filterCultureTreeToNodeTypes(tree, data.mediaFilter);
 }
