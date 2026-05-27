@@ -1,5 +1,7 @@
 # Organize Culture Trees as intent-based guides
 
+> Updated by [ADR 0003](./0003-curator-first-culture-trees.md): Guide Sections remain useful AI scaffolding for generated trees, but they are no longer universal Culture Tree structure.
+
 Culture Tree will prioritize direct usefulness over clever cultural association. A generated Culture Tree should help a person confidently choose what to watch, read, listen to, view, or explore next from a Seed. To do that, Culture Trees may be organized into Guide Sections that group Branches by exploration intent, and Branches may carry a Branch Role that explains their practical job in the guide.
 
 Contextual Branches should have a higher evidence bar than recommendations. A contextual Branch should rely on a Documented Connection, such as a direct reference, creator-cited influence, production history, real-world context, or similarly strong provenance. Recommendation-oriented Guide Sections should be dominated by Consumable Works.
