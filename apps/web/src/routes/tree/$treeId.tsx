@@ -1,11 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import {
-  branchForGuideSection,
-  type CultureTree,
-  type GuideSectionIdValue,
-  type NodeTypeValue,
-  type TreeItem,
-} from "@repo/schemas";
+import { type CultureTree, type NodeTypeValue, type TreeItem } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { ButtonGroup } from "@repo/ui/components/button-group";
 import {
@@ -35,7 +29,7 @@ import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover"
 import { TreePreview } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import {
-  $addCultureTreeNode,
+  $addManualCultureTreeBranch,
   $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
@@ -252,32 +246,23 @@ function TreeVisibilityToggle({
   );
 }
 
-type PendingTreeItem = TreeItem & { guideSectionId: GuideSectionIdValue };
+type PendingTreeItem = TreeItem;
 
-function pendingTreeItemFromInput(
-  input: TreeNodePopoverSubmitInput,
-  guideSectionId: GuideSectionIdValue,
-): PendingTreeItem {
+function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): PendingTreeItem {
   const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const { identity, searchHint, snapshot } = input.result;
 
   return {
-    ...branchForGuideSection({
-      guideSectionId,
-      branch: {
-        id,
-        name: snapshot.name,
-        type: snapshot.type,
-        year: snapshot.year,
-        reason: "",
-        connectionType: input.connectionType,
-        searchHint,
-        identity,
-        snapshot,
-        source: "user",
-      },
-    }),
-    guideSectionId,
+    id,
+    name: snapshot.name,
+    type: snapshot.type,
+    year: snapshot.year,
+    reason: "",
+    connectionType: input.connectionType,
+    searchHint,
+    identity,
+    snapshot,
+    source: "user",
   };
 }
 
@@ -288,13 +273,6 @@ function treeWithPendingItems(tree: CultureTree, pendingItems: readonly PendingT
 
   return {
     ...tree,
-    guideSections: tree.guideSections.map((section) => ({
-      ...section,
-      items: [
-        ...section.items,
-        ...pendingItems.filter((item) => item.guideSectionId === section.id),
-      ],
-    })),
     items: [...tree.items, ...pendingItems],
   };
 }
@@ -339,20 +317,10 @@ function TreePage() {
   });
 
   const addItem = useMutation({
-    mutationFn: (input: {
-      guideSectionId: GuideSectionIdValue;
-      node: TreeNodePopoverSubmitInput;
-      pendingItemId: string;
-    }) => {
-      const { guideSectionId, node } = input;
-      return $addCultureTreeNode({ data: { treeId, guideSectionId, node } });
+    mutationFn: (input: { node: TreeNodePopoverSubmitInput; pendingItemId: string }) => {
+      return $addManualCultureTreeBranch({ data: { treeId, node: input.node } });
     },
-    onSuccess: async (result, variables) => {
-      if (!result.ok) {
-        setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
-        toast.error(result.limitReached.message);
-        return;
-      }
+    onSuccess: async (_result, variables) => {
       toast.success("Branch added to your tree.");
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
@@ -446,13 +414,10 @@ function TreePage() {
     return () => window.clearInterval(id);
   }, [generationIsActive, router]);
 
-  const handleAddItem = async (
-    guideSectionId: GuideSectionIdValue,
-    node: TreeNodePopoverSubmitInput,
-  ) => {
-    const pendingItem = pendingTreeItemFromInput(node, guideSectionId);
+  const handleAddItem = async (node: TreeNodePopoverSubmitInput) => {
+    const pendingItem = pendingTreeItemFromInput(node);
     setPendingItems((items) => [...items, pendingItem]);
-    await addItem.mutateAsync({ guideSectionId, node, pendingItemId: pendingItem.id });
+    await addItem.mutateAsync({ node, pendingItemId: pendingItem.id });
   };
 
   return (
@@ -490,8 +455,8 @@ function TreePage() {
             resolvedEntities={resolvedEntities}
             onAddItem={
               isOwner && treeIsReady
-                ? async (guideSectionId, node) => {
-                    await handleAddItem(guideSectionId, node);
+                ? async (node) => {
+                    await handleAddItem(node);
                   }
                 : undefined
             }
@@ -511,7 +476,32 @@ function TreePage() {
         ) : !treeIsReady ? (
           <LoadingBranchCards />
         ) : (
-          <TreePreview tree={previewTree} />
+          <TreePreview
+            enrichments={enrichments}
+            loadingItemIds={pendingItemIds}
+            isAddItemPending={addItem.isPending}
+            isGeneratingNewTree={seedFromItem.isPending}
+            resolvedEntities={resolvedEntities}
+            onAddItem={
+              isOwner && treeIsReady
+                ? async (node) => {
+                    await handleAddItem(node);
+                  }
+                : undefined
+            }
+            onToggleLike={async (entityId, liked) => {
+              await toggleLike.mutateAsync({ entityId, liked });
+            }}
+            onGenerateNewTree={
+              generationIsTerminal
+                ? async (item) => {
+                    setGeneratingItem(item);
+                  }
+                : undefined
+            }
+            onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            tree={previewTree}
+          />
         )}
         {visitorCta}
       </div>

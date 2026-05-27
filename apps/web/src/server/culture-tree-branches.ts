@@ -20,6 +20,16 @@ export function growBranchInCultureTree(input: {
   return addBranchToGuideSection(input);
 }
 
+export function addManualBranchToCultureTree(input: {
+  tree: CultureTree;
+  branch: TreeItem;
+}): CultureTree {
+  return {
+    ...input.tree,
+    items: [...input.tree.items, input.branch],
+  };
+}
+
 export function deleteBranchFromCultureTree(
   tree: CultureTree,
   branchId: string,

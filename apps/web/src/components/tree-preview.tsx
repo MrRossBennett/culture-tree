@@ -26,6 +26,7 @@ import { useState, type ReactNode } from "react";
 import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
+import { TreeNodeDrawer } from "~/components/tree-node-popover";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
@@ -507,7 +508,9 @@ export function TreePreview({
   tree,
   enrichments = {},
   loadingItemIds = [],
+  isAddItemPending = false,
   isGeneratingNewTree = false,
+  onAddItem,
   onDeleteItem,
   onGenerateNewTree,
   onToggleLike,
@@ -517,10 +520,7 @@ export function TreePreview({
   readonly enrichments?: TreeEnrichmentsMap;
   readonly loadingItemIds?: readonly string[];
   readonly isAddItemPending?: boolean;
-  readonly onAddItem?: (
-    guideSectionId: GuideSectionIdValue,
-    node: TreeNodePopoverSubmitInput,
-  ) => Promise<void>;
+  readonly onAddItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
@@ -541,6 +541,16 @@ export function TreePreview({
 
   return (
     <section className="relative w-full text-left">
+      {onAddItem ? (
+        <div className="mb-4 flex justify-end">
+          <TreeNodeDrawer
+            triggerLabel="Add to Tree"
+            title="Add to Tree"
+            isPending={isAddItemPending}
+            onSubmit={onAddItem}
+          />
+        </div>
+      ) : null}
       {boardItems.length > 0 ? (
         <Masonry
           items={boardItems}

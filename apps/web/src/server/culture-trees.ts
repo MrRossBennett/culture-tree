@@ -25,6 +25,7 @@ import {
 import { AddCultureTreeNodeDraftSchema } from "./culture-tree-node-builder";
 import { getResolvedEntitiesForTree } from "./entity-resolver.server";
 import { growBranch } from "./grow-branch";
+import { manualAddToTree } from "./manual-add-to-tree";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
 
 function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
@@ -57,6 +58,11 @@ function treeListPreviewItems(
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
   guideSectionId: GuideSectionId,
+  node: AddCultureTreeNodeDraftSchema,
+});
+
+const AddManualCultureTreeBranchInputSchema = z.object({
+  treeId: z.string().min(1),
   node: AddCultureTreeNodeDraftSchema,
 });
 
@@ -166,6 +172,18 @@ export const $addCultureTreeNode = createServerFn({ method: "POST" })
       proAllowlist: process.env.PRO_ALLOWLIST,
     });
     return result.ok ? { ok: true } : result;
+  });
+
+export const $addManualCultureTreeBranch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddManualCultureTreeBranchInputSchema)
+  .handler(async ({ data, context }) => {
+    await manualAddToTree({
+      treeId: data.treeId,
+      node: data.node,
+      person: context.user,
+    });
+    return { ok: true as const };
   });
 
 export const $deleteCultureTreeNode = createServerFn({ method: "POST" })

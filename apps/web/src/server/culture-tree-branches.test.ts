@@ -2,6 +2,7 @@ import { CultureTreeSchema, type CultureTree, type TreeItem } from "@repo/schema
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addManualBranchToCultureTree,
   countRemovedBranches,
   deleteBranchFromCultureTree,
   growBranchInCultureTree,
@@ -59,6 +60,38 @@ const guideTree = CultureTreeSchema.parse({
 });
 
 describe("Culture Tree Branch mutations", () => {
+  it("adds a manual Branch without requiring Guide Sections", () => {
+    const manualTree = CultureTreeSchema.parse({
+      title: "Private canon",
+      items: [],
+    });
+
+    const nextTree = addManualBranchToCultureTree({
+      tree: manualTree,
+      branch,
+    });
+
+    expect(nextTree).toMatchObject({
+      title: "Private canon",
+      guideSections: [],
+      items: [branch],
+    });
+  });
+
+  it("adds a manual Branch to generated trees as an unsectioned Branch", () => {
+    const nextTree = addManualBranchToCultureTree({
+      tree: guideTree,
+      branch: { ...branch, id: "manual_1", name: "The Warriors" },
+    });
+
+    const addedBranch = nextTree.items.at(-1);
+    expect(addedBranch).toMatchObject({ id: "manual_1" });
+    expect(addedBranch?.branchRole).toBeUndefined();
+    expect(nextTree.guideSections.flatMap((section) => section.items)).not.toContainEqual(
+      expect.objectContaining({ id: "manual_1" }),
+    );
+  });
+
   it("grows a Branch into a Guide Section with the section Branch Role", () => {
     const nextBranch = { ...branch, id: "branch_2", name: "Le Samourai", branchRole: undefined };
 

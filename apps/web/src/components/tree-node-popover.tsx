@@ -253,7 +253,7 @@ export function TreeNodeDrawer({
                 onChange={(event) => {
                   setQuery(event.currentTarget.value);
                 }}
-                placeholder="An album, film, book, place, or vibe…"
+                placeholder="A film, album, book, artist, place…"
                 className="font-body h-11 pr-9 pl-9 text-sm"
                 maxLength={160}
               />
