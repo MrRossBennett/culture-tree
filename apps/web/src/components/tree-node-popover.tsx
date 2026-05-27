@@ -5,7 +5,7 @@ import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
 import { cn } from "@repo/ui/lib/utils";
 import { LoaderCircleIcon, SearchIcon, XIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
@@ -77,6 +77,8 @@ function typeLabel(type: NodeTypeValue): string {
 interface TreeNodeDrawerProps {
   readonly triggerLabel: string;
   readonly triggerClassName?: string;
+  readonly triggerIcon?: ReactNode;
+  readonly triggerVariant?: "amber" | "default" | "outline" | "secondary" | "ghost";
   readonly title?: string;
   readonly isPending?: boolean;
   readonly onSubmit: (input: TreeNodePopoverSubmitInput) => Promise<void>;
@@ -85,6 +87,8 @@ interface TreeNodeDrawerProps {
 export function TreeNodeDrawer({
   triggerLabel,
   triggerClassName,
+  triggerIcon,
+  triggerVariant = "amber",
   title = "Grow Branch",
   isPending = false,
   onSubmit,
@@ -225,11 +229,12 @@ export function TreeNodeDrawer({
     <Drawer open={open} onOpenChange={setOpen} direction="right">
       <Button
         type="button"
-        variant="amber"
+        variant={triggerVariant}
         size="sm"
         className={cn("rounded-sm font-mono tracking-[0.04em] uppercase", triggerClassName)}
         onClick={() => setOpen(true)}
       >
+        {triggerIcon ? <span data-icon="inline-start">{triggerIcon}</span> : null}
         {triggerLabel}
       </Button>
       <DrawerContent className="w-[min(34rem,calc(100vw-1rem))] sm:max-w-lg">

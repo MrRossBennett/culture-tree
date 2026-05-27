@@ -22,7 +22,7 @@ import {
   prepareEnrichmentsForCommittedBranches,
   resolveCommittedBranches,
 } from "./committed-branch-enrichment";
-import { growBranchInCultureTree } from "./culture-tree-branches";
+import { addManualBranchToCultureTree, growBranchInCultureTree } from "./culture-tree-branches";
 import { buildCultureTreeNode, type AddCultureTreeNodeDraft } from "./culture-tree-node-builder";
 import { withLimitReachedMessage } from "./limit-reached-messages";
 import { buildAcceptedAiGenerationUsage, type AllowancePeriod } from "./usage-history";
@@ -126,7 +126,7 @@ const defaultGrowBranchAdapters: GrowBranchAdapters = {
 
 export async function growBranch(input: {
   treeId: string;
-  guideSectionId: GuideSectionIdValue;
+  guideSectionId?: GuideSectionIdValue;
   node: AddCultureTreeNodeDraft;
   person: GrowBranchPerson;
   proAllowlist?: ProAllowlistSource;
@@ -156,11 +156,16 @@ export async function growBranch(input: {
 
   const draftBranch = adapters.buildBranch(input.node);
   const branch = await adapters.completeBranchConnection(tree, draftBranch);
-  const nextTree = growBranchInCultureTree({
-    tree,
-    guideSectionId: input.guideSectionId,
-    branch,
-  });
+  const nextTree = input.guideSectionId
+    ? growBranchInCultureTree({
+        tree,
+        guideSectionId: input.guideSectionId,
+        branch,
+      })
+    : addManualBranchToCultureTree({
+        tree,
+        branch,
+      });
   const committedBranch = nextTree.items.at(-1);
   if (!committedBranch) {
     throw new Error("Branch was not committed.");

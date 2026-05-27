@@ -20,6 +20,7 @@ import {
   ClipboardIcon,
   HeartIcon,
   LoaderCircleIcon,
+  PlusIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -518,10 +519,12 @@ export function TreePreview({
   enrichments = {},
   loadingItemIds = [],
   isAddItemPending = false,
+  isGrowItemPending = false,
   isGeneratingNewTree = false,
   onAddItem,
   onDeleteItem,
   onGenerateNewTree,
+  onGrowItem,
   onToggleLike,
   resolvedEntities = {},
 }: {
@@ -529,10 +532,12 @@ export function TreePreview({
   readonly enrichments?: TreeEnrichmentsMap;
   readonly loadingItemIds?: readonly string[];
   readonly isAddItemPending?: boolean;
+  readonly isGrowItemPending?: boolean;
   readonly onAddItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
+  readonly onGrowItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
 }) {
@@ -587,13 +592,29 @@ export function TreePreview({
         ) : (
           <span />
         )}
-        {onAddItem ? (
-          <TreeNodeDrawer
-            triggerLabel="Add to Tree"
-            title="Add to Tree"
-            isPending={isAddItemPending}
-            onSubmit={onAddItem}
-          />
+        {onAddItem || onGrowItem ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            {onAddItem ? (
+              <TreeNodeDrawer
+                triggerLabel="Add to Tree"
+                triggerIcon={<PlusIcon className="size-3.5" />}
+                triggerVariant="outline"
+                title="Add to Tree"
+                isPending={isAddItemPending}
+                onSubmit={onAddItem}
+              />
+            ) : null}
+            {onGrowItem ? (
+              <TreeNodeDrawer
+                triggerLabel="Grow Branch"
+                triggerIcon={<SparklesIcon className="size-3.5" />}
+                triggerVariant="amber"
+                title="Grow Branch with AI"
+                isPending={isGrowItemPending}
+                onSubmit={onGrowItem}
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
       {boardItems.length > 0 ? (

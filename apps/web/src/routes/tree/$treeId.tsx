@@ -29,6 +29,7 @@ import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover"
 import { TreePreview } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import {
+  $addCultureTreeNode,
   $addManualCultureTreeBranch,
   $deleteCultureTreeNode,
   $getCultureTreeById,
@@ -332,6 +333,27 @@ function TreePage() {
     },
   });
 
+  const growItem = useMutation({
+    mutationFn: (input: { node: TreeNodePopoverSubmitInput; pendingItemId: string }) => {
+      return $addCultureTreeNode({ data: { treeId, node: input.node } });
+    },
+    onSuccess: async (result, variables) => {
+      if (!result.ok) {
+        setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+        toast.error(result.limitReached.message);
+        return;
+      }
+      toast.success("Branch grown with AI.");
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+    },
+    onError: (err: Error, variables) => {
+      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+      toast.error(err.message || "Could not grow that branch.");
+    },
+  });
+
   const seedFromItem = useMutation({
     mutationFn: (input: { item: TreeItem; mediaFilter?: NodeTypeValue[]; tone: CultureTreeTone }) =>
       $seedTreeFromItem({ data: input }),
@@ -420,6 +442,12 @@ function TreePage() {
     await addItem.mutateAsync({ node, pendingItemId: pendingItem.id });
   };
 
+  const handleGrowItem = async (node: TreeNodePopoverSubmitInput) => {
+    const pendingItem = pendingTreeItemFromInput(node);
+    setPendingItems((items) => [...items, pendingItem]);
+    await growItem.mutateAsync({ node, pendingItemId: pendingItem.id });
+  };
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
       <div className="flex w-full flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
@@ -451,12 +479,20 @@ function TreePage() {
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
+            isGrowItemPending={growItem.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
             onAddItem={
               isOwner && treeIsReady
                 ? async (node) => {
                     await handleAddItem(node);
+                  }
+                : undefined
+            }
+            onGrowItem={
+              isOwner && treeIsReady
+                ? async (node) => {
+                    await handleGrowItem(node);
                   }
                 : undefined
             }
@@ -480,12 +516,20 @@ function TreePage() {
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
+            isGrowItemPending={growItem.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
             onAddItem={
               isOwner && treeIsReady
                 ? async (node) => {
                     await handleAddItem(node);
+                  }
+                : undefined
+            }
+            onGrowItem={
+              isOwner && treeIsReady
+                ? async (node) => {
+                    await handleGrowItem(node);
                   }
                 : undefined
             }

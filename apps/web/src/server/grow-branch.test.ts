@@ -209,6 +209,56 @@ describe("growBranch", () => {
     expect(adapters.resolveCommittedBranches).not.toHaveBeenCalled();
   });
 
+  it("can add an AI-assisted Branch without Guide Sections while recording Grow Branch usage", async () => {
+    const manualTree = CultureTreeSchema.parse({
+      title: "Private canon",
+      items: [],
+    });
+    const adapters = baseAdapters({
+      loadCultureTree: vi.fn(async () => ({
+        id: "tree_1",
+        userId: "person_1",
+        data: manualTree,
+        enrichmentData: {},
+      })),
+    });
+
+    const result = await growBranch({
+      treeId: "tree_1",
+      node: draft,
+      person: { id: "person_1", email: "owner@example.com" },
+      adapters,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      branch: {
+        id: "branch_2",
+        reason: "A precise next stop for ritual, restraint, and lone-hitman fatalism.",
+      },
+      branchCount: 1,
+    });
+    expect(result.ok ? result.branch.branchRole : "not-ok").toBeUndefined();
+    expect(adapters.decideAllowance).toHaveBeenCalledWith({
+      person: { id: "person_1", email: "owner@example.com" },
+      cultureTreeId: "tree_1",
+      proAllowlist: undefined,
+    });
+    expect(adapters.commitAcceptedGrowBranch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        treeId: "tree_1",
+        tree: expect.objectContaining({
+          guideSections: [],
+          items: [expect.objectContaining({ id: "branch_2" })],
+        }),
+        allowance: expect.objectContaining({
+          allowed: true,
+          usageType: ENTITLEMENTS.growBranch,
+        }),
+      }),
+    );
+  });
+
   it("rejects Grow Branch for a non-Owner", async () => {
     await expect(
       growBranch({

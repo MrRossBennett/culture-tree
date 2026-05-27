@@ -57,7 +57,7 @@ function treeListPreviewItems(
 
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
-  guideSectionId: GuideSectionId,
+  guideSectionId: GuideSectionId.optional(),
   node: AddCultureTreeNodeDraftSchema,
 });
 
