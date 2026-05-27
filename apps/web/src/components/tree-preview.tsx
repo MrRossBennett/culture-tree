@@ -1,10 +1,12 @@
 import {
+  filterCultureTreeToNodeTypes,
   formatGuideSectionTitle,
   type BranchRoleValue,
   type ConnectionTypeValue,
   type CultureTree,
   type GuideSection,
   type GuideSectionIdValue,
+  type NodeTypeValue,
   type SearchHint,
   type TreeEnrichmentsMap,
   type TreeItem,
@@ -26,6 +28,7 @@ import { useState, type ReactNode } from "react";
 import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
+import { NodeTypeFilterList } from "~/components/node-type-filter-list";
 import { TreeNodeDrawer } from "~/components/tree-node-popover";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
@@ -140,6 +143,12 @@ function buildPreviewBoardItems({
       sectionId: section.id,
       sectionTitle: section.title,
     })),
+  );
+}
+
+function availableBranchTypes(tree: CultureTree): NodeTypeValue[] {
+  return Array.from(new Set(tree.items.map((item) => item.type))).sort((left, right) =>
+    left.localeCompare(right),
   );
 }
 
@@ -527,7 +536,13 @@ export function TreePreview({
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
 }) {
-  const previewSections = buildPreviewSections(tree).filter(
+  const [selectedBranchTypes, setSelectedBranchTypes] = useState<NodeTypeValue[]>([]);
+  const branchTypes = availableBranchTypes(tree);
+  const allBranchTypesSelected = selectedBranchTypes.length === 0;
+  const filteredTree = allBranchTypesSelected
+    ? tree
+    : filterCultureTreeToNodeTypes(tree, selectedBranchTypes);
+  const previewSections = buildPreviewSections(filteredTree).filter(
     (section) => section.items.length > 0 || section.id !== "unsectioned",
   );
   const boardItems = buildPreviewBoardItems({
@@ -538,19 +553,49 @@ export function TreePreview({
   const loadingItemIdSet = new Set(loadingItemIds);
   const [selectedItem, setSelectedItem] = useState<TreeItem | null>(null);
   const selectedResolvedEntity = selectedItem ? resolvedEntities[selectedItem.id] : undefined;
+  const filterActive = !allBranchTypesSelected;
+  const toggleBranchType = (type: NodeTypeValue) => {
+    setSelectedBranchTypes((current) => {
+      if (current.length === 0) {
+        return [type];
+      }
+      if (current.includes(type)) {
+        return current.length === 1 ? [] : current.filter((item) => item !== type);
+      }
+      return [...current, type];
+    });
+  };
 
   return (
     <section className="relative w-full text-left">
-      {onAddItem ? (
-        <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        {branchTypes.length > 1 ? (
+          <div className="space-y-2">
+            <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
+              Branch Type
+            </p>
+            <NodeTypeFilterList
+              types={branchTypes}
+              selectedTypes={selectedBranchTypes}
+              allSelected={allBranchTypesSelected}
+              allLabel="All Branches"
+              size="md"
+              onSelectAll={() => setSelectedBranchTypes([])}
+              onToggleType={toggleBranchType}
+            />
+          </div>
+        ) : (
+          <span />
+        )}
+        {onAddItem ? (
           <TreeNodeDrawer
             triggerLabel="Add to Tree"
             title="Add to Tree"
             isPending={isAddItemPending}
             onSubmit={onAddItem}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {boardItems.length > 0 ? (
         <Masonry
           items={boardItems}
@@ -572,6 +617,24 @@ export function TreePreview({
             />
           )}
         />
+      ) : filterActive ? (
+        <div className="mx-auto flex min-h-48 w-full max-w-xl flex-col items-center justify-center rounded border border-border/60 bg-muted/20 px-4 py-8 text-center">
+          <p className="font-heading text-xl tracking-tight text-foreground">
+            No Branches match those filters.
+          </p>
+          <p className="font-body mt-2 text-sm text-muted-foreground">
+            Show every Branch again to keep browsing this Culture Tree.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-4 rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+            onClick={() => setSelectedBranchTypes([])}
+          >
+            Show all Branches
+          </Button>
+        </div>
       ) : (
         <p className="font-body mt-4 text-center text-sm text-muted-foreground">No items yet.</p>
       )}

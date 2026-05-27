@@ -111,4 +111,40 @@ describe("Guide Section policy", () => {
       { id: "go-deeper", items: [] },
     ]);
   });
+
+  it("filters manually authored trees without Guide Sections", () => {
+    const manualTree = CultureTreeSchema.parse({
+      title: "Private canon",
+      items: [
+        { ...branch, id: "manual_album", type: "album" },
+        { ...branch, id: "manual_film", type: "film" },
+      ],
+    });
+
+    const filtered = filterCultureTreeToNodeTypes(manualTree, ["film"]);
+
+    expect(filtered.guideSections).toEqual([]);
+    expect(filtered.items.map((item) => item.id)).toEqual(["manual_film"]);
+  });
+
+  it("filters unsectioned Branches on generated trees", () => {
+    const generatedWithManualBranch = CultureTreeSchema.parse({
+      ...guideTree,
+      items: [...guideTree.items, { ...branch, id: "manual_article", type: "article" }],
+    });
+
+    const filtered = filterCultureTreeToNodeTypes(generatedWithManualBranch, ["article"]);
+
+    expect(guideSectionsIncludeCore(filtered.guideSections)).toBe(true);
+    expect(filtered.guideSections.every((section) => section.items.length === 0)).toBe(true);
+    expect(filtered.items.map((item) => item.id)).toEqual(["manual_article"]);
+  });
+
+  it("returns a recoverable empty tree shape when no Branches match the selected types", () => {
+    const filtered = filterCultureTreeToNodeTypes(guideTree, ["article"]);
+
+    expect(filtered.items).toEqual([]);
+    expect(guideSectionsIncludeCore(filtered.guideSections)).toBe(true);
+    expect(filtered.guideSections.every((section) => section.items.length === 0)).toBe(true);
+  });
 });
