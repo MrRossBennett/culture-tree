@@ -95,10 +95,17 @@ export function treeForRevealProgress(finalTree: CultureTree, revealedItemCount:
     return CultureTreeSchema.parse(finalTree);
   }
 
+  const revealedItemIds = new Set(
+    finalTree.items.slice(0, revealedItemCount).map((item) => item.id),
+  );
+
   return CultureTreeSchema.parse({
     seed: finalTree.seed,
     seedType: finalTree.seedType,
-    guideSections: [],
+    guideSections: finalTree.guideSections.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => revealedItemIds.has(item.id)),
+    })),
     items: finalTree.items.slice(0, revealedItemCount),
   });
 }

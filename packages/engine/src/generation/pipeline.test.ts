@@ -54,7 +54,15 @@ describe("generateTree", () => {
     });
 
     expect(tree.items.length).toBeGreaterThan(0);
+    expect(
+      CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((id) =>
+        tree.guideSections.some((section) => section.id === id),
+      ),
+    ).toBe(true);
     expect(tree.items.every((item) => item.type === "film")).toBe(true);
+    expect(
+      tree.guideSections.every((section) => section.items.every((item) => item.type === "film")),
+    ).toBe(true);
   });
 
   it("fills an added tree item reason when MOCK_ENGINE is enabled", async () => {

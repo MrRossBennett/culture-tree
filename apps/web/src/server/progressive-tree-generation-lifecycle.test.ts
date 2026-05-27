@@ -74,7 +74,7 @@ describe("progressive tree generation lifecycle", () => {
     expect(nextRevealItemIndex(3)).toBe(3);
   });
 
-  it("keeps reveal progress flat, then returns the final guide-shaped tree when complete", () => {
+  it("keeps reveal progress guide-shaped, then returns the final tree when complete", () => {
     const finalTree = CultureTreeSchema.parse({
       seed: "Ghost Dog",
       seedType: "root",
@@ -189,7 +189,12 @@ describe("progressive tree generation lifecycle", () => {
     });
 
     expect(treeForRevealProgress(finalTree, 2)).toMatchObject({
-      guideSections: [],
+      guideSections: [
+        { id: "start-here", items: [{ id: "item_1" }] },
+        { id: "more-like-this", items: [{ id: "item_2" }] },
+        { id: "go-sideways", items: [] },
+        { id: "go-deeper", items: [] },
+      ],
       items: [{ id: "item_1" }, { id: "item_2" }],
     });
     expect(treeForRevealProgress(finalTree, finalTree.items.length).guideSections).toHaveLength(4);
