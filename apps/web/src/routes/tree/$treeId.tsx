@@ -169,7 +169,6 @@ function CultureTreeSeedCard({
   const seed = tree.seed?.trim();
   const title = tree.title?.trim();
   const heading = title || seed || "Untitled tree";
-  const label = seed ? "Seed" : "Culture Tree";
   const description = tree.description?.trim();
 
   return (
@@ -180,9 +179,6 @@ function CultureTreeSeedCard({
             <SproutIcon className="size-4" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="mb-1 font-mono text-[0.58rem] tracking-[0.16em] text-muted-foreground uppercase">
-              {label}
-            </p>
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
               <h1 className="font-heading min-w-0 truncate text-3xl leading-tight tracking-tight text-foreground md:text-4xl">
                 {heading}
