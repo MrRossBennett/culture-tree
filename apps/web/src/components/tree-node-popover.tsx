@@ -9,6 +9,7 @@ import {
 } from "@repo/ui/components/dialog";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
+import { Textarea } from "@repo/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
 import { LoaderCircleIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
@@ -109,6 +110,7 @@ export function TreeNodeDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsPaneRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
+  const [description, setDescription] = useState("");
   const [results, setResults] = useState<ExternalNodeSearchResult[]>([]);
   const [activeResultType, setActiveResultType] = useState<NodeTypeValue | null>(null);
   const [showResultsFade, setShowResultsFade] = useState(false);
@@ -120,6 +122,7 @@ export function TreeNodeDialog({
   useEffect(() => {
     if (!open) {
       setQuery("");
+      setDescription("");
       setResults([]);
       setActiveResultType(null);
       setShowResultsFade(false);
@@ -229,7 +232,7 @@ export function TreeNodeDialog({
       kind: "search-result",
       result,
       connectionType: DEFAULT_CONNECTION_TYPE,
-      reason: "",
+      reason: description.trim(),
     });
     setOpen(false);
   };
@@ -333,6 +336,25 @@ export function TreeNodeDialog({
                   </Tooltip>
                 ) : null}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label
+                htmlFor={`${searchId}-description`}
+                className="font-mono text-[0.6rem] font-normal tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase"
+              >
+                Description
+              </Label>
+              <Textarea
+                id={`${searchId}-description`}
+                value={description}
+                onChange={(event) => {
+                  setDescription(event.currentTarget.value);
+                }}
+                placeholder="What does this Branch add to the tree?"
+                maxLength={360}
+                className="h-24 min-h-24 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] text-sm text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
+              />
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col space-y-3">

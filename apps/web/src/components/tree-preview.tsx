@@ -407,25 +407,13 @@ function BranchFocusDialog({
                   {item.reason ? (
                     <div className="space-y-2 pt-2">
                       <p className="font-mono text-[0.62rem] tracking-[0.14em] text-[oklch(0.9_0.01_120/0.42)] uppercase">
-                        Why this branch belongs
+                        Description
                       </p>
                       <p className="font-body text-base leading-relaxed text-[oklch(0.91_0.014_125)]">
                         {item.reason}
                       </p>
                     </div>
-                  ) : (
-                    <div className="space-y-2 pt-2" aria-label="Finding the connection">
-                      <p className="inline-flex items-center gap-2 text-sm text-[oklch(0.9_0.01_120/0.55)]">
-                        <LoaderCircleIcon
-                          className="size-3.5 animate-spin text-[oklch(0.82_0.11_100)]"
-                          aria-hidden
-                        />
-                        Finding the connection…
-                      </p>
-                      <div className="h-2 w-full animate-pulse rounded-full bg-[oklch(0.95_0.01_120/0.1)]" />
-                      <div className="h-2 w-4/5 animate-pulse rounded-full bg-[oklch(0.95_0.01_120/0.1)]" />
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
               <div className="space-y-3 border-t border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
