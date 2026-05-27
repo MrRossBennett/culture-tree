@@ -575,10 +575,7 @@ export function TreePreview({
     <section className="relative w-full text-left">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         {branchTypes.length > 1 ? (
-          <div className="space-y-2">
-            <p className="font-mono text-[0.6rem] tracking-[0.18em] text-muted-foreground uppercase">
-              Branch Type
-            </p>
+          <div>
             <NodeTypeFilterList
               types={branchTypes}
               selectedTypes={selectedBranchTypes}
