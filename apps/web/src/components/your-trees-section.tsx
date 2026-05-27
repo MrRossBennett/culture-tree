@@ -98,17 +98,19 @@ export function YourTreesSection({
   isLoading = false,
   trees,
   emptyMessage = "Create a Culture Tree to start shaping your library.",
+  title = "Your trees",
 }: {
   readonly count: number;
   readonly isLoading?: boolean;
   readonly trees: readonly YourTreesListItem[];
   readonly emptyMessage?: string;
+  readonly title?: string;
 }) {
   return (
     <section className="space-y-4">
       <div className="flex items-baseline justify-between gap-4">
         <p className="font-mono text-[0.65rem] tracking-[0.2em] text-muted-foreground uppercase">
-          Your trees
+          {title}
         </p>
         <p className="font-mono text-[0.65rem] tracking-[0.2em] text-muted-foreground tabular-nums">
           {count} {count === 1 ? "tree" : "trees"}
