@@ -28,6 +28,7 @@ import {
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import { TreePreview, type AddToTreeTarget } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
+import { loaderContainsCommittedTree, treeForVisiblePreview } from "~/lib/tree-preview-state";
 import {
   $addCultureTreeNode,
   $addManualCultureTreeBranch,
@@ -269,17 +270,6 @@ function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): PendingTre
   };
 }
 
-function treeWithPendingItems(tree: CultureTree, pendingItems: readonly PendingTreeItem[]) {
-  if (pendingItems.length === 0) {
-    return tree;
-  }
-
-  return {
-    ...tree,
-    items: [...tree.items, ...pendingItems],
-  };
-}
-
 function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
@@ -302,7 +292,16 @@ function TreePage() {
   const [generationTone, setGenerationTone] = useState<CultureTreeTone>("mixed");
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
   const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
+  const [committedTreeState, setCommittedTreeState] = useState<{
+    treeId: string;
+    tree: CultureTree;
+  } | null>(null);
   const treeIsReady = generation.status === "ready";
+  const committedTree =
+    committedTreeState?.treeId === treeId &&
+    !loaderContainsCommittedTree({ loaderTree: tree, committedTree: committedTreeState.tree })
+      ? committedTreeState.tree
+      : null;
   const myTrees = useQuery({
     ...myCultureTreesQueryOptions(),
     enabled: Boolean(viewerUserId && !isOwner && treeIsReady),
@@ -342,7 +341,8 @@ function TreePage() {
     mutationFn: (input: { node: TreeNodePopoverSubmitInput; pendingItemId: string }) => {
       return $addManualCultureTreeBranch({ data: { treeId, node: input.node } });
     },
-    onSuccess: async (_result, variables) => {
+    onSuccess: async (result, variables) => {
+      setCommittedTreeState({ treeId, tree: result.tree });
       toast.success("Branch added to your tree.");
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
@@ -419,6 +419,7 @@ function TreePage() {
     onSuccess: async () => {
       toast.success("Branch removed from your tree.");
       setDeleteTarget(null);
+      setCommittedTreeState(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
     },
@@ -460,7 +461,11 @@ function TreePage() {
     </section>
   ) : null;
 
-  const previewTree = treeWithPendingItems(tree, pendingItems);
+  const previewTree = treeForVisiblePreview({
+    loaderTree: tree,
+    committedTree,
+    pendingItems,
+  });
   const pendingItemIds = pendingItems.map((item) => item.id);
   const generationIsActive = isGenerationActive(generation.status);
   const generationIsTerminal = isGenerationTerminal(generation.status);

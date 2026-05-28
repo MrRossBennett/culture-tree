@@ -9,26 +9,29 @@ import {
 } from "@repo/ui/components/dialog";
 import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
-import { Textarea } from "@repo/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import { LoaderCircleIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
+import { LoaderCircleIcon, MinusIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
+import {
+  branchTraySubmitLabel,
+  canSubmitBranchTray,
+  clearBranchTray,
+  removeBranchTrayItem,
+  stageSearchResult,
+  submitInputFromBranchTray,
+  type BranchTrayItem,
+  type BranchTraySubmitInput,
+} from "~/lib/branch-tray-state";
 import { $searchCultureTreeNodes } from "~/server/culture-trees";
 
-const DEFAULT_CONNECTION_TYPE = "thematic";
 const SEARCH_DEBOUNCE_MS = 350;
 
-type TreeNodePopoverSubmitInput = {
-  kind: "search-result";
-  result: ExternalNodeSearchResult;
-  connectionType: "thematic";
-  reason: string;
-};
+type TreeNodePopoverSubmitInput = BranchTraySubmitInput;
 
 function ResultRow({
   result,
@@ -110,7 +113,7 @@ export function TreeNodeDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsPaneRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
-  const [description, setDescription] = useState("");
+  const [branchTray, setBranchTray] = useState<BranchTrayItem[]>([]);
   const [results, setResults] = useState<ExternalNodeSearchResult[]>([]);
   const [activeResultType, setActiveResultType] = useState<NodeTypeValue | null>(null);
   const [showResultsFade, setShowResultsFade] = useState(false);
@@ -118,11 +121,13 @@ export function TreeNodeDialog({
   const [isSearching, setIsSearching] = useState(false);
   const trimmedQuery = query.trim();
   const showSearching = trimmedQuery.length >= 2 && isSearching;
+  const isSubmitting = isPending || isAiPending;
+  const canSubmitTray = canSubmitBranchTray(branchTray) && !isSubmitting;
 
   useEffect(() => {
     if (!open) {
       setQuery("");
-      setDescription("");
+      setBranchTray((current) => clearBranchTray(current));
       setResults([]);
       setActiveResultType(null);
       setShowResultsFade(false);
@@ -220,25 +225,29 @@ export function TreeNodeDialog({
     };
   }, [filteredResults, open]);
 
-  const handleSubmitResult = async (
-    result: ExternalNodeSearchResult,
-    submit: (input: TreeNodePopoverSubmitInput) => Promise<void>,
-  ) => {
-    if (isPending || isAiPending) {
+  const handleStageResult = (result: ExternalNodeSearchResult) => {
+    if (isSubmitting) {
       return;
     }
 
-    await submit({
-      kind: "search-result",
-      result,
-      connectionType: DEFAULT_CONNECTION_TYPE,
-      reason: description.trim(),
+    setBranchTray(() => stageSearchResult({ tray: [], result }));
+    setQuery("");
+    setResults([]);
+    setActiveResultType(null);
+    setSearchError(null);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
     });
-    setOpen(false);
   };
 
-  const handleSelectResult = async (result: ExternalNodeSearchResult) => {
-    await handleSubmitResult(result, onSubmit);
+  const handleSubmitTray = async () => {
+    const input = submitInputFromBranchTray(branchTray);
+    if (!input || isSubmitting) {
+      return;
+    }
+
+    await onSubmit(input);
+    setOpen(false);
   };
 
   const handleAiSubmit = async () => {
@@ -246,7 +255,13 @@ export function TreeNodeDialog({
       return;
     }
 
-    await handleSubmitResult(suggestedAiResult, onAiSubmit);
+    await onAiSubmit({
+      kind: "search-result",
+      result: suggestedAiResult,
+      connectionType: "thematic",
+      reason: "",
+    });
+    setOpen(false);
   };
 
   return (
@@ -261,14 +276,14 @@ export function TreeNodeDialog({
         {triggerIcon ? <span data-icon="inline-start">{triggerIcon}</span> : null}
         {triggerLabel}
       </Button>
-      <DialogContent className="grid h-[min(44rem,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] w-[min(78rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none md:grid-cols-[minmax(0,1fr)_20rem]">
+      <DialogContent className="grid h-[min(44rem,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] w-[min(78rem,calc(100vw-2rem))] max-w-none grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none md:grid-cols-[minmax(0,1fr)_20rem] md:grid-rows-1">
         <div className="flex min-h-0 flex-col bg-[oklch(0.18_0.012_125)]">
           <DialogHeader className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 pt-6 pb-5">
             <DialogTitle className="font-heading text-2xl leading-tight tracking-tight text-[oklch(0.95_0.012_125)]">
               {title}
             </DialogTitle>
             <DialogDescription className="text-sm text-[oklch(0.9_0.01_120/0.58)]">
-              Find a recognized cultural subject and add it as the next Branch.
+              Find a recognized cultural subject and stage it before adding it to the tree.
             </DialogDescription>
           </DialogHeader>
 
@@ -290,8 +305,8 @@ export function TreeNodeDialog({
                     onChange={(event) => {
                       setQuery(event.currentTarget.value);
                     }}
-                    placeholder="A film, album, book, artist, place..."
-                    className="font-body h-11 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] pr-9 pl-9 text-sm text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
+                    placeholder="Search films, books, albums, artists, places..."
+                    className="font-body h-14 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] pr-9 pl-10 text-base text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
                     maxLength={160}
                   />
                   {query ? (
@@ -338,25 +353,6 @@ export function TreeNodeDialog({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label
-                htmlFor={`${searchId}-description`}
-                className="font-mono text-[0.6rem] font-normal tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase"
-              >
-                Description
-              </Label>
-              <Textarea
-                id={`${searchId}-description`}
-                value={description}
-                onChange={(event) => {
-                  setDescription(event.currentTarget.value);
-                }}
-                placeholder="What does this Branch add to the tree?"
-                maxLength={360}
-                className="h-24 min-h-24 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] text-sm text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
-              />
-            </div>
-
             <div className="flex min-h-0 flex-1 flex-col space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-mono text-[0.6rem] tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase">
@@ -392,9 +388,9 @@ export function TreeNodeDialog({
                       <ResultRow
                         key={`${result.identity.source}:${result.identity.externalId}`}
                         result={result}
-                        disabled={isPending || isAiPending}
+                        disabled={isSubmitting}
                         onSelect={(next) => {
-                          void handleSelectResult(next);
+                          handleStageResult(next);
                         }}
                       />
                     ))}
@@ -427,21 +423,77 @@ export function TreeNodeDialog({
           </div>
         </div>
 
-        <aside className="hidden min-h-0 flex-col border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] md:flex md:border-l">
+        <aside className="flex min-h-0 flex-col border-t border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] md:border-t-0 md:border-l">
           <div className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
             <span className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] px-2.5 py-1 font-mono text-[0.6rem] tracking-[0.08em] text-[oklch(0.9_0.01_120/0.64)] uppercase">
-              Branch
+              Branch Tray
             </span>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-8 px-6 py-6">
-            <div className="space-y-3">
-              <p className="font-heading text-2xl leading-tight tracking-tight text-[oklch(0.95_0.012_125)]">
-                Add to this tree
-              </p>
-              <p className="text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
-                Search across films, albums, books, artists, places, and cultural scenes.
-              </p>
-            </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">
+            {branchTray.length > 0 ? (
+              <div className="min-h-0 space-y-2 overflow-y-auto">
+                {branchTray.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 rounded-xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] p-3"
+                  >
+                    <NodeThumbnail
+                      type={item.result.snapshot.type}
+                      src={item.result.snapshot.image}
+                      size="sm"
+                      className="size-9 rounded-none object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-heading truncate text-sm leading-tight text-[oklch(0.95_0.012_125)]">
+                        {item.result.snapshot.name}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <NodeTypeBadge type={item.result.snapshot.type} />
+                        {item.result.snapshot.year != null ? (
+                          <span className="font-mono text-[0.58rem] tracking-wide text-[oklch(0.9_0.01_120/0.5)] tabular-nums">
+                            {item.result.snapshot.year}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={isSubmitting}
+                      aria-label={`Remove ${item.result.snapshot.name} from Branch Tray`}
+                      onClick={() => {
+                        setBranchTray((current) =>
+                          removeBranchTrayItem({ tray: current, itemId: item.id }),
+                        );
+                      }}
+                    >
+                      <MinusIcon className="size-4" aria-hidden />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-24 items-center rounded-xl border border-dashed border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.04)] px-4">
+                <p className="text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
+                  Stage a Branch from search results before adding it to this Culture Tree.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-[oklch(0.9_0.01_120/0.1)] p-6">
+            <Button
+              type="button"
+              variant="amber"
+              className="w-full rounded-sm font-mono text-[0.68rem] tracking-[0.08em] uppercase"
+              disabled={!canSubmitTray}
+              onClick={() => {
+                void handleSubmitTray();
+              }}
+            >
+              {isPending ? <LoaderCircleIcon className="size-4 animate-spin" aria-hidden /> : null}
+              {branchTraySubmitLabel(branchTray)}
+            </Button>
           </div>
         </aside>
       </DialogContent>

@@ -203,12 +203,12 @@ export const $addManualCultureTreeBranch = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(AddManualCultureTreeBranchInputSchema)
   .handler(async ({ data, context }) => {
-    await manualAddToTree({
+    const result = await manualAddToTree({
       treeId: data.treeId,
       node: data.node,
       person: context.user,
     });
-    return { ok: true as const };
+    return result;
   });
 
 export const $addPublicCultureTreeBranchToMyTree = createServerFn({ method: "POST" })
