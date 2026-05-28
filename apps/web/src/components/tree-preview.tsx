@@ -590,7 +590,7 @@ export function TreePreview({
   readonly isAddingBranchToTree?: boolean;
   readonly isGrowItemPending?: boolean;
   readonly onAddBranchToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
-  readonly onAddItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
+  readonly onAddItem?: (node: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
@@ -654,7 +654,15 @@ export function TreePreview({
             title="Add Branch"
             isPending={isAddItemPending}
             isAiPending={isGrowItemPending}
-            onSubmit={(onAddItem ?? onGrowItem)!}
+            onSubmit={
+              onAddItem ??
+              (async (nodes) => {
+                const node = nodes.at(0);
+                if (node && onGrowItem) {
+                  await onGrowItem(node);
+                }
+              })
+            }
             onAiSubmit={onGrowItem}
           />
         ) : null}

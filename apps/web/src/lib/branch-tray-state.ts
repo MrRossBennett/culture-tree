@@ -63,15 +63,16 @@ export function canSubmitBranchTray(tray: readonly BranchTrayItem[]): boolean {
 export function submitInputFromBranchTray(
   tray: readonly BranchTrayItem[],
 ): BranchTraySubmitInput | null {
-  const item = tray.at(0);
-  if (!item) {
-    return null;
-  }
+  return submitInputsFromBranchTray(tray).at(0) ?? null;
+}
 
-  return {
+export function submitInputsFromBranchTray(
+  tray: readonly BranchTrayItem[],
+): BranchTraySubmitInput[] {
+  return tray.map((item) => ({
     kind: "search-result",
     result: item.result,
     connectionType: BRANCH_TRAY_DEFAULT_CONNECTION_TYPE,
     reason: "",
-  };
+  }));
 }

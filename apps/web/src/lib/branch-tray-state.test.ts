@@ -8,6 +8,7 @@ import {
   removeBranchTrayItem,
   stageSearchResult,
   submitInputFromBranchTray,
+  submitInputsFromBranchTray,
 } from "./branch-tray-state";
 
 const leSamourai: ExternalNodeSearchResult = {
@@ -22,6 +23,18 @@ const leSamourai: ExternalNodeSearchResult = {
   externalUrl: "https://example.com/le-samourai",
 };
 
+const theWarriors: ExternalNodeSearchResult = {
+  identity: { source: "wikipedia", externalId: "The_Warriors" },
+  snapshot: {
+    name: "The Warriors",
+    type: "film",
+    year: 1979,
+    image: "https://example.com/the-warriors.jpg",
+  },
+  searchHint: { title: "The Warriors" },
+  externalUrl: "https://example.com/the-warriors",
+};
+
 describe("Branch Tray state", () => {
   it("stages a searched Branch for review before submit", () => {
     const tray = stageSearchResult({ tray: [], result: leSamourai });
@@ -33,6 +46,30 @@ describe("Branch Tray state", () => {
     });
     expect(branchTraySubmitLabel(tray)).toBe("Add Branch");
     expect(canSubmitBranchTray(tray)).toBe(true);
+  });
+
+  it("stages multiple searched Branches in order", () => {
+    const tray = stageSearchResult({
+      tray: stageSearchResult({ tray: [], result: leSamourai }),
+      result: theWarriors,
+    });
+
+    expect(tray.map((item) => item.result.snapshot.name)).toEqual(["Le Samourai", "The Warriors"]);
+    expect(branchTraySubmitLabel(tray)).toBe("Add 2 Branches");
+    expect(submitInputsFromBranchTray(tray)).toEqual([
+      {
+        kind: "search-result",
+        result: leSamourai,
+        connectionType: "thematic",
+        reason: "",
+      },
+      {
+        kind: "search-result",
+        result: theWarriors,
+        connectionType: "thematic",
+        reason: "",
+      },
+    ]);
   });
 
   it("removes a staged Branch from the tray", () => {

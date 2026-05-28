@@ -41,6 +41,13 @@ export type ManualAddToTreeResult = {
   branchCount: number;
 };
 
+export type ManualAddBranchesToTreeResult = {
+  ok: true;
+  tree: CultureTree;
+  branches: TreeItem[];
+  branchCount: number;
+};
+
 export type ManualAddToTreeAdapters = {
   loadCultureTree: (treeId: string) => Promise<ManualAddRow | null>;
   buildBranch: (node: AddCultureTreeNodeDraft) => TreeItem;
@@ -92,23 +99,56 @@ export async function manualAddToTree(input: {
   person: ManualAddPerson;
   adapters?: Partial<ManualAddToTreeAdapters>;
 }): Promise<ManualAddToTreeResult> {
+  const result = await manualAddBranchesToTree({
+    treeId: input.treeId,
+    nodes: [input.node],
+    person: input.person,
+    adapters: input.adapters,
+  });
+  const branch = result.branches.at(0);
+  if (!branch) {
+    throw new Error("Branch was not committed.");
+  }
+
+  return {
+    ok: true,
+    tree: result.tree,
+    branch,
+    branchCount: result.branchCount,
+  };
+}
+
+export async function manualAddBranchesToTree(input: {
+  treeId: string;
+  nodes: readonly AddCultureTreeNodeDraft[];
+  person: ManualAddPerson;
+  adapters?: Partial<ManualAddToTreeAdapters>;
+}): Promise<ManualAddBranchesToTreeResult> {
   const adapters = { ...defaultManualAddToTreeAdapters, ...input.adapters };
   const row = await adapters.loadCultureTree(input.treeId);
   if (!row || row.userId !== input.person.id) {
     throw new Error("Tree not found");
   }
+  if (input.nodes.length === 0) {
+    throw new Error("At least one Branch is required.");
+  }
 
   const tree = CultureTreeSchema.parse(row.data);
-  const branch = adapters.buildBranch(input.node);
-  const nextTree = CultureTreeSchema.parse(addManualBranchToCultureTree({ tree, branch }));
-  const committedBranch = nextTree.items.at(-1);
-  if (!committedBranch) {
+  const branches = input.nodes.map((node) => adapters.buildBranch(node));
+  const nextTree = CultureTreeSchema.parse(
+    branches.reduce(
+      (currentTree, branch) => addManualBranchToCultureTree({ tree: currentTree, branch }),
+      tree,
+    ),
+  );
+  const committedBranches = nextTree.items.slice(tree.items.length);
+  if (committedBranches.length !== branches.length) {
     throw new Error("Branch was not committed.");
   }
 
   const enrichments = await adapters.prepareEnrichments({
     tree,
-    branches: [committedBranch],
+    branches: committedBranches,
     currentEnrichments: parseTreeEnrichments(row.enrichmentData),
   });
 
@@ -120,14 +160,14 @@ export async function manualAddToTree(input: {
 
   await adapters.resolveCommittedBranches({
     treeId: input.treeId,
-    branches: [committedBranch],
+    branches: committedBranches,
     enrichments,
   });
 
   return {
     ok: true,
     tree: nextTree,
-    branch: committedBranch,
+    branches: committedBranches,
     branchCount: nextTree.items.length,
   };
 }

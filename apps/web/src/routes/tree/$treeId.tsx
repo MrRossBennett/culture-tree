@@ -31,7 +31,7 @@ import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import { loaderContainsCommittedTree, treeForVisiblePreview } from "~/lib/tree-preview-state";
 import {
   $addCultureTreeNode,
-  $addManualCultureTreeBranch,
+  $addManualCultureTreeBranches,
   $addPublicCultureTreeBranchToMyTree,
   $deleteCultureTreeNode,
   $getCultureTreeById,
@@ -338,18 +338,27 @@ function TreePage() {
   });
 
   const addItem = useMutation({
-    mutationFn: (input: { node: TreeNodePopoverSubmitInput; pendingItemId: string }) => {
-      return $addManualCultureTreeBranch({ data: { treeId, node: input.node } });
+    mutationFn: (input: {
+      nodes: readonly TreeNodePopoverSubmitInput[];
+      pendingItemIds: readonly string[];
+    }) => {
+      return $addManualCultureTreeBranches({ data: { treeId, nodes: [...input.nodes] } });
     },
     onSuccess: async (result, variables) => {
       setCommittedTreeState({ treeId, tree: result.tree });
-      toast.success("Branch added to your tree.");
+      toast.success(
+        result.branches.length === 1
+          ? "Branch added to your tree."
+          : "Branches added to your tree.",
+      );
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+      const committedPendingIds = new Set(variables.pendingItemIds);
+      setPendingItems((items) => items.filter((item) => !committedPendingIds.has(item.id)));
     },
     onError: (err: Error, variables) => {
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+      const failedPendingIds = new Set(variables.pendingItemIds);
+      setPendingItems((items) => items.filter((item) => !failedPendingIds.has(item.id)));
       toast.error(err.message || "Could not add that branch.");
     },
   });
@@ -481,10 +490,13 @@ function TreePage() {
     return () => window.clearInterval(id);
   }, [generationIsActive, router]);
 
-  const handleAddItem = async (node: TreeNodePopoverSubmitInput) => {
-    const pendingItem = pendingTreeItemFromInput(node);
-    setPendingItems((items) => [...items, pendingItem]);
-    await addItem.mutateAsync({ node, pendingItemId: pendingItem.id });
+  const handleAddItems = async (nodes: readonly TreeNodePopoverSubmitInput[]) => {
+    const nextPendingItems = nodes.map((node) => pendingTreeItemFromInput(node));
+    setPendingItems((items) => [...items, ...nextPendingItems]);
+    await addItem.mutateAsync({
+      nodes,
+      pendingItemIds: nextPendingItems.map((item) => item.id),
+    });
   };
 
   const handleGrowItem = async (node: TreeNodePopoverSubmitInput) => {
@@ -532,7 +544,7 @@ function TreePage() {
             onAddItem={
               isOwner && treeIsReady
                 ? async (node) => {
-                    await handleAddItem(node);
+                    await handleAddItems(node);
                   }
                 : undefined
             }
@@ -578,7 +590,7 @@ function TreePage() {
             onAddItem={
               isOwner && treeIsReady
                 ? async (node) => {
-                    await handleAddItem(node);
+                    await handleAddItems(node);
                   }
                 : undefined
             }

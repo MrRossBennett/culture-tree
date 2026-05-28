@@ -23,7 +23,7 @@ import {
   clearBranchTray,
   removeBranchTrayItem,
   stageSearchResult,
-  submitInputFromBranchTray,
+  submitInputsFromBranchTray,
   type BranchTrayItem,
   type BranchTraySubmitInput,
 } from "~/lib/branch-tray-state";
@@ -94,7 +94,7 @@ interface TreeNodeDialogProps {
   readonly isPending?: boolean;
   readonly isAiPending?: boolean;
   readonly onAiSubmit?: (input: TreeNodePopoverSubmitInput) => Promise<void>;
-  readonly onSubmit: (input: TreeNodePopoverSubmitInput) => Promise<void>;
+  readonly onSubmit: (input: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
 }
 
 export function TreeNodeDialog({
@@ -230,7 +230,7 @@ export function TreeNodeDialog({
       return;
     }
 
-    setBranchTray(() => stageSearchResult({ tray: [], result }));
+    setBranchTray((current) => stageSearchResult({ tray: current, result }));
     setQuery("");
     setResults([]);
     setActiveResultType(null);
@@ -241,8 +241,8 @@ export function TreeNodeDialog({
   };
 
   const handleSubmitTray = async () => {
-    const input = submitInputFromBranchTray(branchTray);
-    if (!input || isSubmitting) {
+    const input = submitInputsFromBranchTray(branchTray);
+    if (input.length === 0 || isSubmitting) {
       return;
     }
 
