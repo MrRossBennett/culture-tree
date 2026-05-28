@@ -19,11 +19,13 @@ import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
 import { addToTreeShortcutIntent } from "~/lib/add-to-tree-shortcuts";
 import {
+  BRANCH_TRAY_MAX_ITEMS,
   branchTrayUnavailableReason,
   branchTraySubmitLabel,
   canSubmitBranchTray,
   clearBranchTray,
   removeBranchTrayItem,
+  stageSuggestedResults,
   stageSearchResult,
   submitInputsFromBranchTray,
   type BranchTrayItem,
@@ -113,6 +115,9 @@ interface TreeNodeDialogProps {
   readonly existingBranches?: readonly TreeItem[];
   readonly isPending?: boolean;
   readonly isAiPending?: boolean;
+  readonly onSuggestBranches?: (
+    trayResults: readonly ExternalNodeSearchResult[],
+  ) => Promise<readonly ExternalNodeSearchResult[]>;
   readonly onAiSubmit?: (input: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onSubmit: (input: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
 }
@@ -126,6 +131,7 @@ export function TreeNodeDialog({
   existingBranches = [],
   isPending = false,
   isAiPending = false,
+  onSuggestBranches,
   onAiSubmit,
   onSubmit,
 }: TreeNodeDialogProps) {
@@ -144,6 +150,8 @@ export function TreeNodeDialog({
   const showSearching = trimmedQuery.length >= 2 && isSearching;
   const isSubmitting = isPending || isAiPending;
   const canSubmitTray = canSubmitBranchTray(branchTray) && !isSubmitting;
+  const canSuggestBranches =
+    Boolean(onSuggestBranches) && !isSubmitting && branchTray.length < BRANCH_TRAY_MAX_ITEMS;
 
   useEffect(() => {
     if (!open) {
@@ -328,6 +336,24 @@ export function TreeNodeDialog({
     setOpen(false);
   };
 
+  const handleSuggestBranches = async () => {
+    if (!onSuggestBranches || !canSuggestBranches) {
+      return;
+    }
+
+    const suggestions = await onSuggestBranches(branchTray.map((item) => item.result));
+    setBranchTray((current) =>
+      stageSuggestedResults({
+        tray: current,
+        existingBranches,
+        results: suggestions,
+      }),
+    );
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Button
@@ -390,7 +416,31 @@ export function TreeNodeDialog({
                     </button>
                   ) : null}
                 </div>
-                {onAiSubmit ? (
+                {onSuggestBranches ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="amber"
+                          size="icon-lg"
+                          disabled={!canSuggestBranches}
+                          aria-label="Suggest Branches"
+                          onClick={() => {
+                            void handleSuggestBranches();
+                          }}
+                        />
+                      }
+                    >
+                      {isAiPending ? (
+                        <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                      ) : (
+                        <SparklesIcon className="size-4" aria-hidden />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>Suggest Branches</TooltipContent>
+                  </Tooltip>
+                ) : onAiSubmit ? (
                   <Tooltip>
                     <TooltipTrigger
                       render={
@@ -526,6 +576,11 @@ export function TreeNodeDialog({
                         {item.result.snapshot.year != null ? (
                           <span className="font-mono text-[0.58rem] tracking-wide text-[oklch(0.9_0.01_120/0.5)] tabular-nums">
                             {item.result.snapshot.year}
+                          </span>
+                        ) : null}
+                        {item.source === "suggested" ? (
+                          <span className="font-mono text-[0.58rem] tracking-wide text-[oklch(0.9_0.01_120/0.5)] uppercase">
+                            Suggested
                           </span>
                         ) : null}
                       </div>

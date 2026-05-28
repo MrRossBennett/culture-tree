@@ -9,6 +9,7 @@ import {
   canSubmitBranchTray,
   clearBranchTray,
   removeBranchTrayItem,
+  stageSuggestedResults,
   stageSearchResult,
   submitInputFromBranchTray,
   submitInputsFromBranchTray,
@@ -165,6 +166,40 @@ describe("Branch Tray state", () => {
         result: resultAt(99),
       }),
     ).toBe("full");
+  });
+
+  it("stages suggested results into only the available tray slots", () => {
+    const almostFullTray = Array.from({ length: BRANCH_TRAY_MAX_ITEMS - 1 }, (_, index) =>
+      resultAt(index),
+    ).reduce<BranchTrayItem[]>((tray, result) => stageSearchResult({ tray, result }), []);
+
+    const nextTray = stageSuggestedResults({
+      tray: almostFullTray,
+      existingBranches: [],
+      results: [resultAt(20), resultAt(21)],
+    });
+
+    expect(nextTray).toHaveLength(BRANCH_TRAY_MAX_ITEMS);
+    expect(nextTray.at(-1)).toMatchObject({
+      result: resultAt(20),
+      source: "suggested",
+    });
+  });
+
+  it("skips suggested results that duplicate the existing tree or tray", () => {
+    const tray = stageSearchResult({ tray: [], result: theWarriors });
+
+    const nextTray = stageSuggestedResults({
+      tray,
+      existingBranches: [existingBranch],
+      results: [leSamourai, theWarriors, resultAt(20)],
+    });
+
+    expect(nextTray.map((item) => item.result.snapshot.name)).toEqual([
+      "The Warriors",
+      "Result 20",
+    ]);
+    expect(nextTray.at(-1)?.source).toBe("suggested");
   });
 
   it("removes a staged Branch from the tray", () => {

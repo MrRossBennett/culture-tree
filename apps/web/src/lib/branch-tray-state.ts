@@ -6,7 +6,7 @@ export const BRANCH_TRAY_DEFAULT_CONNECTION_TYPE = "thematic";
 export type BranchTrayItem = {
   id: string;
   result: ExternalNodeSearchResult;
-  source: "manual";
+  source: "manual" | "suggested";
 };
 
 export type BranchTraySubmitInput = {
@@ -118,6 +118,7 @@ export function stageSearchResult(input: {
   tray: readonly BranchTrayItem[];
   result: ExternalNodeSearchResult;
   existingBranches?: readonly TreeItem[];
+  source?: BranchTrayItem["source"];
 }): BranchTrayItem[] {
   if (
     branchTrayUnavailableReason({
@@ -134,9 +135,26 @@ export function stageSearchResult(input: {
     {
       id: branchTrayItemId(input.result),
       result: input.result,
-      source: "manual",
+      source: input.source ?? "manual",
     },
   ];
+}
+
+export function stageSuggestedResults(input: {
+  tray: readonly BranchTrayItem[];
+  existingBranches: readonly TreeItem[];
+  results: readonly ExternalNodeSearchResult[];
+}): BranchTrayItem[] {
+  return input.results.reduce<BranchTrayItem[]>(
+    (tray, result) =>
+      stageSearchResult({
+        tray,
+        existingBranches: input.existingBranches,
+        result,
+        source: "suggested",
+      }),
+    [...input.tray],
+  );
 }
 
 export function removeBranchTrayItem(input: {

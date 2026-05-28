@@ -6,6 +6,7 @@ import { searchExternalNodes } from "@repo/engine";
 import {
   countCultureTreeNodes,
   CultureTreeSchema,
+  ExternalNodeSearchResultSchema,
   GuideSectionId,
   type CultureTree,
   type NodeTypeValue,
@@ -15,6 +16,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { suggestBranchesForAddToTree } from "./ai-assisted-add-to-tree";
 import type { AllowanceLimitReached } from "./allowance-gates";
 import { parseTreeEnrichments } from "./committed-branch-enrichment";
 import {
@@ -85,6 +87,11 @@ const DeleteCultureTreeNodeInputSchema = z.object({
 
 const SearchCultureTreeNodesInputSchema = z.object({
   query: z.string().trim().min(1),
+});
+
+const SuggestCultureTreeBranchesInputSchema = z.object({
+  treeId: z.string().min(1),
+  trayResults: z.array(ExternalNodeSearchResultSchema),
 });
 
 type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: AllowanceLimitReached };
@@ -188,6 +195,18 @@ export const $searchCultureTreeNodes = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const results = await searchExternalNodes(data.query);
     return { results };
+  });
+
+export const $suggestCultureTreeBranches = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(SuggestCultureTreeBranchesInputSchema)
+  .handler(async ({ data, context }) => {
+    return suggestBranchesForAddToTree({
+      treeId: data.treeId,
+      trayResults: data.trayResults,
+      person: context.user,
+      proAllowlist: process.env.PRO_ALLOWLIST,
+    });
   });
 
 export const $addCultureTreeNode = createServerFn({ method: "POST" })

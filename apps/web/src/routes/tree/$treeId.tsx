@@ -30,12 +30,12 @@ import { TreePreview, type AddToTreeTarget } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
 import { loaderContainsCommittedTree, treeForVisiblePreview } from "~/lib/tree-preview-state";
 import {
-  $addCultureTreeNode,
   $addManualCultureTreeBranches,
   $addPublicCultureTreeBranchToMyTree,
   $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
+  $suggestCultureTreeBranches,
 } from "~/server/culture-trees";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
 import { $retryCultureTreeGeneration, $seedTreeFromItem } from "~/server/generate-culture-tree";
@@ -382,24 +382,13 @@ function TreePage() {
     },
   });
 
-  const growItem = useMutation({
-    mutationFn: (input: { node: TreeNodePopoverSubmitInput; pendingItemId: string }) => {
-      return $addCultureTreeNode({ data: { treeId, node: input.node } });
-    },
-    onSuccess: async (result, variables) => {
-      if (!result.ok) {
-        setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
-        toast.error(result.limitReached.message);
-        return;
-      }
-      toast.success("Branch grown with AI.");
-      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
-      await router.invalidate();
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
-    },
-    onError: (err: Error, variables) => {
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
-      toast.error(err.message || "Could not grow that branch.");
+  const suggestBranches = useMutation({
+    mutationFn: (trayResults: readonly TreeNodePopoverSubmitInput["result"][]) =>
+      $suggestCultureTreeBranches({
+        data: { treeId, trayResults: [...trayResults] },
+      }),
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not suggest Branches.");
     },
   });
 
@@ -499,10 +488,15 @@ function TreePage() {
     });
   };
 
-  const handleGrowItem = async (node: TreeNodePopoverSubmitInput) => {
-    const pendingItem = pendingTreeItemFromInput(node);
-    setPendingItems((items) => [...items, pendingItem]);
-    await growItem.mutateAsync({ node, pendingItemId: pendingItem.id });
+  const handleSuggestItems = async (
+    trayResults: readonly TreeNodePopoverSubmitInput["result"][],
+  ) => {
+    const result = await suggestBranches.mutateAsync(trayResults);
+    if (!result.ok) {
+      toast.error(result.limitReached.message);
+      return [];
+    }
+    return result.suggestions;
   };
 
   return (
@@ -538,7 +532,7 @@ function TreePage() {
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
             isAddingBranchToTree={addPublicBranch.isPending}
-            isGrowItemPending={growItem.isPending}
+            isGrowItemPending={suggestBranches.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
             onAddItem={
@@ -555,10 +549,10 @@ function TreePage() {
                   }
                 : undefined
             }
-            onGrowItem={
+            onSuggestItems={
               isOwner && treeIsReady
-                ? async (node) => {
-                    await handleGrowItem(node);
+                ? async (trayResults) => {
+                    return handleSuggestItems(trayResults);
                   }
                 : undefined
             }
@@ -584,7 +578,7 @@ function TreePage() {
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
             isAddingBranchToTree={addPublicBranch.isPending}
-            isGrowItemPending={growItem.isPending}
+            isGrowItemPending={suggestBranches.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
             onAddItem={
@@ -601,10 +595,10 @@ function TreePage() {
                   }
                 : undefined
             }
-            onGrowItem={
+            onSuggestItems={
               isOwner && treeIsReady
-                ? async (node) => {
-                    await handleGrowItem(node);
+                ? async (trayResults) => {
+                    return handleSuggestItems(trayResults);
                   }
                 : undefined
             }

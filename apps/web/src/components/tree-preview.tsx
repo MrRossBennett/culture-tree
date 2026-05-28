@@ -579,6 +579,7 @@ export function TreePreview({
   onDeleteItem,
   onGenerateNewTree,
   onGrowItem,
+  onSuggestItems,
   onToggleLike,
   resolvedEntities = {},
 }: {
@@ -591,6 +592,9 @@ export function TreePreview({
   readonly isGrowItemPending?: boolean;
   readonly onAddBranchToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
   readonly onAddItem?: (node: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
+  readonly onSuggestItems?: (
+    trayResults: readonly TreeNodePopoverSubmitInput["result"][],
+  ) => Promise<readonly TreeNodePopoverSubmitInput["result"][]>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
@@ -646,7 +650,7 @@ export function TreePreview({
         ) : (
           <span />
         )}
-        {onAddItem || onGrowItem ? (
+        {onAddItem || onGrowItem || onSuggestItems ? (
           <TreeNodeDialog
             triggerLabel="Add Branch"
             triggerIcon={<PlusIcon className="size-3.5" />}
@@ -655,6 +659,7 @@ export function TreePreview({
             existingBranches={tree.items}
             isPending={isAddItemPending}
             isAiPending={isGrowItemPending}
+            onSuggestBranches={onSuggestItems}
             onSubmit={
               onAddItem ??
               (async (nodes) => {
