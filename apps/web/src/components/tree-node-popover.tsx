@@ -1,4 +1,4 @@
-import { type ExternalNodeSearchResult, type NodeTypeValue } from "@repo/schemas";
+import { type ExternalNodeSearchResult, type NodeTypeValue, type TreeItem } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import {
   Dialog,
@@ -18,6 +18,7 @@ import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
 import {
+  branchTrayUnavailableReason,
   branchTraySubmitLabel,
   canSubmitBranchTray,
   clearBranchTray,
@@ -36,12 +37,23 @@ type TreeNodePopoverSubmitInput = BranchTraySubmitInput;
 function ResultRow({
   result,
   disabled,
+  unavailableReason,
   onSelect,
 }: {
   readonly result: ExternalNodeSearchResult;
   readonly disabled: boolean;
+  readonly unavailableReason: "staged" | "existing" | "full" | null;
   readonly onSelect: (result: ExternalNodeSearchResult) => void;
 }) {
+  const unavailableLabel =
+    unavailableReason === "staged"
+      ? "Staged"
+      : unavailableReason === "existing"
+        ? "In tree"
+        : unavailableReason === "full"
+          ? "Tray full"
+          : null;
+
   return (
     <button
       type="button"
@@ -51,6 +63,7 @@ function ResultRow({
         "group w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
         "disabled:pointer-events-none disabled:opacity-60",
         "border-border/70 bg-card/60 hover:border-primary/35 hover:bg-accent/45 focus-visible:border-primary/45 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
+        unavailableReason ? "opacity-55" : null,
       )}
     >
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -67,6 +80,11 @@ function ResultRow({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <NodeTypeBadge type={result.snapshot.type} />
+          {unavailableLabel ? (
+            <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground uppercase">
+              {unavailableLabel}
+            </span>
+          ) : null}
           {result.snapshot.year != null ? (
             <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground tabular-nums">
               {result.snapshot.year}
@@ -91,6 +109,7 @@ interface TreeNodeDialogProps {
   readonly triggerIcon?: ReactNode;
   readonly triggerVariant?: "amber" | "default" | "outline" | "secondary" | "ghost";
   readonly title?: string;
+  readonly existingBranches?: readonly TreeItem[];
   readonly isPending?: boolean;
   readonly isAiPending?: boolean;
   readonly onAiSubmit?: (input: TreeNodePopoverSubmitInput) => Promise<void>;
@@ -103,6 +122,7 @@ export function TreeNodeDialog({
   triggerIcon,
   triggerVariant = "outline",
   title = "Add Branch",
+  existingBranches = [],
   isPending = false,
   isAiPending = false,
   onAiSubmit,
@@ -230,7 +250,7 @@ export function TreeNodeDialog({
       return;
     }
 
-    setBranchTray((current) => stageSearchResult({ tray: current, result }));
+    setBranchTray((current) => stageSearchResult({ tray: current, existingBranches, result }));
     setQuery("");
     setResults([]);
     setActiveResultType(null);
@@ -384,16 +404,25 @@ export function TreeNodeDialog({
               {results.length > 0 ? (
                 <div className="relative min-h-0 flex-1">
                   <div ref={resultsPaneRef} className="h-full space-y-1.5 overflow-y-auto pr-1">
-                    {filteredResults.map((result) => (
-                      <ResultRow
-                        key={`${result.identity.source}:${result.identity.externalId}`}
-                        result={result}
-                        disabled={isSubmitting}
-                        onSelect={(next) => {
-                          handleStageResult(next);
-                        }}
-                      />
-                    ))}
+                    {filteredResults.map((result) => {
+                      const unavailableReason = branchTrayUnavailableReason({
+                        tray: branchTray,
+                        existingBranches,
+                        result,
+                      });
+
+                      return (
+                        <ResultRow
+                          key={`${result.identity.source}:${result.identity.externalId}`}
+                          result={result}
+                          disabled={isSubmitting || unavailableReason != null}
+                          unavailableReason={unavailableReason}
+                          onSelect={(next) => {
+                            handleStageResult(next);
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                   <div
                     aria-hidden

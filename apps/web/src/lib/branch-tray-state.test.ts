@@ -1,14 +1,18 @@
 import type { ExternalNodeSearchResult } from "@repo/schemas";
+import type { TreeItem } from "@repo/schemas";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  BRANCH_TRAY_MAX_ITEMS,
   branchTraySubmitLabel,
+  branchTrayUnavailableReason,
   canSubmitBranchTray,
   clearBranchTray,
   removeBranchTrayItem,
   stageSearchResult,
   submitInputFromBranchTray,
   submitInputsFromBranchTray,
+  type BranchTrayItem,
 } from "./branch-tray-state";
 
 const leSamourai: ExternalNodeSearchResult = {
@@ -34,6 +38,33 @@ const theWarriors: ExternalNodeSearchResult = {
   searchHint: { title: "The Warriors" },
   externalUrl: "https://example.com/the-warriors",
 };
+
+const existingBranch: TreeItem = {
+  id: "branch_1",
+  name: "Le Samourai",
+  type: "film",
+  year: 1967,
+  reason: "",
+  connectionType: "thematic",
+  searchHint: { title: "Le Samourai" },
+  identity: { source: "wikipedia", externalId: "Le_Samourai" },
+  snapshot: leSamourai.snapshot,
+  source: "user",
+};
+
+function resultAt(index: number): ExternalNodeSearchResult {
+  return {
+    identity: { source: "wikipedia", externalId: `Result_${index}` },
+    snapshot: {
+      name: `Result ${index}`,
+      type: "film",
+      year: 2000 + index,
+      image: `https://example.com/result-${index}.jpg`,
+    },
+    searchHint: { title: `Result ${index}` },
+    externalUrl: `https://example.com/result-${index}`,
+  };
+}
 
 describe("Branch Tray state", () => {
   it("stages a searched Branch for review before submit", () => {
@@ -70,6 +101,70 @@ describe("Branch Tray state", () => {
         reason: "",
       },
     ]);
+  });
+
+  it("prevents staging duplicate canonical identities already in the tray", () => {
+    const tray = stageSearchResult({
+      tray: stageSearchResult({ tray: [], result: leSamourai }),
+      result: leSamourai,
+    });
+
+    expect(tray).toHaveLength(1);
+    expect(branchTrayUnavailableReason({ tray, existingBranches: [], result: leSamourai })).toBe(
+      "staged",
+    );
+  });
+
+  it("prevents staging Branches already present in the Culture Tree", () => {
+    const tray = stageSearchResult({
+      tray: [],
+      existingBranches: [existingBranch],
+      result: leSamourai,
+    });
+
+    expect(tray).toEqual([]);
+    expect(
+      branchTrayUnavailableReason({
+        tray: [],
+        existingBranches: [existingBranch],
+        result: leSamourai,
+      }),
+    ).toBe("existing");
+  });
+
+  it("matches duplicates by normalized type, title, and year when identity differs", () => {
+    const alternateResult: ExternalNodeSearchResult = {
+      ...leSamourai,
+      identity: { source: "tmdb", externalId: "le-samourai-1967" },
+      snapshot: {
+        ...leSamourai.snapshot,
+        name: " le samourai! ",
+      },
+    };
+
+    expect(
+      branchTrayUnavailableReason({
+        tray: [],
+        existingBranches: [existingBranch],
+        result: alternateResult,
+      }),
+    ).toBe("existing");
+  });
+
+  it("caps the tray at twelve Branches", () => {
+    const fullTray = Array.from({ length: BRANCH_TRAY_MAX_ITEMS }, (_, index) =>
+      resultAt(index),
+    ).reduce<BranchTrayItem[]>((tray, result) => stageSearchResult({ tray, result }), []);
+
+    expect(fullTray).toHaveLength(12);
+    expect(stageSearchResult({ tray: fullTray, result: resultAt(99) })).toHaveLength(12);
+    expect(
+      branchTrayUnavailableReason({
+        tray: fullTray,
+        existingBranches: [],
+        result: resultAt(99),
+      }),
+    ).toBe("full");
   });
 
   it("removes a staged Branch from the tray", () => {

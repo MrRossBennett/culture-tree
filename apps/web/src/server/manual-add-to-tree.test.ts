@@ -225,4 +225,108 @@ describe("manualAddBranchesToTree", () => {
     expect(adapters.commitManualAddToTree).not.toHaveBeenCalled();
     expect(adapters.resolveCommittedBranches).not.toHaveBeenCalled();
   });
+
+  it("rejects a batch that duplicates an existing Culture Tree Branch", async () => {
+    const adapters = baseAdapters({
+      loadCultureTree: vi.fn(async () => ({
+        id: "tree_1",
+        userId: "person_1",
+        data: CultureTreeSchema.parse({
+          title: "Private canon",
+          items: [branch],
+        }),
+        enrichmentData: {},
+      })),
+    });
+
+    await expect(
+      manualAddBranchesToTree({
+        treeId: "tree_1",
+        nodes: [searchResultDraft],
+        person: { id: "person_1" },
+        adapters,
+      }),
+    ).rejects.toThrow("Branch already exists in this Culture Tree.");
+    expect(adapters.commitManualAddToTree).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate Branches inside the same batch", async () => {
+    const duplicateBranch: TreeItem = {
+      ...branch,
+      id: "branch_2",
+      identity: { source: "tmdb", externalId: "le-samourai-1967" },
+      name: " le samourai! ",
+      snapshot: {
+        ...branch.snapshot!,
+        name: " le samourai! ",
+      },
+    };
+    const adapters = baseAdapters({
+      buildBranch: vi.fn((node) =>
+        node.result.identity.externalId === "The_Warriors" ? duplicateBranch : branch,
+      ),
+    });
+
+    await expect(
+      manualAddBranchesToTree({
+        treeId: "tree_1",
+        nodes: [searchResultDraft, secondSearchResultDraft],
+        person: { id: "person_1" },
+        adapters,
+      }),
+    ).rejects.toThrow("Duplicate Branch in Add to Tree batch.");
+    expect(adapters.commitManualAddToTree).not.toHaveBeenCalled();
+  });
+
+  it("rejects batches over the Branch Tray cap before committing", async () => {
+    const nodes = Array.from(
+      { length: 13 },
+      (_, index): AddCultureTreeNodeDraft => ({
+        kind: "search-result",
+        connectionType: "thematic",
+        reason: "",
+        result: {
+          identity: { source: "wikipedia", externalId: `Result_${index}` },
+          snapshot: {
+            name: `Result ${index}`,
+            type: "film",
+            year: 2000 + index,
+            image: `https://example.com/result-${index}.jpg`,
+          },
+          searchHint: { title: `Result ${index}` },
+          externalUrl: `https://example.com/result-${index}`,
+        },
+      }),
+    );
+    const adapters = baseAdapters({
+      buildBranch: vi.fn((node: AddCultureTreeNodeDraft): TreeItem => {
+        if (node.kind !== "search-result") {
+          throw new Error("Expected search result.");
+        }
+
+        return {
+          id: node.result.identity.externalId,
+          name: node.result.snapshot.name,
+          type: node.result.snapshot.type,
+          year: node.result.snapshot.year,
+          reason: "",
+          connectionType: "thematic",
+          searchHint: node.result.searchHint,
+          identity: node.result.identity,
+          snapshot: node.result.snapshot,
+          source: "user",
+        };
+      }),
+    });
+
+    await expect(
+      manualAddBranchesToTree({
+        treeId: "tree_1",
+        nodes,
+        person: { id: "person_1" },
+        adapters,
+      }),
+    ).rejects.toThrow("Branch Tray cannot contain more than 12 Branches.");
+    expect(adapters.commitManualAddToTree).not.toHaveBeenCalled();
+  });
 });

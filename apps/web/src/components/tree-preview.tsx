@@ -652,6 +652,7 @@ export function TreePreview({
             triggerIcon={<PlusIcon className="size-3.5" />}
             triggerVariant="outline"
             title="Add Branch"
+            existingBranches={tree.items}
             isPending={isAddItemPending}
             isAiPending={isGrowItemPending}
             onSubmit={

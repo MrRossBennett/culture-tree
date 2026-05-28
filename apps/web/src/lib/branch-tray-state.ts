@@ -1,5 +1,6 @@
-import type { ExternalNodeSearchResult } from "@repo/schemas";
+import type { ExternalNodeSearchResult, TreeItem } from "@repo/schemas";
 
+export const BRANCH_TRAY_MAX_ITEMS = 12;
 export const BRANCH_TRAY_DEFAULT_CONNECTION_TYPE = "thematic";
 
 export type BranchTrayItem = {
@@ -19,10 +20,115 @@ function branchTrayItemId(result: ExternalNodeSearchResult): string {
   return `${result.identity.source}:${result.identity.externalId}`;
 }
 
+function normalizeSubjectTitle(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function subjectsMatch(
+  left: {
+    identity?: { source: string; externalId: string };
+    name: string;
+    type: string;
+    year?: number;
+  },
+  right: {
+    identity?: { source: string; externalId: string };
+    name: string;
+    type: string;
+    year?: number;
+  },
+): boolean {
+  if (
+    left.identity &&
+    right.identity &&
+    left.identity.source === right.identity.source &&
+    left.identity.externalId === right.identity.externalId
+  ) {
+    return true;
+  }
+
+  return (
+    left.type === right.type &&
+    normalizeSubjectTitle(left.name) === normalizeSubjectTitle(right.name) &&
+    left.year === right.year
+  );
+}
+
+function subjectFromResult(result: ExternalNodeSearchResult) {
+  return {
+    identity: result.identity,
+    name: result.snapshot.name,
+    type: result.snapshot.type,
+    year: result.snapshot.year,
+  };
+}
+
+function subjectFromBranch(branch: TreeItem) {
+  return {
+    identity: branch.identity,
+    name: branch.snapshot?.name ?? branch.name,
+    type: branch.snapshot?.type ?? branch.type,
+    year: branch.snapshot?.year ?? branch.year,
+  };
+}
+
+export function resultMatchesBranch(input: {
+  result: ExternalNodeSearchResult;
+  branch: TreeItem;
+}): boolean {
+  return subjectsMatch(subjectFromResult(input.result), subjectFromBranch(input.branch));
+}
+
+export function branchMatchesBranch(left: TreeItem, right: TreeItem): boolean {
+  return subjectsMatch(subjectFromBranch(left), subjectFromBranch(right));
+}
+
+export function branchTrayUnavailableReason(input: {
+  tray: readonly BranchTrayItem[];
+  existingBranches: readonly TreeItem[];
+  result: ExternalNodeSearchResult;
+}): "staged" | "existing" | "full" | null {
+  const stagedDuplicate = input.tray.some((item) =>
+    subjectsMatch(subjectFromResult(item.result), subjectFromResult(input.result)),
+  );
+  if (stagedDuplicate) {
+    return "staged";
+  }
+
+  const existingDuplicate = input.existingBranches.some((branch) =>
+    resultMatchesBranch({ result: input.result, branch }),
+  );
+  if (existingDuplicate) {
+    return "existing";
+  }
+
+  if (input.tray.length >= BRANCH_TRAY_MAX_ITEMS) {
+    return "full";
+  }
+
+  return null;
+}
+
 export function stageSearchResult(input: {
   tray: readonly BranchTrayItem[];
   result: ExternalNodeSearchResult;
+  existingBranches?: readonly TreeItem[];
 }): BranchTrayItem[] {
+  if (
+    branchTrayUnavailableReason({
+      tray: input.tray,
+      existingBranches: input.existingBranches ?? [],
+      result: input.result,
+    })
+  ) {
+    return [...input.tray];
+  }
+
   return [
     ...input.tray,
     {

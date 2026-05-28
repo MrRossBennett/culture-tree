@@ -8,6 +8,8 @@ import {
 } from "@repo/schemas";
 import { eq } from "drizzle-orm";
 
+import { BRANCH_TRAY_MAX_ITEMS, branchMatchesBranch } from "~/lib/branch-tray-state";
+
 import {
   parseTreeEnrichments,
   prepareEnrichmentsForCommittedBranches,
@@ -93,6 +95,31 @@ const defaultManualAddToTreeAdapters: ManualAddToTreeAdapters = {
   resolveCommittedBranches,
 };
 
+function assertBranchesCanBeAdded(input: {
+  tree: CultureTree;
+  branches: readonly TreeItem[];
+}): void {
+  if (input.branches.length > BRANCH_TRAY_MAX_ITEMS) {
+    throw new Error(`Branch Tray cannot contain more than ${BRANCH_TRAY_MAX_ITEMS} Branches.`);
+  }
+
+  for (const branch of input.branches) {
+    if (input.tree.items.some((existingBranch) => branchMatchesBranch(existingBranch, branch))) {
+      throw new Error("Branch already exists in this Culture Tree.");
+    }
+  }
+
+  for (let index = 0; index < input.branches.length; index += 1) {
+    const branch = input.branches[index];
+    const duplicate = input.branches
+      .slice(index + 1)
+      .some((nextBranch) => branchMatchesBranch(branch, nextBranch));
+    if (duplicate) {
+      throw new Error("Duplicate Branch in Add to Tree batch.");
+    }
+  }
+}
+
 export async function manualAddToTree(input: {
   treeId: string;
   node: AddCultureTreeNodeDraft;
@@ -135,6 +162,7 @@ export async function manualAddBranchesToTree(input: {
 
   const tree = CultureTreeSchema.parse(row.data);
   const branches = input.nodes.map((node) => adapters.buildBranch(node));
+  assertBranchesCanBeAdded({ tree, branches });
   const nextTree = CultureTreeSchema.parse(
     branches.reduce(
       (currentTree, branch) => addManualBranchToCultureTree({ tree: currentTree, branch }),
