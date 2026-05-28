@@ -271,7 +271,9 @@ export function Masonry<TItem extends MasonryBaseItem>({
       }
 
       gsap.to(selector, {
+        opacity: 1,
         ...animationProps,
+        ...(blurToFocus && { filter: "blur(0px)" }),
         duration,
         ease,
         overwrite: "auto",

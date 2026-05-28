@@ -23,6 +23,11 @@ const DIVERSIFIED_TYPE_ORDER: readonly NodeTypeValue[] = [
   "event",
   "place",
 ];
+const WIKIPEDIA_FETCH_INIT: RequestInit = {
+  headers: {
+    "User-Agent": "CultureTree/0.1 (local development)",
+  },
+};
 
 type RankedSearchResult = ExternalNodeSearchResult & { score: number };
 
@@ -442,6 +447,29 @@ function inferWikipediaType(blob: string): NodeTypeValue | null {
   if (!normalized) {
     return null;
   }
+  if (normalized.includes(" video game ")) {
+    return null;
+  }
+  if (normalized.includes(" film ")) {
+    return "film";
+  }
+  if (
+    normalized.includes(" tv series ") ||
+    normalized.includes(" television series ") ||
+    normalized.includes(" miniseries ")
+  ) {
+    return "tv";
+  }
+  if (
+    normalized.includes(" book ") ||
+    normalized.includes(" novel ") ||
+    normalized.includes(" novella ") ||
+    normalized.includes(" memoir ") ||
+    normalized.includes(" non fiction ") ||
+    normalized.includes(" short story collection ")
+  ) {
+    return "book";
+  }
   if (normalized.includes(" album ")) return "album";
   if (normalized.includes(" song ")) return "song";
   if (
@@ -626,7 +654,7 @@ export function normalizeWikipediaSearchResult(input: {
     (image ? 4 : 0) -
     input.rank * 2;
   const creator =
-    type === "album" || type === "song" || type === "artwork"
+    type === "album" || type === "song" || type === "book" || type === "artwork"
       ? creatorFromWikipediaDescription(input.summary.description)
       : undefined;
 
@@ -716,7 +744,7 @@ async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
 
 async function fetchWikipediaSummary(title: string) {
   const path = encodeURIComponent(title.replaceAll(" ", "_"));
-  const response = await fetch(`${WIKI_REST}/page/summary/${path}`);
+  const response = await fetch(`${WIKI_REST}/page/summary/${path}`, WIKIPEDIA_FETCH_INIT);
   if (!response.ok) {
     return null;
   }
@@ -737,7 +765,7 @@ async function searchWikipedia(query: string): Promise<RankedSearchResult[]> {
   url.searchParams.set("srlimit", String(WIKIPEDIA_CANDIDATE_LIMIT));
   url.searchParams.set("srsearch", query);
 
-  const response = await fetch(url);
+  const response = await fetch(url, WIKIPEDIA_FETCH_INIT);
   if (!response.ok) {
     return [];
   }

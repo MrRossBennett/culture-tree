@@ -106,6 +106,63 @@ describe("search result normalization", () => {
     expect(unsupported).toBeNull();
   });
 
+  it("uses Wikipedia as a book search fallback for novel pages", () => {
+    const result = normalizeWikipediaSearchResult({
+      search: {
+        title: "The Da Vinci Code",
+        pageid: 123,
+      },
+      summary: {
+        description: "2003 mystery thriller novel by Dan Brown",
+        extract: "The Da Vinci Code is a 2003 mystery thriller novel by American author Dan Brown.",
+        content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/The_Da_Vinci_Code" } },
+      },
+      query: "The Da Vinci Code",
+      rank: 0,
+    });
+
+    expect(result).toMatchObject({
+      identity: { source: "wikipedia", externalId: "The_Da_Vinci_Code" },
+      snapshot: {
+        name: "The Da Vinci Code",
+        type: "book",
+      },
+      searchHint: {
+        title: "The Da Vinci Code",
+        creator: "Dan Brown",
+        wikiSlug: "The_Da_Vinci_Code",
+      },
+    });
+  });
+
+  it("does not misclassify Wikipedia film pages that mention their source novel", () => {
+    const result = normalizeWikipediaSearchResult({
+      search: {
+        title: "The Da Vinci Code (film)",
+        pageid: 456,
+      },
+      summary: {
+        description: "2006 mystery thriller film by Ron Howard",
+        extract:
+          "The Da Vinci Code is a 2006 mystery thriller film based on the 2003 novel by Dan Brown.",
+        content_urls: {
+          desktop: { page: "https://en.wikipedia.org/wiki/The_Da_Vinci_Code_(film)" },
+        },
+      },
+      query: "The Da Vinci Code",
+      rank: 0,
+    });
+
+    expect(result).toMatchObject({
+      identity: { source: "wikipedia", externalId: "The_Da_Vinci_Code_(film)" },
+      snapshot: {
+        name: "The Da Vinci Code (film)",
+        type: "film",
+        year: 2006,
+      },
+    });
+  });
+
   it("filters Wikipedia disambiguation pages", () => {
     const result = normalizeWikipediaSearchResult({
       search: {

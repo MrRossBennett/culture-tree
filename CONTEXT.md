@@ -69,8 +69,8 @@ The action of using an existing Branch as the Seed for a new Culture Tree.
 _Avoid_: Expand node, child tree, nested tree
 
 **Grow Branch**:
-The AI-assisted action of expanding an existing Culture Tree by suggesting or adding Recognized Cultural Subjects that may fit the Owner's Curatorial Intent.
-_Avoid_: Add node, append node, add child branch
+An internal or legacy name for AI-assisted Branch suggestion. Grow Branch should not be presented as a separate user-facing action when the person is simply adding Branches to an existing Culture Tree.
+_Avoid_: User-facing mode, append node, add child branch
 
 **Clone Tree**:
 The action of copying an existing Culture Tree without asking the system to regenerate content.
@@ -89,8 +89,16 @@ The action of adding or editing a Branch without asking the system to generate c
 _Avoid_: Free grow, non-AI branch
 
 **Add to Tree**:
-The user-facing action of manually adding a Recognized Cultural Subject to a Culture Tree.
-_Avoid_: Save, pin, collect, upload
+The user-facing action of adding one or more Recognized Cultural Subjects to a Culture Tree. Add to Tree can be done by manually selecting Branches, asking AI to suggest Branches, or combining both before confirmation.
+_Avoid_: Save, pin, collect, upload, Grow Branch
+
+**Branch Tray**:
+The temporary set of proposed Branches a Curator has gathered before adding them to a Culture Tree. A Branch Tray can include manually selected Branches and AI-suggested Branches, but nothing becomes part of the Culture Tree until the Curator confirms the Add to Tree action. Branch descriptions are edited after Branches have been added to the Culture Tree, not as a shared Branch Tray note.
+_Avoid_: Cart, queue, playlist, batch
+
+**AI-assisted Add to Tree**:
+The action of asking AI to suggest Branches into the same Branch Tray used for manual Add to Tree. AI-assisted Add to Tree is a shortcut for curator review, not a separate user-facing mode or final publishing path. Once confirmed into the Culture Tree, AI-suggested Branches should not be visually separated from manually selected Branches.
+_Avoid_: Auto-grow, AI mode, autonomous tree editing
 
 **Delete Branch**:
 The action of removing a Branch from a Culture Tree.

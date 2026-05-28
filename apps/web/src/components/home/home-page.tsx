@@ -19,8 +19,8 @@ export function HomePage() {
     return (
       <div className="relative flex flex-1 flex-col bg-background text-foreground">
         <div className="relative z-2 flex flex-1 flex-col">
-          <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-9 px-4 py-10 sm:px-6 lg:px-8">
-            <header className="max-w-3xl px-4 sm:px-6 md:px-0">
+          <main className="flex w-full flex-1 flex-col gap-9 px-4 py-10 sm:px-6 lg:px-8">
+            <header className="max-w-3xl">
               <p className="font-mono text-[0.65rem] tracking-[0.2em] text-muted-foreground uppercase">
                 Curator workbench
               </p>
