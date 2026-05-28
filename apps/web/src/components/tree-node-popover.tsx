@@ -12,11 +12,12 @@ import { Label } from "@repo/ui/components/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
 import { LoaderCircleIcon, MinusIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
+import { addToTreeShortcutIntent } from "~/lib/add-to-tree-shortcuts";
 import {
   branchTrayUnavailableReason,
   branchTraySubmitLabel,
@@ -221,6 +222,14 @@ export function TreeNodeDialog({
       ? results
       : results.filter((result) => result.snapshot.type === activeResultType);
   const suggestedAiResult = filteredResults.at(0);
+  const topStageableResult = filteredResults.find(
+    (result) =>
+      branchTrayUnavailableReason({
+        tray: branchTray,
+        existingBranches,
+        result,
+      }) == null,
+  );
 
   useEffect(() => {
     const resultsPane = resultsPaneRef.current;
@@ -267,6 +276,41 @@ export function TreeNodeDialog({
     }
 
     await onSubmit(input);
+    setOpen(false);
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const intent = addToTreeShortcutIntent({
+      key: event.key,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      searchValue: event.currentTarget.value,
+      canStageTopResult: topStageableResult != null && !isSubmitting,
+      canSubmitTray,
+      hasTrayItems: branchTray.length > 0,
+    });
+    if (!intent) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (intent === "stage-top-result" && topStageableResult) {
+      handleStageResult(topStageableResult);
+      return;
+    }
+
+    if (intent === "submit-tray") {
+      void handleSubmitTray();
+      return;
+    }
+
+    if (intent === "remove-last-staged") {
+      setBranchTray((current) => current.slice(0, -1));
+      return;
+    }
+
     setOpen(false);
   };
 
@@ -325,6 +369,7 @@ export function TreeNodeDialog({
                     onChange={(event) => {
                       setQuery(event.currentTarget.value);
                     }}
+                    onKeyDown={handleSearchKeyDown}
                     placeholder="Search films, books, albums, artists, places..."
                     className="font-body h-14 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] pr-9 pl-10 text-base text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
                     maxLength={160}
