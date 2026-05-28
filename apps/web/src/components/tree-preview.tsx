@@ -26,12 +26,14 @@ import {
   ChevronLeftIcon,
   ClipboardIcon,
   HeartIcon,
+  ImageIcon,
   LoaderCircleIcon,
+  PlayIcon,
   PlusIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
@@ -327,13 +329,24 @@ function BranchFocusDialog({
   const media = item ? enrichments[item.id] : undefined;
   const itemHeading = item ? headingFromSearchHint(item.name, item.searchHint) : null;
   const coverSrc = item ? coverSrcForItem({ item, enrichments, resolvedEntity }) : undefined;
+  const trailerVideoId = media?.youtubeVideoId;
   const [targetTreeId, setTargetTreeId] = useState("");
+  const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
   const resolvedTargetTreeId = targetTreeId || addToTreeTargets[0]?.id || "";
+
+  // Each branch opens on its poster; reset when the focused branch changes.
+  useEffect(() => {
+    setIsPlayingTrailer(false);
+  }, [item?.id]);
 
   return (
     <Dialog open={item != null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
+        overlayClassName={cn(
+          "transition-[background-color,backdrop-filter] duration-700 ease-out",
+          isPlayingTrailer && "bg-black/95 supports-backdrop-filter:backdrop-blur-md",
+        )}
         className="grid h-[min(52rem,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] w-[min(96rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none md:grid-cols-[minmax(0,1fr)_22rem]"
       >
         {item && itemHeading ? (
@@ -353,14 +366,48 @@ function BranchFocusDialog({
               >
                 <ChevronLeftIcon className="size-4" aria-hidden />
               </Button>
+              {trailerVideoId && isPlayingTrailer ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-5 right-5 z-10 rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)]"
+                  onClick={() => setIsPlayingTrailer(false)}
+                  aria-label="Back to poster"
+                >
+                  <ImageIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
               <div className="flex h-full min-h-0 items-center justify-center px-6 py-16 md:px-12">
-                {coverSrc ? (
-                  <img
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    src={coverSrc}
-                    className="max-h-full max-w-full rounded-sm object-contain shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
+                {trailerVideoId && isPlayingTrailer ? (
+                  <iframe
+                    title={`${itemHeading.primary} trailer`}
+                    src={`https://www.youtube-nocookie.com/embed/${trailerVideoId}?autoplay=1&rel=0`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="aspect-video max-h-full w-full max-w-5xl rounded-sm shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
                   />
+                ) : coverSrc ? (
+                  <div className="relative inline-flex max-h-full max-w-full">
+                    <img
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      src={coverSrc}
+                      className="max-h-full max-w-full rounded-sm object-contain shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
+                    />
+                    {trailerVideoId ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsPlayingTrailer(true)}
+                        aria-label={`Play ${itemHeading.primary} trailer`}
+                        className="group absolute inset-0 flex items-center justify-center rounded-sm bg-[oklch(0.12_0.01_125/0)] transition-colors hover:bg-[oklch(0.12_0.01_125/0.35)] focus-visible:bg-[oklch(0.12_0.01_125/0.35)] focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none"
+                      >
+                        <span className="flex size-16 items-center justify-center rounded-full bg-[oklch(0.12_0.01_125/0.6)] text-[oklch(0.95_0.012_125)] ring-1 ring-[oklch(0.95_0.01_120/0.18)] backdrop-blur-sm transition-transform group-hover:scale-105">
+                          <PlayIcon className="size-7 translate-x-0.5 fill-current" aria-hidden />
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="flex aspect-[3/4] w-[min(24rem,70vw)] items-center justify-center rounded-md border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.45)]">
                     <NodeThumbnail

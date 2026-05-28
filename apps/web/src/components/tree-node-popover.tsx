@@ -11,7 +11,14 @@ import { Input } from "@repo/ui/components/input";
 import { Label } from "@repo/ui/components/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import { LoaderCircleIcon, MinusIcon, SearchIcon, SparklesIcon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+  SearchIcon,
+  SparklesIcon,
+  XIcon,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
@@ -37,64 +44,84 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 type TreeNodePopoverSubmitInput = BranchTraySubmitInput;
 
-function ResultRow({
+function ResultCard({
   result,
-  disabled,
   unavailableReason,
-  onSelect,
+  onStage,
+  onUnstage,
 }: {
   readonly result: ExternalNodeSearchResult;
-  readonly disabled: boolean;
   readonly unavailableReason: "staged" | "existing" | "full" | null;
-  readonly onSelect: (result: ExternalNodeSearchResult) => void;
+  readonly onStage: (result: ExternalNodeSearchResult) => void;
+  readonly onUnstage: (result: ExternalNodeSearchResult) => void;
 }) {
-  const unavailableLabel =
-    unavailableReason === "staged"
-      ? "Staged"
-      : unavailableReason === "existing"
-        ? "In tree"
-        : unavailableReason === "full"
-          ? "Tray full"
-          : null;
+  const isStaged = unavailableReason === "staged";
+  const isBlocked = unavailableReason === "existing" || unavailableReason === "full";
+  const overlayLabel =
+    unavailableReason === "existing"
+      ? "In tree"
+      : unavailableReason === "full"
+        ? "Tray full"
+        : null;
 
   return (
     <button
       type="button"
-      disabled={disabled}
-      onClick={() => onSelect(result)}
+      disabled={isBlocked}
+      onClick={() => (isStaged ? onUnstage(result) : onStage(result))}
       className={cn(
-        "group w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
-        "disabled:pointer-events-none disabled:opacity-60",
-        "border-border/70 bg-card/60 hover:border-primary/35 hover:bg-accent/45 focus-visible:border-primary/45 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
-        unavailableReason ? "opacity-55" : null,
+        "group relative aspect-[3/4] overflow-hidden rounded-lg border text-left transition-transform",
+        "focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none",
+        isBlocked ? "cursor-not-allowed opacity-45" : "hover:scale-[1.03]",
+        isStaged
+          ? "border-[oklch(0.82_0.11_100)] ring-2 ring-[oklch(0.82_0.11_100/0.5)]"
+          : "border-[oklch(0.9_0.01_120/0.12)]",
       )}
     >
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+      {result.snapshot.image ? (
+        <img
+          alt=""
+          referrerPolicy="no-referrer"
+          src={result.snapshot.image}
+          className="size-full object-cover"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
           <NodeThumbnail
             type={result.snapshot.type}
-            src={result.snapshot.image}
-            size="sm"
-            className="size-7 rounded-none object-cover"
+            size="md"
+            className="size-12 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
           />
-          <p className="font-heading min-w-0 flex-1 truncate text-[0.95rem] leading-snug text-foreground">
-            {result.snapshot.name}
-          </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/45 to-transparent p-2.5 pt-8">
+        <p className="truncate text-sm font-medium text-white">{result.snapshot.name}</p>
+        <div className="mt-1 flex items-center gap-2">
           <NodeTypeBadge type={result.snapshot.type} />
-          {unavailableLabel ? (
-            <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground uppercase">
-              {unavailableLabel}
-            </span>
-          ) : null}
           {result.snapshot.year != null ? (
-            <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground tabular-nums">
+            <span className="font-mono text-[0.6rem] text-white/70 tabular-nums">
               {result.snapshot.year}
             </span>
           ) : null}
         </div>
       </div>
+
+      {isStaged ? (
+        <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[oklch(0.82_0.11_100)] text-black">
+          <CheckIcon className="size-3.5" aria-hidden />
+        </span>
+      ) : !isBlocked ? (
+        <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+          <PlusIcon className="size-3.5" aria-hidden />
+        </span>
+      ) : null}
+
+      {overlayLabel ? (
+        <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 font-mono text-[0.55rem] tracking-wide text-white/80 uppercase">
+          {overlayLabel}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -262,19 +289,28 @@ export function TreeNodeDialog({
     };
   }, [filteredResults, open]);
 
+  // Staging keeps the gallery in place so several Branches can be staged from one search.
   const handleStageResult = (result: ExternalNodeSearchResult) => {
     if (isSubmitting) {
       return;
     }
 
     setBranchTray((current) => stageSearchResult({ tray: current, existingBranches, result }));
-    setQuery("");
-    setResults([]);
-    setActiveResultType(null);
-    setSearchError(null);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
     });
+  };
+
+  const handleUnstageResult = (result: ExternalNodeSearchResult) => {
+    setBranchTray((current) =>
+      current.filter(
+        (item) =>
+          !(
+            item.result.identity.source === result.identity.source &&
+            item.result.identity.externalId === result.identity.externalId
+          ),
+      ),
+    );
   };
 
   const handleSubmitTray = async () => {
@@ -366,229 +402,214 @@ export function TreeNodeDialog({
         {triggerIcon ? <span data-icon="inline-start">{triggerIcon}</span> : null}
         {triggerLabel}
       </Button>
-      <DialogContent className="grid h-[min(44rem,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] w-[min(78rem,calc(100vw-2rem))] max-w-none grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none md:grid-cols-[minmax(0,1fr)_20rem] md:grid-rows-1">
-        <div className="flex min-h-0 flex-col bg-[oklch(0.18_0.012_125)]">
-          <DialogHeader className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 pt-6 pb-5">
+      <DialogContent className="grid h-[calc(100dvh-3rem)] max-h-[calc(100dvh-3rem)] w-[min(96rem,calc(100vw-3rem))] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none">
+        {/* Header: title, search, category filter */}
+        <div className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 pt-6 pb-5">
+          <DialogHeader>
             <DialogTitle className="font-heading text-2xl leading-tight tracking-tight text-[oklch(0.95_0.012_125)]">
               {title}
             </DialogTitle>
             <DialogDescription className="text-sm text-[oklch(0.9_0.01_120/0.58)]">
-              Find a recognized cultural subject and stage it before adding it to the tree.
+              Search a recognized cultural subject, then stage Branches before adding them.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-5 px-6 py-5">
-            <div className="space-y-2">
-              <Label
-                htmlFor={searchId}
-                className="font-mono text-[0.6rem] font-normal tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase"
-              >
-                Search
-              </Label>
-              <div className="flex gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[oklch(0.9_0.01_120/0.42)]" />
-                  <Input
-                    id={searchId}
-                    ref={inputRef}
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.currentTarget.value);
+          <div className="mt-4 space-y-2">
+            <Label
+              htmlFor={searchId}
+              className="font-mono text-[0.6rem] font-normal tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase"
+            >
+              Search
+            </Label>
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[oklch(0.9_0.01_120/0.42)]" />
+                <Input
+                  id={searchId}
+                  ref={inputRef}
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.currentTarget.value);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search films, books, albums, artists, places..."
+                  className="font-body h-14 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] pr-9 pl-10 text-base text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
+                  maxLength={160}
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      setResults([]);
+                      setActiveResultType(null);
+                      setSearchError(null);
                     }}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder="Search films, books, albums, artists, places..."
-                    className="font-body h-14 border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.06)] pr-9 pl-10 text-base text-[oklch(0.95_0.012_125)] placeholder:text-[oklch(0.9_0.01_120/0.38)] focus-visible:ring-[oklch(0.82_0.11_100/0.45)]"
-                    maxLength={160}
-                  />
-                  {query ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuery("");
-                        setResults([]);
-                        setActiveResultType(null);
-                        setSearchError(null);
-                      }}
-                      className="absolute top-1/2 right-3 -translate-y-1/2 text-[oklch(0.9_0.01_120/0.52)] transition-colors hover:text-[oklch(0.95_0.012_125)]"
-                      aria-label="Clear search"
-                    >
-                      <XIcon className="size-4" />
-                    </button>
-                  ) : null}
-                </div>
-                {onSuggestBranches ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="amber"
-                          size="icon-lg"
-                          disabled={!canSuggestBranches}
-                          aria-label="Suggest Branches"
-                          onClick={() => {
-                            void handleSuggestBranches();
-                          }}
-                        />
-                      }
-                    >
-                      {isAiPending ? (
-                        <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
-                      ) : (
-                        <SparklesIcon className="size-4" aria-hidden />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>Suggest Branches</TooltipContent>
-                  </Tooltip>
-                ) : onAiSubmit ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="amber"
-                          size="icon-lg"
-                          disabled={!suggestedAiResult || isPending || isAiPending}
-                          aria-label="Grow with AI"
-                          onClick={() => {
-                            void handleAiSubmit();
-                          }}
-                        />
-                      }
-                    >
-                      {isAiPending ? (
-                        <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
-                      ) : (
-                        <SparklesIcon className="size-4" aria-hidden />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>Grow with AI</TooltipContent>
-                  </Tooltip>
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-[oklch(0.9_0.01_120/0.52)] transition-colors hover:text-[oklch(0.95_0.012_125)]"
+                    aria-label="Clear search"
+                  >
+                    <XIcon className="size-4" />
+                  </button>
                 ) : null}
               </div>
+              {onSuggestBranches ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="amber"
+                        size="icon-lg"
+                        disabled={!canSuggestBranches}
+                        aria-label="Suggest Branches"
+                        onClick={() => {
+                          void handleSuggestBranches();
+                        }}
+                      />
+                    }
+                  >
+                    {isAiPending ? (
+                      <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <SparklesIcon className="size-4" aria-hidden />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>Suggest Branches</TooltipContent>
+                </Tooltip>
+              ) : onAiSubmit ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="amber"
+                        size="icon-lg"
+                        disabled={!suggestedAiResult || isPending || isAiPending}
+                        aria-label="Grow with AI"
+                        onClick={() => {
+                          void handleAiSubmit();
+                        }}
+                      />
+                    }
+                  >
+                    {isAiPending ? (
+                      <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <SparklesIcon className="size-4" aria-hidden />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>Grow with AI</TooltipContent>
+                </Tooltip>
+              ) : null}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-mono text-[0.6rem] tracking-[0.18em] text-[oklch(0.9_0.01_120/0.48)] uppercase">
-                  Results
+            {searchError ? <p className="text-xs text-destructive">{searchError}</p> : null}
+
+            {results.length > 0 ? (
+              <div className="space-y-2 pt-1">
+                <NodeTypeFilterList
+                  types={resultTypeFilters}
+                  selectedTypes={activeResultType ? [activeResultType] : []}
+                  allSelected={activeResultType == null}
+                  disabled={isPending || isAiPending}
+                  onSelectAll={() => setActiveResultType(null)}
+                  onToggleType={(type) =>
+                    setActiveResultType((current) => (current === type ? null : type))
+                  }
+                />
+                <p className="text-[0.7rem] text-[oklch(0.9_0.01_120/0.5)]">
+                  {filteredResults.length} result{filteredResults.length === 1 ? "" : "s"}
+                  {activeResultType ? ` in ${typeLabel(activeResultType).toLowerCase()}` : ""}
                 </p>
               </div>
-
-              {searchError ? <p className="text-xs text-destructive">{searchError}</p> : null}
-
-              {results.length > 0 ? (
-                <div className="space-y-2">
-                  <NodeTypeFilterList
-                    types={resultTypeFilters}
-                    selectedTypes={activeResultType ? [activeResultType] : []}
-                    allSelected={activeResultType == null}
-                    disabled={isPending || isAiPending}
-                    onSelectAll={() => setActiveResultType(null)}
-                    onToggleType={(type) =>
-                      setActiveResultType((current) => (current === type ? null : type))
-                    }
-                  />
-                  <p className="text-[0.7rem] text-[oklch(0.9_0.01_120/0.5)]">
-                    {filteredResults.length} result{filteredResults.length === 1 ? "" : "s"}
-                    {activeResultType ? ` in ${typeLabel(activeResultType).toLowerCase()}` : ""}
-                  </p>
-                </div>
-              ) : null}
-
-              {results.length > 0 ? (
-                <div className="relative min-h-0 flex-1">
-                  <div ref={resultsPaneRef} className="h-full space-y-1.5 overflow-y-auto pr-1">
-                    {filteredResults.map((result) => {
-                      const unavailableReason = branchTrayUnavailableReason({
-                        tray: branchTray,
-                        existingBranches,
-                        result,
-                      });
-
-                      return (
-                        <ResultRow
-                          key={`${result.identity.source}:${result.identity.externalId}`}
-                          result={result}
-                          disabled={isSubmitting || unavailableReason != null}
-                          unavailableReason={unavailableReason}
-                          onSelect={(next) => {
-                            handleStageResult(next);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div
-                    aria-hidden
-                    className={cn(
-                      "pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-xl bg-linear-to-t from-[oklch(0.18_0.012_125)] via-[oklch(0.18_0.012_125/0.42)] to-transparent transition-opacity",
-                      showResultsFade ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                </div>
-              ) : showSearching ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)]">
-                  <span className="inline-flex items-center gap-2 text-xs text-[oklch(0.9_0.01_120/0.58)]">
-                    <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
-                    Looking for matches...
-                  </span>
-                </div>
-              ) : !showSearching && trimmedQuery.length >= 2 ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)]">
-                  <p className="text-xs leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
-                    No matches yet.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)]" />
-              )}
-            </div>
+            ) : null}
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col border-t border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] md:border-t-0 md:border-l">
-          <div className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
-            <span className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] px-2.5 py-1 font-mono text-[0.6rem] tracking-[0.08em] text-[oklch(0.9_0.01_120/0.64)] uppercase">
-              Branch Tray
-            </span>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">
-            {branchTray.length > 0 ? (
-              <div className="min-h-0 space-y-2 overflow-y-auto">
-                {branchTray.map((item) => (
+        {/* Body: poster gallery */}
+        <div ref={resultsPaneRef} className="relative min-h-0 overflow-y-auto px-6 py-5">
+          {filteredResults.length > 0 ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+              {filteredResults.map((result) => {
+                const unavailableReason = branchTrayUnavailableReason({
+                  tray: branchTray,
+                  existingBranches,
+                  result,
+                });
+
+                return (
+                  <ResultCard
+                    key={`${result.identity.source}:${result.identity.externalId}`}
+                    result={result}
+                    unavailableReason={unavailableReason}
+                    onStage={handleStageResult}
+                    onUnstage={handleUnstageResult}
+                  />
+                );
+              })}
+            </div>
+          ) : showSearching ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="inline-flex items-center gap-2 text-xs text-[oklch(0.9_0.01_120/0.58)]">
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+                Looking for matches...
+              </span>
+            </div>
+          ) : trimmedQuery.length >= 2 ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-xs leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
+                No matches yet.
+              </p>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <p className="max-w-xs text-center text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.5)]">
+                Search to browse covers, then stage Branches into the shelf below.
+              </p>
+            </div>
+          )}
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-linear-to-t from-[oklch(0.18_0.012_125)] via-[oklch(0.18_0.012_125/0.42)] to-transparent transition-opacity",
+              showResultsFade ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </div>
+
+        {/* Footer: staged filmstrip + submit */}
+        <div className="border-t border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] px-6 py-4">
+          <div className="flex items-center gap-4">
+            <div className="flex min-h-20 min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+              {branchTray.length > 0 ? (
+                branchTray.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 rounded-xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] p-3"
+                    className="group relative h-20 w-14 shrink-0 overflow-hidden rounded border border-[oklch(0.82_0.11_100/0.4)]"
                   >
-                    <NodeThumbnail
-                      type={item.result.snapshot.type}
-                      src={item.result.snapshot.image}
-                      size="sm"
-                      className="size-9 rounded-none object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-heading truncate text-sm leading-tight text-[oklch(0.95_0.012_125)]">
-                        {item.result.snapshot.name}
-                      </p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <NodeTypeBadge type={item.result.snapshot.type} />
-                        {item.result.snapshot.year != null ? (
-                          <span className="font-mono text-[0.58rem] tracking-wide text-[oklch(0.9_0.01_120/0.5)] tabular-nums">
-                            {item.result.snapshot.year}
-                          </span>
-                        ) : null}
-                        {item.source === "suggested" ? (
-                          <span className="font-mono text-[0.58rem] tracking-wide text-[oklch(0.9_0.01_120/0.5)] uppercase">
-                            Suggested
-                          </span>
-                        ) : null}
+                    {item.result.snapshot.image ? (
+                      <img
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        src={item.result.snapshot.image}
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
+                        <NodeThumbnail
+                          type={item.result.snapshot.type}
+                          size="sm"
+                          className="size-6 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
+                        />
                       </div>
-                    </div>
-                    <Button
+                    )}
+                    {item.source === "suggested" ? (
+                      <span className="absolute top-1 left-1 rounded-full bg-[oklch(0.82_0.11_100)] px-1.5 font-mono text-[0.5rem] tracking-wide text-black uppercase">
+                        S
+                      </span>
+                    ) : null}
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="icon-sm"
                       disabled={isSubmitting}
                       aria-label={`Remove ${item.result.snapshot.name} from Branch Tray`}
                       onClick={() => {
@@ -596,35 +617,36 @@ export function TreeNodeDialog({
                           removeBranchTrayItem({ tray: current, itemId: item.id }),
                         );
                       }}
+                      className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/55 group-hover:opacity-100 focus-visible:bg-black/55 focus-visible:opacity-100 focus-visible:outline-none"
                     >
-                      <MinusIcon className="size-4" aria-hidden />
-                    </Button>
+                      <XIcon className="size-4 text-white" aria-hidden />
+                    </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex min-h-24 items-center rounded-xl border border-dashed border-[oklch(0.9_0.01_120/0.12)] bg-[oklch(0.95_0.01_120/0.04)] px-4">
-                <p className="text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
-                  Stage a Branch from search results before adding it to this Culture Tree.
+                ))
+              ) : (
+                <p className="text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.5)]">
+                  Stage Branches from the gallery to add them to this Culture Tree.
                 </p>
-              </div>
-            )}
-          </div>
-          <div className="border-t border-[oklch(0.9_0.01_120/0.1)] p-6">
+              )}
+            </div>
             <Button
               type="button"
               variant="amber"
-              className="w-full rounded-sm font-mono text-[0.68rem] tracking-[0.08em] uppercase"
+              className="shrink-0 rounded-sm font-mono text-[0.68rem] tracking-[0.08em] uppercase"
               disabled={!canSubmitTray}
               onClick={() => {
                 void handleSubmitTray();
               }}
             >
-              {isPending ? <LoaderCircleIcon className="size-4 animate-spin" aria-hidden /> : null}
+              {isPending ? (
+                <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <PlusIcon className="size-4" aria-hidden />
+              )}
               {branchTraySubmitLabel(branchTray)}
             </Button>
           </div>
-        </aside>
+        </div>
       </DialogContent>
     </Dialog>
   );
