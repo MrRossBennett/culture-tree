@@ -125,10 +125,12 @@ export async function addPublicBranchToTree(input: {
     adapters.loadCultureTree(input.targetTreeId),
   ]);
 
-  if (!sourceRow || sourceRow.userId === input.person.id) {
-    throw new Error("Public tree not found");
+  if (!sourceRow) {
+    throw new Error("Source tree not found");
   }
 
+  // The source can be the person's own tree (copying between their trees) or
+  // anyone's readable public tree; canReadCultureTree covers both.
   const sourceGeneration = parseGenerationMetadata(sourceRow);
   const canReadSource = canReadCultureTree({
     currentUserId: input.person.id,
@@ -137,7 +139,7 @@ export async function addPublicBranchToTree(input: {
     generationStatus: sourceGeneration.status,
   });
   if (!canReadSource) {
-    throw new Error("Public tree not found");
+    throw new Error("Source tree not found");
   }
 
   if (!targetRow || targetRow.userId !== input.person.id) {

@@ -3,18 +3,12 @@ import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, user as authUser } from "@repo/db/schema";
 import { searchExternalNodes } from "@repo/engine";
-import {
-  countCultureTreeNodes,
-  CultureTreeSchema,
-  ExternalNodeSearchResultSchema,
-  GuideSectionId,
-  type CultureTree,
-  type NodeTypeValue,
-  type TreeEnrichmentsMap,
-} from "@repo/schemas";
+import { CultureTreeSchema, ExternalNodeSearchResultSchema, GuideSectionId } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+
+import type { TreeSummaryCardData } from "~/components/tree-summary-card";
 
 import { suggestBranchesForAddToTree } from "./ai-assisted-add-to-tree";
 import type { AllowanceLimitReached } from "./allowance-gates";
@@ -30,33 +24,7 @@ import { growBranch } from "./grow-branch";
 import { manualAddBranchesToTree, manualAddToTree } from "./manual-add-to-tree";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
 import { addPublicBranchToTree } from "./public-branch-add-to-tree";
-
-function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
-  const seed = tree.seed?.trim();
-  if (seed) {
-    return seed;
-  }
-  const q = seedQuery.trim();
-  return q.length > 0 ? q : "Untitled tree";
-}
-
-type TreeListPreviewItem = {
-  type: NodeTypeValue;
-  imageUrl?: string;
-};
-
-function treeListPreviewItems(
-  tree: CultureTree,
-  enrichments: TreeEnrichmentsMap,
-): TreeListPreviewItem[] {
-  return tree.items.slice(0, 6).map((item) => {
-    const media = enrichments[item.id];
-    return {
-      type: item.type,
-      imageUrl: media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image ?? undefined,
-    };
-  });
-}
+import { buildTreeSummaryCardData } from "./tree-summary.server";
 
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
@@ -298,16 +266,7 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
   if (!user) {
     return {
       count: 0,
-      trees: [] as {
-        id: string;
-        seedQuery: string;
-        createdAt: string;
-        nodeCount: number;
-        listTitle: string;
-        isPublic: boolean;
-        generationStatus: string;
-        previewItems: TreeListPreviewItem[];
-      }[],
+      trees: [] as (TreeSummaryCardData & { seedQuery: string })[],
     };
   }
   const [countRow] = await db
@@ -332,34 +291,6 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
     .from(cultureTree)
     .where(eq(cultureTree.userId, user.id))
     .orderBy(desc(cultureTree.createdAt));
-  const trees = rows.map((r) => {
-    const parsed = CultureTreeSchema.safeParse(r.data);
-    if (!parsed.success) {
-      const generation = parseGenerationMetadata(r);
-      return {
-        id: r.id,
-        seedQuery: r.seedQuery,
-        createdAt: r.createdAt.toISOString(),
-        nodeCount: 0,
-        listTitle: r.seedQuery.trim() || "Untitled tree",
-        isPublic: r.isPublic,
-        generationStatus: generation.status,
-        previewItems: [],
-      };
-    }
-    const t = parsed.data;
-    const generation = parseGenerationMetadata(r);
-    const enrichments = parseTreeEnrichments(r.enrichmentData);
-    return {
-      id: r.id,
-      seedQuery: r.seedQuery,
-      createdAt: r.createdAt.toISOString(),
-      nodeCount: countCultureTreeNodes(t),
-      listTitle: formatCuratorTreeListTitle(t, r.seedQuery),
-      isPublic: r.isPublic,
-      generationStatus: generation.status,
-      previewItems: treeListPreviewItems(t, enrichments),
-    };
-  });
+  const trees = rows.map((r) => ({ seedQuery: r.seedQuery, ...buildTreeSummaryCardData(r) }));
   return { count: countRow?.value ?? 0, trees };
 });

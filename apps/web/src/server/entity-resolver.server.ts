@@ -20,8 +20,10 @@ import {
   type TreeEnrichmentsMap,
   type TreeItem,
 } from "@repo/schemas";
-import { and, count, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lte, ne, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+
+import type { TreeSummaryCardData } from "~/components/tree-summary-card";
 
 import { compactMetadata, mergeEntityMetadata, type EntityMetadata } from "./entity-metadata";
 import {
@@ -29,6 +31,7 @@ import {
   sourceCanCreateEntityForType,
   wikipediaFallbackTypes,
 } from "./entity-resolution-authorities";
+import { buildTreeSummaryCardData } from "./tree-summary.server";
 
 const ENTITY_RESOLVER_BATCH_LIMIT = 5;
 const ENTITY_RESOLVER_KICK_MAX_JOBS = 25;
@@ -71,6 +74,10 @@ type ResolvedEntitySummary = {
   description: string | null;
   likeCount: number;
   appearanceCount: number;
+  /** Public trees—other than the one being viewed—that this branch also appears in. */
+  appearsInTrees: TreeSummaryCardData[];
+  /** Count of other private trees this branch appears in (no card shown). */
+  privateAppearanceCount: number;
   likedByCurrentUser: boolean;
 };
 
@@ -1224,6 +1231,37 @@ export function kickEntityResolutionRunner(): void {
   });
 }
 
+/**
+ * Of the user's own trees, which already contain the same entity as the given
+ * branch. Used to mark trees as "already added" in the save-to-tree panel.
+ * Best-effort: an unresolved branch (no linked entity) yields no matches.
+ */
+export async function listTreeIdsContainingBranch(input: {
+  userId: string;
+  sourceTreeId: string;
+  sourceBranchId: string;
+}): Promise<{ treeIds: string[] }> {
+  const [link] = await db
+    .select({ entityId: treeItemEntity.entityId })
+    .from(treeItemEntity)
+    .where(
+      and(
+        eq(treeItemEntity.treeId, input.sourceTreeId),
+        eq(treeItemEntity.itemId, input.sourceBranchId),
+      ),
+    )
+    .limit(1);
+  if (!link) {
+    return { treeIds: [] };
+  }
+  const rows = await db
+    .select({ treeId: treeItemEntity.treeId })
+    .from(treeItemEntity)
+    .innerJoin(cultureTree, eq(cultureTree.id, treeItemEntity.treeId))
+    .where(and(eq(treeItemEntity.entityId, link.entityId), eq(cultureTree.userId, input.userId)));
+  return { treeIds: [...new Set(rows.map((row) => row.treeId))] };
+}
+
 export async function getResolvedEntitiesForTree(input: {
   treeId: string;
   currentUserId?: string;
@@ -1266,6 +1304,67 @@ export async function getResolvedEntitiesForTree(input: {
     .groupBy(treeItemEntity.entityId);
   const appearanceMap = new Map(appearanceRows.map((row) => [row.entityId, row.value]));
 
+  // Other trees each branch appears in: public ones become summary cards, private
+  // ones are tallied so the modal can say "and in N private trees". Bucket first
+  // from a lightweight query, then load full card data only for the public trees.
+  const otherAppearances = await db
+    .select({
+      entityId: treeItemEntity.entityId,
+      treeId: cultureTree.id,
+      isPublic: cultureTree.isPublic,
+    })
+    .from(treeItemEntity)
+    .innerJoin(cultureTree, eq(cultureTree.id, treeItemEntity.treeId))
+    .where(
+      and(inArray(treeItemEntity.entityId, entityIds), ne(treeItemEntity.treeId, input.treeId)),
+    );
+
+  const appearancesByEntity = new Map<
+    string,
+    { publicTreeIds: string[]; privateCount: number; seenTreeIds: Set<string> }
+  >();
+  const publicTreeIds = new Set<string>();
+  for (const row of otherAppearances) {
+    let bucket = appearancesByEntity.get(row.entityId);
+    if (!bucket) {
+      bucket = { publicTreeIds: [], privateCount: 0, seenTreeIds: new Set() };
+      appearancesByEntity.set(row.entityId, bucket);
+    }
+    // A branch can link to the same tree via more than one item; count each tree once.
+    if (bucket.seenTreeIds.has(row.treeId)) {
+      continue;
+    }
+    bucket.seenTreeIds.add(row.treeId);
+    if (row.isPublic) {
+      bucket.publicTreeIds.push(row.treeId);
+      publicTreeIds.add(row.treeId);
+    } else {
+      bucket.privateCount += 1;
+    }
+  }
+
+  const cardRows =
+    publicTreeIds.size > 0
+      ? await db
+          .select({
+            id: cultureTree.id,
+            seedQuery: cultureTree.seedQuery,
+            data: cultureTree.data,
+            enrichmentData: cultureTree.enrichmentData,
+            createdAt: cultureTree.createdAt,
+            isPublic: cultureTree.isPublic,
+            generationStatus: cultureTree.generationStatus,
+            generationRunId: cultureTree.generationRunId,
+            generationStage: cultureTree.generationStage,
+            generationUpdatedAt: cultureTree.generationUpdatedAt,
+            generationError: cultureTree.generationError,
+            generationFinalData: cultureTree.generationFinalData,
+          })
+          .from(cultureTree)
+          .where(inArray(cultureTree.id, [...publicTreeIds]))
+      : [];
+  const cardByTreeId = new Map(cardRows.map((row) => [row.id, buildTreeSummaryCardData(row)]));
+
   const likedRows = input.currentUserId
     ? await db
         .select({ entityId: entityLike.entityId })
@@ -1291,6 +1390,10 @@ export async function getResolvedEntitiesForTree(input: {
         description: link.description,
         likeCount: countMap.get(link.entityId) ?? 0,
         appearanceCount: appearanceMap.get(link.entityId) ?? 0,
+        appearsInTrees: (appearancesByEntity.get(link.entityId)?.publicTreeIds ?? [])
+          .map((treeId) => cardByTreeId.get(treeId))
+          .filter((card): card is TreeSummaryCardData => card != null),
+        privateAppearanceCount: appearancesByEntity.get(link.entityId)?.privateCount ?? 0,
         likedByCurrentUser: likedSet.has(link.entityId),
       },
     ]),
@@ -1394,6 +1497,8 @@ export async function listLikedEntitiesForUser(
       description: row.description,
       likeCount: countMap.get(row.id) ?? 0,
       appearanceCount: appearanceMap.get(row.id) ?? 0,
+      appearsInTrees: [],
+      privateAppearanceCount: 0,
       likedByCurrentUser: true,
     })),
   };

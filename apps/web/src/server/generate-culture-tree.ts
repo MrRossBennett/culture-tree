@@ -25,6 +25,7 @@ import {
   hasUsefulEnrichment,
   parseTreeEnrichments,
 } from "./committed-branch-enrichment";
+import { canReadCultureTree } from "./culture-trees";
 import { withLimitReachedMessage } from "./limit-reached-messages";
 import {
   StartGenerationInputSchema,
@@ -37,6 +38,7 @@ import {
   parseMediaFilter,
   treeForRevealProgress,
 } from "./progressive-tree-generation-lifecycle";
+import { addPublicBranchToTree } from "./public-branch-add-to-tree";
 import {
   buildAcceptedAiGenerationUsage,
   buildAcceptedTreeCreationUsage,
@@ -57,6 +59,33 @@ export const StartTreeFromScratchInputSchema = z.object({
 });
 
 export type StartTreeFromScratchInput = z.infer<typeof StartTreeFromScratchInputSchema>;
+
+export const StartTreeFromBranchInputSchema = z.object({
+  sourceTreeId: z.string().min(1),
+  sourceBranchId: z.string().min(1),
+  title: z.string().trim().min(1).max(140).optional(),
+  description: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
+});
+
+const NEW_TREE_FROM_BRANCH_FALLBACK_TITLE = "New tree";
+
+/**
+ * Title a tree seeded from a Branch after the Branch itself, falling back to a
+ * generic title for the (schema-unexpected) empty-name case. Throws when the
+ * Branch is missing from the source tree.
+ */
+export function titleForTreeFromBranch(input: { tree: CultureTree; branchId: string }): string {
+  const branch = input.tree.items.find((item) => item.id === input.branchId);
+  if (!branch) {
+    throw new Error("Branch not found");
+  }
+  return branch.name.trim() || NEW_TREE_FROM_BRANCH_FALLBACK_TITLE;
+}
 
 export function buildManualCultureTreeDraft(input: StartTreeFromScratchInput): CultureTree {
   return CultureTreeSchema.parse({
@@ -407,6 +436,92 @@ export const $startTreeFromScratch = createServerFn({ method: "POST" })
         }),
       );
     });
+    return { ok: true as const, treeId };
+  });
+
+export const $startCultureTreeFromBranch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(StartTreeFromBranchInputSchema)
+  .handler(async ({ data, context }) => {
+    const { allowance } = await prepareTreeCreationAllowanceDecision({
+      person: context.user,
+      proAllowlist: process.env.PRO_ALLOWLIST,
+    });
+    if (!allowance.allowed) {
+      return {
+        ok: false as const,
+        limitReached: withLimitReachedMessage({
+          action: "create_tree",
+          limitReached: allowance.limitReached,
+        }),
+      };
+    }
+
+    // Read the source branch only to title the new tree; addPublicBranchToTree
+    // re-loads and re-validates the source when it copies the branch over.
+    const [sourceRow] = await db
+      .select({
+        userId: cultureTree.userId,
+        data: cultureTree.data,
+        isPublic: cultureTree.isPublic,
+        generationStatus: cultureTree.generationStatus,
+        generationRunId: cultureTree.generationRunId,
+        generationStage: cultureTree.generationStage,
+        generationUpdatedAt: cultureTree.generationUpdatedAt,
+        generationError: cultureTree.generationError,
+        generationFinalData: cultureTree.generationFinalData,
+      })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.sourceTreeId))
+      .limit(1);
+    if (!sourceRow) {
+      throw new Error("Source tree not found");
+    }
+    const sourceGeneration = parseGenerationMetadata(sourceRow);
+    const canReadSource = canReadCultureTree({
+      currentUserId: context.user.id,
+      ownerUserId: sourceRow.userId,
+      isPublic: sourceRow.isPublic,
+      generationStatus: sourceGeneration.status,
+    });
+    if (!canReadSource) {
+      throw new Error("Source tree not found");
+    }
+    const sourceTree = CultureTreeSchema.parse(sourceRow.data);
+    // Always derive from the branch so a missing branch is rejected before the
+    // tree row is created; a caller-supplied title takes precedence when given.
+    const derivedTitle = titleForTreeFromBranch({
+      tree: sourceTree,
+      branchId: data.sourceBranchId,
+    });
+    const title = data.title ?? derivedTitle;
+
+    const treeId = nanoid();
+    await db.transaction(async (tx) => {
+      await tx.insert(cultureTree).values(
+        buildManualCultureTreeInsert({
+          treeId,
+          userId: context.user.id,
+          input: { title, description: data.description },
+        }),
+      );
+      await tx.insert(usageHistory).values(
+        buildAcceptedTreeCreationUsage({
+          id: nanoid(),
+          person: context.user,
+          cultureTreeId: treeId,
+          proAllowlist: process.env.PRO_ALLOWLIST,
+        }),
+      );
+    });
+
+    await addPublicBranchToTree({
+      sourceTreeId: data.sourceTreeId,
+      sourceBranchId: data.sourceBranchId,
+      targetTreeId: treeId,
+      person: context.user,
+    });
+
     return { ok: true as const, treeId };
   });
 

@@ -139,6 +139,28 @@ describe("addPublicBranchToTree", () => {
     });
   });
 
+  it("adds a Branch from one of the person's own (private) trees to another of their trees", async () => {
+    const adapters = baseAdapters({
+      loadCultureTree: vi.fn(async (treeId) => {
+        const row = await baseAdapters().loadCultureTree(treeId);
+        return row && treeId === "public_tree"
+          ? { ...row, userId: "person_1", isPublic: false }
+          : row;
+      }),
+    });
+
+    const result = await addPublicBranchToTree({
+      sourceTreeId: "public_tree",
+      sourceBranchId: "source_branch_1",
+      targetTreeId: "target_tree",
+      person: { id: "person_1" },
+      adapters,
+    });
+
+    expect(result).toMatchObject({ ok: true, branch: { id: "copied_branch_1" } });
+    expect(adapters.commitPublicBranchAdd).toHaveBeenCalledTimes(1);
+  });
+
   it("does not consult or record AI Generation allowance", async () => {
     const adapters = baseAdapters();
 
@@ -153,7 +175,7 @@ describe("addPublicBranchToTree", () => {
     expect(adapters.commitPublicBranchAdd).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects Private source trees and non-owned target trees", async () => {
+  it("rejects another person's Private source trees and non-owned target trees", async () => {
     await expect(
       addPublicBranchToTree({
         sourceTreeId: "public_tree",
@@ -167,7 +189,7 @@ describe("addPublicBranchToTree", () => {
           }),
         }),
       }),
-    ).rejects.toThrow("Public tree not found");
+    ).rejects.toThrow("Source tree not found");
 
     await expect(
       addPublicBranchToTree({

@@ -1,7 +1,6 @@
 import {
   filterCultureTreeToNodeTypes,
   formatGuideSectionTitle,
-  type BranchRoleValue,
   type ConnectionTypeValue,
   type CultureTree,
   type GuideSection,
@@ -14,41 +13,38 @@ import {
 import { Button } from "@repo/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@repo/ui/components/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/ui/components/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
 import {
   ChevronLeftIcon,
-  ClipboardIcon,
   HeartIcon,
   ImageIcon,
   LoaderCircleIcon,
+  MoreHorizontalIcon,
   PlayIcon,
   PlusIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
+import { AddToTreePopover, type AddToTreeTarget } from "~/components/add-to-tree-popover";
 import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { NodeTypeFilterList } from "~/components/node-type-filter-list";
 import { TreeNodeDialog } from "~/components/tree-node-popover";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
+import { TreeSummaryCard } from "~/components/tree-summary-card";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
 function formatConnectionLabel(connectionType: ConnectionTypeValue): string {
   return connectionType.replaceAll("-", " ").toUpperCase();
-}
-
-function formatBranchRoleLabel(branchRole: BranchRoleValue): string {
-  return branchRole.replaceAll("-", " ").toUpperCase();
 }
 
 type PreviewSection = {
@@ -69,10 +65,7 @@ type PreviewBoardItem = {
   item: TreeItem;
 };
 
-export type AddToTreeTarget = {
-  readonly id: string;
-  readonly title: string;
-};
+export type { AddToTreeTarget };
 
 function buildPreviewSections(tree: CultureTree): PreviewSection[] {
   if (tree.guideSections.length === 0) {
@@ -179,36 +172,43 @@ function headingFromSearchHint(
   return { primary: displayName };
 }
 
-function EntityStat({
-  icon,
-  value,
-  tooltip,
+function memberTooltip(count: number): string {
+  return `Liked by ${count} member${count === 1 ? "" : "s"}`;
+}
+
+function LikeToggle({
+  likeCount,
+  liked,
+  onToggle,
 }: {
-  readonly icon: ReactNode;
-  readonly value: number;
-  readonly tooltip: string;
+  readonly likeCount: number;
+  readonly liked: boolean;
+  readonly onToggle: () => void;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-muted-foreground transition-colors hover:text-foreground" />
+          <button
+            type="button"
+            aria-pressed={liked}
+            onClick={onToggle}
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-1 text-muted-foreground transition-colors hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-rose-300/40 focus-visible:outline-none",
+              liked && "text-rose-300 hover:text-rose-200",
+            )}
+          />
         }
       >
-        {icon}
-        <span className="font-mono text-[0.62rem] leading-none tabular-nums">{value}</span>
+        <HeartIcon className={cn("size-3.5", liked && "fill-current")} aria-hidden />
+        <span className="font-mono text-[0.62rem] leading-none tabular-nums">{likeCount}</span>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipContent>
+        {liked ? "You liked this · " : ""}
+        {memberTooltip(likeCount)}
+      </TooltipContent>
     </Tooltip>
   );
-}
-
-function memberTooltip(count: number): string {
-  return `Liked by ${count} member${count === 1 ? "" : "s"}`;
-}
-
-function treeTooltip(count: number): string {
-  return `Appears in ${count} tree${count === 1 ? "" : "s"}`;
 }
 
 function coverSrcForItem({
@@ -305,34 +305,34 @@ function BranchFocusDialog({
   addToTreeTargets = [],
   item,
   enrichments,
-  isAddingToTree = false,
   isGeneratingNewTree,
   onClose,
   onAddToTree,
+  onStartNewTree,
   onDeleteItem,
   onGenerateNewTree,
   onToggleLike,
   resolvedEntity,
+  sourceTreeId,
 }: {
   readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly item: TreeItem | null;
   readonly enrichments: TreeEnrichmentsMap;
-  readonly isAddingToTree?: boolean;
   readonly isGeneratingNewTree: boolean;
   readonly onClose: () => void;
   readonly onAddToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
+  readonly onStartNewTree?: (item: TreeItem) => Promise<void>;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
+  readonly sourceTreeId?: string;
 }) {
   const media = item ? enrichments[item.id] : undefined;
   const itemHeading = item ? headingFromSearchHint(item.name, item.searchHint) : null;
   const coverSrc = item ? coverSrcForItem({ item, enrichments, resolvedEntity }) : undefined;
   const trailerVideoId = media?.youtubeVideoId;
-  const [targetTreeId, setTargetTreeId] = useState("");
   const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
-  const resolvedTargetTreeId = targetTreeId || addToTreeTargets[0]?.id || "";
 
   // Each branch opens on its poster; reset when the focused branch changes.
   useEffect(() => {
@@ -420,15 +420,55 @@ function BranchFocusDialog({
               </div>
             </div>
             <aside className="flex min-h-0 flex-col border-t border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] md:border-t-0 md:border-l">
-              <div className="border-b border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
-                <NodeTypeBadge
-                  type={item.type}
-                  className="border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)]"
-                />
+              <div className="flex items-center justify-between gap-2 border-b border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
+                {resolvedEntity ? (
+                  <LikeToggle
+                    likeCount={resolvedEntity.likeCount}
+                    liked={resolvedEntity.likedByCurrentUser}
+                    onToggle={() =>
+                      void onToggleLike?.(resolvedEntity.id, resolvedEntity.likedByCurrentUser)
+                    }
+                  />
+                ) : (
+                  <span />
+                )}
+                {onDeleteItem ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
+                          aria-label="Branch options"
+                        />
+                      }
+                    >
+                      <MoreHorizontalIcon className="size-4" aria-hidden />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => {
+                          onDeleteItem(item);
+                          onClose();
+                        }}
+                      >
+                        <Trash2Icon className="size-3.5" aria-hidden />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
                 <div className="space-y-4">
                   <div>
+                    <NodeTypeBadge
+                      type={item.type}
+                      className="mb-2 border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)]"
+                    />
                     <h3 className="font-heading text-2xl leading-tight tracking-tight text-[oklch(0.95_0.012_125)]">
                       {itemHeading.primary}
                     </h3>
@@ -438,17 +478,6 @@ function BranchFocusDialog({
                         <span className="font-mono text-xs tabular-nums">{item.year}</span>
                       ) : null}
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {item.branchRole ? (
-                      <span className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] px-2.5 py-1 font-mono text-[0.6rem] tracking-[0.08em] text-[oklch(0.9_0.01_120/0.64)] uppercase">
-                        {formatBranchRoleLabel(item.branchRole)}
-                      </span>
-                    ) : null}
-                    <span className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] px-2.5 py-1 font-mono text-[0.6rem] tracking-[0.08em] text-[oklch(0.9_0.01_120/0.64)] uppercase">
-                      {formatConnectionLabel(item.connectionType)}
-                    </span>
                   </div>
 
                   {item.type === "song" && media?.musicAlbumTitle ? (
@@ -481,94 +510,51 @@ function BranchFocusDialog({
                       </p>
                     </div>
                   ) : null}
+
+                  {resolvedEntity &&
+                  (resolvedEntity.appearsInTrees.length > 0 ||
+                    resolvedEntity.privateAppearanceCount > 0) ? (
+                    <div className="space-y-3 pt-2">
+                      <p className="font-mono text-[0.62rem] tracking-[0.14em] text-[oklch(0.9_0.01_120/0.42)] uppercase">
+                        Also appears in
+                      </p>
+                      <div className="space-y-3">
+                        {resolvedEntity.appearsInTrees.map((appearsInTree) => (
+                          <TreeSummaryCard key={appearsInTree.id} tree={appearsInTree} />
+                        ))}
+                      </div>
+                      {resolvedEntity.privateAppearanceCount > 0 ? (
+                        <p className="font-body text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.55)]">
+                          {resolvedEntity.appearsInTrees.length > 0 ? "and in " : "In "}
+                          {resolvedEntity.privateAppearanceCount} private{" "}
+                          {resolvedEntity.privateAppearanceCount === 1 ? "tree" : "trees"}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="space-y-3 border-t border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
-                {resolvedEntity ? (
-                  <div className="flex items-center gap-2">
-                    <EntityStat
-                      icon={<HeartIcon className="size-3.5 text-rose-400" aria-hidden />}
-                      value={resolvedEntity.likeCount}
-                      tooltip={memberTooltip(resolvedEntity.likeCount)}
-                    />
-                    <EntityStat
-                      icon={
-                        <ClipboardIcon
-                          className="size-3.5 text-[oklch(0.82_0.11_100)]"
-                          aria-hidden
-                        />
-                      }
-                      value={resolvedEntity.appearanceCount}
-                      tooltip={treeTooltip(resolvedEntity.appearanceCount)}
-                    />
-                  </div>
-                ) : null}
                 <div className="flex flex-wrap gap-2">
-                  {onAddToTree && item ? (
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <Select
-                        value={resolvedTargetTreeId}
-                        onValueChange={(value) => setTargetTreeId(value ?? "")}
-                      >
-                        <SelectTrigger
+                  {onAddToTree && item && sourceTreeId ? (
+                    <AddToTreePopover
+                      sourceTreeId={sourceTreeId}
+                      itemId={item.id}
+                      targets={addToTreeTargets}
+                      onAddToTree={(targetTreeId) => onAddToTree(item, targetTreeId)}
+                      onStartNewTree={onStartNewTree ? () => onStartNewTree(item) : undefined}
+                      trigger={
+                        <Button
+                          type="button"
+                          variant="ghost"
                           size="sm"
-                          className="max-w-44 rounded-full border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)]"
-                          disabled={isAddingToTree || addToTreeTargets.length === 0}
+                          className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
                         >
-                          <SelectValue placeholder="Choose tree" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {addToTreeTargets.map((target) => (
-                            <SelectItem key={target.id} value={target.id}>
-                              {target.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isAddingToTree || !resolvedTargetTreeId}
-                        className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
-                        onClick={() => {
-                          if (!resolvedTargetTreeId) {
-                            return;
-                          }
-                          void onAddToTree(item, resolvedTargetTreeId);
-                        }}
-                      >
-                        {isAddingToTree ? (
-                          <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
-                        ) : (
                           <PlusIcon className="size-3.5" aria-hidden />
-                        )}
-                        Add to Tree
-                      </Button>
-                    </div>
-                  ) : null}
-                  {resolvedEntity ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]",
-                        resolvedEntity.likedByCurrentUser && "text-rose-300 hover:text-rose-200",
-                      )}
-                      onClick={() =>
-                        void onToggleLike?.(resolvedEntity.id, resolvedEntity.likedByCurrentUser)
+                          Add to Tree
+                        </Button>
                       }
-                    >
-                      <HeartIcon
-                        className={cn(
-                          "size-3.5",
-                          resolvedEntity.likedByCurrentUser && "fill-current",
-                        )}
-                        aria-hidden
-                      />
-                      {resolvedEntity.likedByCurrentUser ? "Liked" : "Like"}
-                    </Button>
+                    />
                   ) : null}
                   {onGenerateNewTree ? (
                     <Button
@@ -587,21 +573,6 @@ function BranchFocusDialog({
                       Explore This
                     </Button>
                   ) : null}
-                  {onDeleteItem ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.6)] hover:bg-destructive/15 hover:text-rose-300"
-                      onClick={() => {
-                        onDeleteItem(item);
-                        onClose();
-                      }}
-                    >
-                      <Trash2Icon className="size-3.5" aria-hidden />
-                      Delete
-                    </Button>
-                  ) : null}
                 </div>
               </div>
             </aside>
@@ -618,10 +589,10 @@ export function TreePreview({
   enrichments = {},
   loadingItemIds = [],
   isAddItemPending = false,
-  isAddingBranchToTree = false,
   isGrowItemPending = false,
   isGeneratingNewTree = false,
   onAddBranchToTree,
+  onStartNewTree,
   onAddItem,
   onDeleteItem,
   onGenerateNewTree,
@@ -629,15 +600,16 @@ export function TreePreview({
   onSuggestItems,
   onToggleLike,
   resolvedEntities = {},
+  sourceTreeId,
 }: {
   readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
   readonly loadingItemIds?: readonly string[];
   readonly isAddItemPending?: boolean;
-  readonly isAddingBranchToTree?: boolean;
   readonly isGrowItemPending?: boolean;
   readonly onAddBranchToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
+  readonly onStartNewTree?: (item: TreeItem) => Promise<void>;
   readonly onAddItem?: (node: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
   readonly onSuggestItems?: (
     trayResults: readonly TreeNodePopoverSubmitInput["result"][],
@@ -648,6 +620,7 @@ export function TreePreview({
   readonly onGrowItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
+  readonly sourceTreeId?: string;
 }) {
   const [selectedBranchTypes, setSelectedBranchTypes] = useState<NodeTypeValue[]>([]);
   const branchTypes = availableBranchTypes(tree);
@@ -682,7 +655,7 @@ export function TreePreview({
   return (
     <section className="relative w-full text-left">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        {branchTypes.length > 1 ? (
+        {branchTypes.length > 0 ? (
           <div>
             <NodeTypeFilterList
               types={branchTypes}
@@ -765,15 +738,16 @@ export function TreePreview({
       <BranchFocusDialog
         addToTreeTargets={addToTreeTargets}
         enrichments={enrichments}
-        isAddingToTree={isAddingBranchToTree}
         isGeneratingNewTree={isGeneratingNewTree}
         item={selectedItem}
         onAddToTree={onAddBranchToTree}
+        onStartNewTree={onStartNewTree}
         onClose={() => setSelectedItem(null)}
         onDeleteItem={onDeleteItem}
         onGenerateNewTree={onGenerateNewTree}
         onToggleLike={onToggleLike}
         resolvedEntity={selectedResolvedEntity}
+        sourceTreeId={sourceTreeId}
       />
     </section>
   );

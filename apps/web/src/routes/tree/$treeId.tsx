@@ -9,6 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog";
+import { Input } from "@repo/ui/components/input";
+import { Textarea } from "@repo/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
 import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
@@ -38,7 +40,11 @@ import {
   $suggestCultureTreeBranches,
 } from "~/server/culture-trees";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
-import { $retryCultureTreeGeneration, $seedTreeFromItem } from "~/server/generate-culture-tree";
+import {
+  $retryCultureTreeGeneration,
+  $seedTreeFromItem,
+  $startCultureTreeFromBranch,
+} from "~/server/generate-culture-tree";
 import {
   isGenerationActive,
   isGenerationTerminal,
@@ -211,9 +217,6 @@ function TreeVisibilityToggle({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-      <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
-        Link
-      </span>
       <ButtonGroup aria-label="Tree link visibility" className="rounded">
         <Button
           type="button"
@@ -291,6 +294,9 @@ function TreePage() {
   ]);
   const [generationTone, setGenerationTone] = useState<CultureTreeTone>("mixed");
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
+  const [namingItem, setNamingItem] = useState<TreeItem | null>(null);
+  const [newTreeTitle, setNewTreeTitle] = useState("");
+  const [newTreeDescription, setNewTreeDescription] = useState("");
   const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
   const [committedTreeState, setCommittedTreeState] = useState<{
     treeId: string;
@@ -304,13 +310,17 @@ function TreePage() {
       : null;
   const myTrees = useQuery({
     ...myCultureTreesQueryOptions(),
-    enabled: Boolean(viewerUserId && !isOwner && treeIsReady),
+    enabled: Boolean(viewerUserId && treeIsReady),
   });
   const addToTreeTargets: AddToTreeTarget[] = (myTrees.data?.trees ?? [])
     .filter((target) => target.id !== treeId && target.generationStatus === "ready")
     .map((target) => ({
       id: target.id,
       title: target.listTitle,
+      isPublic: target.isPublic,
+      branchCount: target.branchCount,
+      previewType: target.previewItems[0]?.type,
+      previewImageUrl: target.previewItems[0]?.imageUrl,
     }));
 
   const retryGeneration = useMutation({
@@ -373,12 +383,42 @@ function TreePage() {
         },
       });
     },
-    onSuccess: async () => {
-      toast.success("Branch added to your tree.");
+    onSuccess: async (_result, variables) => {
+      const target = addToTreeTargets.find((candidate) => candidate.id === variables.targetTreeId);
+      toast.success(
+        target
+          ? `Added “${variables.item.name}” to “${target.title}”.`
+          : "Branch added to your tree.",
+      );
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not add that branch.");
+    },
+  });
+
+  const startTreeFromBranch = useMutation({
+    mutationFn: (input: { item: TreeItem; title: string; description?: string }) =>
+      $startCultureTreeFromBranch({
+        data: {
+          sourceTreeId: treeId,
+          sourceBranchId: input.item.id,
+          title: input.title,
+          description: input.description,
+        },
+      }),
+    onSuccess: async (result) => {
+      if (!result.ok) {
+        toast.error(result.limitReached.message);
+        return;
+      }
+      setNamingItem(null);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      toast.success("New tree started.");
+      void navigate({ to: "/tree/$treeId", params: { treeId: result.treeId } });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not start a new tree from that branch.");
     },
   });
 
@@ -501,7 +541,7 @@ function TreePage() {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
-      <div className="flex w-full flex-1 flex-col gap-7 px-4 pt-6 pb-12 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-1 flex-col gap-4 px-4 pt-3 pb-12 sm:px-6 lg:px-8">
         <CultureTreeSeedCard
           tree={tree}
           ownerUsername={username}
@@ -527,11 +567,11 @@ function TreePage() {
         ) : null}
         {previewTree.items.length > 0 ? (
           <TreePreview
+            key={treeId}
             addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
-            isAddingBranchToTree={addPublicBranch.isPending}
             isGrowItemPending={suggestBranches.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
@@ -543,9 +583,18 @@ function TreePage() {
                 : undefined
             }
             onAddBranchToTree={
-              !isOwner && viewerUserId && treeIsReady
+              viewerUserId && treeIsReady
                 ? async (item, targetTreeId) => {
                     await addPublicBranch.mutateAsync({ item, targetTreeId });
+                  }
+                : undefined
+            }
+            onStartNewTree={
+              viewerUserId && treeIsReady
+                ? async (item) => {
+                    setNamingItem(item);
+                    setNewTreeTitle(item.name);
+                    setNewTreeDescription("");
                   }
                 : undefined
             }
@@ -567,17 +616,18 @@ function TreePage() {
                 : undefined
             }
             onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            sourceTreeId={treeId}
             tree={previewTree}
           />
         ) : !treeIsReady ? (
           <LoadingBranchCards />
         ) : (
           <TreePreview
+            key={treeId}
             addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
-            isAddingBranchToTree={addPublicBranch.isPending}
             isGrowItemPending={suggestBranches.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
@@ -589,9 +639,18 @@ function TreePage() {
                 : undefined
             }
             onAddBranchToTree={
-              !isOwner && viewerUserId && treeIsReady
+              viewerUserId && treeIsReady
                 ? async (item, targetTreeId) => {
                     await addPublicBranch.mutateAsync({ item, targetTreeId });
+                  }
+                : undefined
+            }
+            onStartNewTree={
+              viewerUserId && treeIsReady
+                ? async (item) => {
+                    setNamingItem(item);
+                    setNewTreeTitle(item.name);
+                    setNewTreeDescription("");
                   }
                 : undefined
             }
@@ -613,6 +672,7 @@ function TreePage() {
                 : undefined
             }
             onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            sourceTreeId={treeId}
             tree={previewTree}
           />
         )}
@@ -685,6 +745,92 @@ function TreePage() {
               </Button>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={namingItem != null}
+        onOpenChange={(open) => {
+          if (!open && !startTreeFromBranch.isPending) {
+            setNamingItem(null);
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!startTreeFromBranch.isPending} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl">Start a new tree</DialogTitle>
+            <DialogDescription className="font-body text-base leading-relaxed">
+              {namingItem ? (
+                <>
+                  Name a fresh tree seeded with{" "}
+                  <span className="text-foreground">{namingItem.name}</span>.
+                </>
+              ) : (
+                "Name a fresh tree seeded with this Branch."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const title = newTreeTitle.trim();
+              if (!title || !namingItem || startTreeFromBranch.isPending) {
+                return;
+              }
+              startTreeFromBranch.mutate({
+                item: namingItem,
+                title,
+                description: newTreeDescription.trim() || undefined,
+              });
+            }}
+          >
+            <div className="space-y-1.5">
+              <label
+                htmlFor="new-tree-title"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Tree name
+              </label>
+              <Input
+                id="new-tree-title"
+                value={newTreeTitle}
+                disabled={startTreeFromBranch.isPending}
+                maxLength={140}
+                onChange={(event) => setNewTreeTitle(event.target.value)}
+                placeholder="Name your tree…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="new-tree-description"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Description <span className="normal-case">(optional)</span>
+              </label>
+              <Textarea
+                id="new-tree-description"
+                value={newTreeDescription}
+                disabled={startTreeFromBranch.isPending}
+                maxLength={500}
+                rows={3}
+                onChange={(event) => setNewTreeDescription(event.target.value)}
+                placeholder="What ties this tree together?"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="amber"
+              className="w-full rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+              disabled={startTreeFromBranch.isPending || newTreeTitle.trim().length === 0}
+            >
+              {startTreeFromBranch.isPending ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                "Create tree"
+              )}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
 
