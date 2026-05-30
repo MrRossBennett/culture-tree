@@ -366,6 +366,14 @@ function parseTreeIdentity(item: TreeItem): ExternalIdentityInput | null {
         externalUrl: `https://www.themoviedb.org/${kind}/${id.trim()}`,
       };
     }
+    if (kind === "person" && id?.trim()) {
+      return {
+        source: "tmdb",
+        externalType: "person",
+        externalId: id.trim(),
+        externalUrl: `https://www.themoviedb.org/person/${id.trim()}`,
+      };
+    }
     return null;
   }
 
