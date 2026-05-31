@@ -17,6 +17,7 @@ import {
 } from "./branch-tray-state";
 
 const leSamourai: ExternalNodeSearchResult = {
+  kind: "addable-work",
   identity: { source: "wikipedia", externalId: "Le_Samourai" },
   snapshot: {
     name: "Le Samourai",
@@ -29,6 +30,7 @@ const leSamourai: ExternalNodeSearchResult = {
 };
 
 const theWarriors: ExternalNodeSearchResult = {
+  kind: "addable-work",
   identity: { source: "wikipedia", externalId: "The_Warriors" },
   snapshot: {
     name: "The Warriors",
@@ -55,6 +57,7 @@ const existingBranch: TreeItem = {
 
 function resultAt(index: number): ExternalNodeSearchResult {
   return {
+    kind: "addable-work",
     identity: { source: "wikipedia", externalId: `Result_${index}` },
     snapshot: {
       name: `Result ${index}`,
@@ -78,6 +81,20 @@ describe("Branch Tray state", () => {
     });
     expect(branchTraySubmitLabel(tray)).toBe("Add Branch");
     expect(canSubmitBranchTray(tray)).toBe(true);
+  });
+
+  it("refuses to stage a creator subject (subjects are explored, never added)", () => {
+    const radiohead: ExternalNodeSearchResult = {
+      kind: "expandable-subject",
+      identity: { source: "musicbrainz", externalId: "artist:abc123" },
+      snapshot: { name: "Radiohead", type: "artist" },
+      searchHint: { title: "Radiohead" },
+    };
+
+    expect(branchTrayUnavailableReason({ tray: [], existingBranches: [], result: radiohead })).toBe(
+      "not-addable",
+    );
+    expect(stageSearchResult({ tray: [], result: radiohead })).toHaveLength(0);
   });
 
   it("stages multiple searched Branches in order", () => {

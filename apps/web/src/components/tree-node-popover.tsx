@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/too
 import { cn } from "@repo/ui/lib/utils";
 import {
   CheckIcon,
+  ChevronDownIcon,
   LoaderCircleIcon,
   PlusIcon,
   SearchIcon,
@@ -38,11 +39,37 @@ import {
   type BranchTrayItem,
   type BranchTraySubmitInput,
 } from "~/lib/branch-tray-state";
-import { $searchCultureTreeNodes } from "~/server/culture-trees";
+import { $resolveSearchSubjectWorks, $searchCultureTreeNodes } from "~/server/culture-trees";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
 type TreeNodePopoverSubmitInput = BranchTraySubmitInput;
+
+// Cover images can 404 (notably Cover Art Archive, which has gaps), so swap to the medium
+// placeholder on load error instead of showing a broken-image icon.
+function CoverImage({
+  src,
+  imgClassName,
+  renderFallback,
+}: {
+  readonly src: string | undefined;
+  readonly imgClassName: string;
+  readonly renderFallback: () => ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <>{renderFallback()}</>;
+  }
+  return (
+    <img
+      alt=""
+      referrerPolicy="no-referrer"
+      src={src}
+      onError={() => setFailed(true)}
+      className={imgClassName}
+    />
+  );
+}
 
 function ResultCard({
   result,
@@ -51,12 +78,15 @@ function ResultCard({
   onUnstage,
 }: {
   readonly result: ExternalNodeSearchResult;
-  readonly unavailableReason: "staged" | "existing" | "full" | null;
+  readonly unavailableReason: "not-addable" | "staged" | "existing" | "full" | null;
   readonly onStage: (result: ExternalNodeSearchResult) => void;
   readonly onUnstage: (result: ExternalNodeSearchResult) => void;
 }) {
   const isStaged = unavailableReason === "staged";
-  const isBlocked = unavailableReason === "existing" || unavailableReason === "full";
+  const isBlocked =
+    unavailableReason === "existing" ||
+    unavailableReason === "full" ||
+    unavailableReason === "not-addable";
   const overlayLabel =
     unavailableReason === "existing"
       ? "In tree"
@@ -78,24 +108,21 @@ function ResultCard({
           : "border-[oklch(0.9_0.01_120/0.12)]",
       )}
     >
-      {result.snapshot.image ? (
-        <img
-          alt=""
-          referrerPolicy="no-referrer"
-          src={result.snapshot.image}
-          className="size-full object-cover"
-        />
-      ) : (
-        <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
-          <NodeThumbnail
-            type={result.snapshot.type}
-            size="md"
-            className="size-12 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
-          />
-        </div>
-      )}
+      <CoverImage
+        src={result.snapshot.image}
+        imgClassName="size-full object-cover"
+        renderFallback={() => (
+          <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
+            <NodeThumbnail
+              type={result.snapshot.type}
+              size="md"
+              className="size-12 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
+            />
+          </div>
+        )}
+      />
 
-      <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/45 to-transparent p-2.5 pt-8">
+      <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/95 via-black/70 to-transparent p-2.5 pt-10">
         <p className="truncate text-sm font-medium text-white">{result.snapshot.name}</p>
         <div className="mt-1 flex items-center gap-2">
           <NodeTypeBadge type={result.snapshot.type} />
@@ -131,6 +158,111 @@ function typeLabel(type: NodeTypeValue): string {
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function identityKey(identity: ExternalNodeSearchResult["identity"]): string {
+  return `${identity.source}:${identity.externalId}`;
+}
+
+type SubjectWorksState = {
+  status: "loading" | "loaded" | "error";
+  results: readonly ExternalNodeSearchResult[];
+};
+
+// A creator subject (artist/person): a header row that expands in place to reveal the
+// creator's works (hop two). The subject itself is never addable — only its works are.
+function SubjectSection({
+  subject,
+  isOpen,
+  state,
+  onToggle,
+  renderWork,
+}: {
+  readonly subject: ExternalNodeSearchResult;
+  readonly isOpen: boolean;
+  readonly state: SubjectWorksState | undefined;
+  readonly onToggle: (subject: ExternalNodeSearchResult) => void;
+  readonly renderWork: (work: ExternalNodeSearchResult) => ReactNode;
+}) {
+  const works = state?.results ?? [];
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-[oklch(0.9_0.01_120/0.12)]">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        onClick={() => onToggle(subject)}
+        className="flex w-full items-center gap-3 bg-[oklch(0.95_0.01_120/0.04)] p-2.5 text-left transition-colors hover:bg-[oklch(0.95_0.01_120/0.07)] focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none"
+      >
+        <span className="size-12 shrink-0 overflow-hidden rounded-full bg-[oklch(0.95_0.01_120/0.05)]">
+          <CoverImage
+            src={subject.snapshot.image}
+            imgClassName="size-full object-cover"
+            renderFallback={() => (
+              <span className="flex size-full items-center justify-center">
+                <NodeThumbnail
+                  type={subject.snapshot.type}
+                  size="sm"
+                  className="size-6 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
+                />
+              </span>
+            )}
+          />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-white">
+            {subject.snapshot.name}
+          </span>
+          <span className="mt-1 flex items-center gap-2">
+            <NodeTypeBadge type={subject.snapshot.type} />
+            {subject.meta ? (
+              <span className="truncate text-[0.7rem] text-[oklch(0.9_0.01_120/0.5)]">
+                {subject.meta}
+              </span>
+            ) : null}
+          </span>
+        </span>
+        <span className="flex items-center gap-1.5 pr-1 text-[0.7rem] text-[oklch(0.9_0.01_120/0.6)]">
+          {state?.status === "loading" ? (
+            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <>
+              {isOpen ? "Hide" : "Expand"}
+              <ChevronDownIcon
+                className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "")}
+                aria-hidden
+              />
+            </>
+          )}
+        </span>
+      </button>
+
+      {isOpen ? (
+        <div className="p-3">
+          {state?.status === "error" ? (
+            <p className="py-4 text-center text-xs text-destructive">
+              Couldn&apos;t load works for {subject.snapshot.name}.
+            </p>
+          ) : state?.status === "loaded" && works.length === 0 ? (
+            <p className="py-4 text-center text-xs text-[oklch(0.9_0.01_120/0.58)]">
+              No works found.
+            </p>
+          ) : works.length > 0 ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+              {works.map((work) => renderWork(work))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-4">
+              <LoaderCircleIcon
+                className="size-4 animate-spin text-[oklch(0.9_0.01_120/0.58)]"
+                aria-hidden
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 interface TreeNodeDialogProps {
@@ -169,6 +301,8 @@ export function TreeNodeDialog({
   const [query, setQuery] = useState("");
   const [branchTray, setBranchTray] = useState<BranchTrayItem[]>([]);
   const [results, setResults] = useState<ExternalNodeSearchResult[]>([]);
+  const [openSubjects, setOpenSubjects] = useState<Set<string>>(() => new Set());
+  const [subjectWorks, setSubjectWorks] = useState<Record<string, SubjectWorksState>>({});
   const [activeResultType, setActiveResultType] = useState<NodeTypeValue | null>(null);
   const [showResultsFade, setShowResultsFade] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -185,6 +319,8 @@ export function TreeNodeDialog({
       setQuery("");
       setBranchTray((current) => clearBranchTray(current));
       setResults([]);
+      setOpenSubjects(new Set());
+      setSubjectWorks({});
       setActiveResultType(null);
       setShowResultsFade(false);
       setSearchError(null);
@@ -201,6 +337,8 @@ export function TreeNodeDialog({
     }
     if (trimmedQuery.length < 2) {
       setResults([]);
+      setOpenSubjects(new Set());
+      setSubjectWorks({});
       setActiveResultType(null);
       setShowResultsFade(false);
       setSearchError(null);
@@ -217,7 +355,10 @@ export function TreeNodeDialog({
       try {
         const response = await $searchCultureTreeNodes({ data: { query: queryToSearch } });
         if (!cancelled) {
+          // New result set — collapse any previously expanded subjects and drop their cache.
           setResults(response.results);
+          setOpenSubjects(new Set());
+          setSubjectWorks({});
         }
       } catch (error) {
         if (!cancelled) {
@@ -256,7 +397,14 @@ export function TreeNodeDialog({
     activeResultType == null
       ? results
       : results.filter((result) => result.snapshot.type === activeResultType);
-  const suggestedAiResult = filteredResults.at(0);
+  // Results can mix addable works and expandable creator subjects; render each in its own
+  // section. Works lead (the engine orders them first), creator subjects follow.
+  const workResults = filteredResults.filter((result) => result.kind === "addable-work");
+  const subjectResultsList = filteredResults.filter(
+    (result) => result.kind === "expandable-subject",
+  );
+  // AI "grow" and keyboard-stage only apply to addable works, never to creator subjects.
+  const suggestedAiResult = workResults.at(0);
   const topStageableResult = filteredResults.find(
     (result) =>
       branchTrayUnavailableReason({
@@ -289,6 +437,40 @@ export function TreeNodeDialog({
     };
   }, [filteredResults, open]);
 
+  // Expanding a creator subject resolves its works (hop two) on demand, in place. Results
+  // are cached per subject so collapsing/re-expanding doesn't refetch.
+  const handleToggleSubject = (subject: ExternalNodeSearchResult) => {
+    const key = identityKey(subject.identity);
+    const willOpen = !openSubjects.has(key);
+
+    setOpenSubjects((current) => {
+      const next = new Set(current);
+      if (willOpen) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+
+    if (!willOpen || subjectWorks[key]?.status === "loaded") {
+      return;
+    }
+
+    setSubjectWorks((current) => ({ ...current, [key]: { status: "loading", results: [] } }));
+    void (async () => {
+      try {
+        const response = await $resolveSearchSubjectWorks({ data: { identity: subject.identity } });
+        setSubjectWorks((current) => ({
+          ...current,
+          [key]: { status: "loaded", results: response.results },
+        }));
+      } catch {
+        setSubjectWorks((current) => ({ ...current, [key]: { status: "error", results: [] } }));
+      }
+    })();
+  };
+
   // Staging keeps the gallery in place so several Branches can be staged from one search.
   const handleStageResult = (result: ExternalNodeSearchResult) => {
     if (isSubmitting) {
@@ -312,6 +494,20 @@ export function TreeNodeDialog({
       ),
     );
   };
+
+  const renderWorkCard = (result: ExternalNodeSearchResult): ReactNode => (
+    <ResultCard
+      key={identityKey(result.identity)}
+      result={result}
+      unavailableReason={branchTrayUnavailableReason({
+        tray: branchTray,
+        existingBranches,
+        result,
+      })}
+      onStage={handleStageResult}
+      onUnstage={handleUnstageResult}
+    />
+  );
 
   const handleSubmitTray = async () => {
     const input = submitInputsFromBranchTray(branchTray);
@@ -529,24 +725,29 @@ export function TreeNodeDialog({
         {/* Body: poster gallery */}
         <div ref={resultsPaneRef} className="relative min-h-0 overflow-y-auto px-6 py-5">
           {filteredResults.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
-              {filteredResults.map((result) => {
-                const unavailableReason = branchTrayUnavailableReason({
-                  tray: branchTray,
-                  existingBranches,
-                  result,
-                });
-
-                return (
-                  <ResultCard
-                    key={`${result.identity.source}:${result.identity.externalId}`}
-                    result={result}
-                    unavailableReason={unavailableReason}
-                    onStage={handleStageResult}
-                    onUnstage={handleUnstageResult}
-                  />
-                );
-              })}
+            <div className="space-y-4">
+              {workResults.length > 0 ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+                  {workResults.map((result) => renderWorkCard(result))}
+                </div>
+              ) : null}
+              {subjectResultsList.length > 0 ? (
+                <div className="space-y-2.5">
+                  {subjectResultsList.map((subject) => {
+                    const key = identityKey(subject.identity);
+                    return (
+                      <SubjectSection
+                        key={key}
+                        subject={subject}
+                        isOpen={openSubjects.has(key)}
+                        state={subjectWorks[key]}
+                        onToggle={handleToggleSubject}
+                        renderWork={renderWorkCard}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : showSearching ? (
             <div className="flex h-full items-center justify-center">

@@ -34,6 +34,7 @@ describe("buildCultureTreeNode", () => {
       connectionType: "influence",
       reason: "This is the direct reference point.",
       result: {
+        kind: "addable-work",
         identity: { source: "tmdb", externalId: "movie:550" },
         snapshot: {
           name: "Fight Club",
@@ -81,6 +82,7 @@ describe("buildCultureTreeNode", () => {
       connectionType: "thematic",
       reason: "",
       result: {
+        kind: "addable-work",
         identity: { source: "tmdb", externalId: "movie:550" },
         snapshot: {
           name: "Fight Club",

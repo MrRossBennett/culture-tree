@@ -9,6 +9,8 @@ import {
 import { and, count, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
+import { resolveDisplayImageUrl } from "~/lib/display-image";
+
 import { parseTreeEnrichments } from "./committed-branch-enrichment";
 import {
   canViewCuratorPrivateTrees,
@@ -103,7 +105,7 @@ function profileTreePreviewItems(
     const media = enrichments[item.id];
     return {
       type: item.type,
-      imageUrl: media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image ?? undefined,
+      imageUrl: resolveDisplayImageUrl(item, media),
     };
   });
 }

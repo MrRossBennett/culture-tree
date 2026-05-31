@@ -18,6 +18,7 @@ const searchResultDraft: AddCultureTreeNodeDraft = {
   connectionType: "thematic",
   reason: "",
   result: {
+    kind: "addable-work",
     identity: { source: "wikipedia", externalId: "Le_Samourai" },
     snapshot: {
       name: "Le Samourai",
@@ -48,6 +49,7 @@ const secondSearchResultDraft: AddCultureTreeNodeDraft = {
   connectionType: "thematic",
   reason: "",
   result: {
+    kind: "addable-work",
     identity: { source: "wikipedia", externalId: "The_Warriors" },
     snapshot: {
       name: "The Warriors",
@@ -286,6 +288,7 @@ describe("manualAddBranchesToTree", () => {
         connectionType: "thematic",
         reason: "",
         result: {
+          kind: "addable-work",
           identity: { source: "wikipedia", externalId: `Result_${index}` },
           snapshot: {
             name: `Result ${index}`,

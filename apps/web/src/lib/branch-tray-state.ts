@@ -92,7 +92,13 @@ export function branchTrayUnavailableReason(input: {
   tray: readonly BranchTrayItem[];
   existingBranches: readonly TreeItem[];
   result: ExternalNodeSearchResult;
-}): "staged" | "existing" | "full" | null {
+}): "not-addable" | "staged" | "existing" | "full" | null {
+  // Creator subjects are explored, never added — non-addability is enforced here at the
+  // data layer, not just by hiding the add button in the UI.
+  if (input.result.kind !== "addable-work") {
+    return "not-addable";
+  }
+
   const stagedDuplicate = input.tray.some((item) =>
     subjectsMatch(subjectFromResult(item.result), subjectFromResult(input.result)),
   );

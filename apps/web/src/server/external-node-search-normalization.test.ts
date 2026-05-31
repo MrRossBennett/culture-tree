@@ -4,10 +4,11 @@ import {
   dedupeExternalSearchResults,
   filterWikipediaFallbackResults,
   isConfidentCreatorMatch,
+  isConfidentMusicBrainzArtist,
+  isStrongWorkTitleMatch,
   normalizeGoogleBooksSearchResult,
-  normalizeSpotifyAlbum,
-  normalizeSpotifyArtist,
-  normalizeSpotifyTrack,
+  normalizeMusicBrainzArtist,
+  normalizeMusicBrainzReleaseGroup,
   normalizeTmdbCreditResult,
   normalizeTmdbPersonResult,
   normalizeTmdbSearchResult,
@@ -72,102 +73,78 @@ describe("search result normalization", () => {
     });
   });
 
-  it("maps a Spotify artist into an artist result", () => {
-    const result = normalizeSpotifyArtist(
+  it("maps a MusicBrainz artist into an expandable artist subject", () => {
+    const result = normalizeMusicBrainzArtist(
       {
-        id: "art-1",
+        id: "mb-art-1",
         name: "Elton John",
-        popularity: 82,
-        genres: ["glam rock"],
-        images: [{ url: "https://i.scdn.co/image/elton.jpg" }],
-        external_urls: { spotify: "https://open.spotify.com/artist/art-1" },
+        type: "Person",
+        disambiguation: "English musician",
+        score: 100,
       },
       "elton john",
       0,
     );
 
     expect(result).toMatchObject({
-      identity: { source: "spotify", externalId: "artist:art-1" },
-      snapshot: {
-        name: "Elton John",
-        type: "artist",
-        image: "https://i.scdn.co/image/elton.jpg",
-      },
+      kind: "expandable-subject",
+      identity: { source: "musicbrainz", externalId: "artist:mb-art-1" },
+      snapshot: { name: "Elton John", type: "artist" },
       searchHint: { title: "Elton John" },
-      externalUrl: "https://open.spotify.com/artist/art-1",
+      externalUrl: "https://musicbrainz.org/artist/mb-art-1",
     });
   });
 
-  it("scores a resolved artist's album as a top-tier work when the query is the artist name", () => {
-    // Album title does not contain the query; the creator IS the query ("elton john"),
-    // so this is a resolved work and must outrank incidental title matches.
-    const result = normalizeSpotifyAlbum(
+  it("scores a resolved artist's album as a top-tier work, with a Cover Art Archive image", () => {
+    // Discography expansion: query is empty, resolvedWork carries the score, and the album
+    // identity is the *bare* release-group MBID (the convention the entity resolver expects).
+    const result = normalizeMusicBrainzReleaseGroup(
       {
-        id: "alb-1",
-        name: "Goodbye Yellow Brick Road",
-        album_type: "album",
-        release_date: "1973-10-05",
-        popularity: 70,
-        images: [{ url: "https://i.scdn.co/image/gybr.jpg" }],
-        artists: [{ name: "Elton John" }],
-        external_urls: { spotify: "https://open.spotify.com/album/alb-1" },
+        id: "mb-rg-1",
+        title: "Goodbye Yellow Brick Road",
+        firstReleaseDate: "1973-10-05",
+        primaryType: "Album",
+        secondaryTypes: [],
+        artistName: "Elton John",
       },
-      "elton john",
+      "",
       0,
+      { resolvedWork: true },
     );
 
     expect(result).toMatchObject({
-      identity: { source: "spotify", externalId: "album:alb-1" },
+      kind: "addable-work",
+      identity: { source: "musicbrainz", externalId: "mb-rg-1" },
       snapshot: { name: "Goodbye Yellow Brick Road", type: "album", year: 1973 },
       searchHint: { title: "Goodbye Yellow Brick Road", creator: "Elton John" },
       meta: "Elton John • 1973",
     });
+    expect(result?.snapshot.image).toContain("coverartarchive.org/release-group/mb-rg-1");
     // Resolved work: scored above the ~124 a literal title match would earn.
     expect(result?.score ?? 0).toBeGreaterThan(124);
   });
 
-  it("drops non-album Spotify release types", () => {
-    const single = normalizeSpotifyAlbum(
+  it("maps a MusicBrainz release-group title match into an album work", () => {
+    const result = normalizeMusicBrainzReleaseGroup(
       {
-        id: "sgl-1",
-        name: "Cold Heart",
-        album_type: "single",
-        artists: [{ name: "Elton John" }],
+        id: "mb-rg-2",
+        title: "Rubber Soul",
+        firstReleaseDate: "1965-12-03",
+        primaryType: "Album",
+        secondaryTypes: [],
+        artistName: "The Beatles",
+        score: 100,
       },
-      "elton john",
-      0,
-    );
-
-    expect(single).toBeNull();
-  });
-
-  it("maps a Spotify track into a song result", () => {
-    const result = normalizeSpotifyTrack(
-      {
-        id: "trk-1",
-        name: "Tiny Dancer",
-        popularity: 80,
-        artists: [{ name: "Elton John" }],
-        album: {
-          id: "alb-2",
-          release_date: "1971-11-05",
-          images: [{ url: "https://i.scdn.co/image/madman.jpg" }],
-        },
-        external_urls: { spotify: "https://open.spotify.com/track/trk-1" },
-      },
-      "elton john",
+      "rubber soul",
       0,
     );
 
     expect(result).toMatchObject({
-      identity: { source: "spotify", externalId: "track:trk-1" },
-      snapshot: {
-        name: "Tiny Dancer",
-        type: "song",
-        year: 1971,
-        image: "https://i.scdn.co/image/madman.jpg",
-      },
-      searchHint: { title: "Tiny Dancer", creator: "Elton John" },
+      kind: "addable-work",
+      identity: { source: "musicbrainz", externalId: "mb-rg-2" },
+      snapshot: { name: "Rubber Soul", type: "album", year: 1965 },
+      searchHint: { title: "Rubber Soul", creator: "The Beatles" },
+      meta: "The Beatles • 1965",
     });
   });
 
@@ -328,7 +305,7 @@ describe("search result normalization", () => {
         id: 247645,
         title: "Queen",
         release_date: "2014-01-01",
-        vote_count: 5,
+        popularity: 5,
       },
       "movie",
       "queen",
@@ -340,7 +317,7 @@ describe("search result normalization", () => {
         id: 8273,
         title: "The Queen",
         release_date: "2006-09-15",
-        vote_count: 950,
+        popularity: 950,
       },
       "movie",
       "queen",
@@ -353,13 +330,14 @@ describe("search result normalization", () => {
   });
 
   const make = (
-    source: "tmdb" | "spotify",
+    source: "tmdb" | "musicbrainz",
     externalId: string,
     name: string,
     type: "artist" | "album" | "film",
     score: number,
     year?: number,
   ) => ({
+    kind: "addable-work" as const,
     identity: { source, externalId },
     snapshot: { name, type, year },
     searchHint: { title: name },
@@ -367,14 +345,14 @@ describe("search result normalization", () => {
   });
 
   const blendInput = () => [
-    make("spotify", "artist:1", "Queen", "artist", 150),
+    make("musicbrainz", "artist:1", "Queen", "artist", 150),
     make("tmdb", "movie:1", "Queen", "film", 140, 2014),
     make("tmdb", "movie:2", "Queen Bee", "film", 120, 2020),
     make("tmdb", "movie:3", "Queens", "film", 118, 2019),
     make("tmdb", "movie:4", "Queen of the Damned", "film", 116, 2002),
     make("tmdb", "movie:5", "The African Queen", "film", 114, 1951),
-    make("spotify", "album:1", "Greatest Hits", "album", 100, 1981),
-    make("spotify", "album:2", "Jazz", "album", 130, 1978),
+    make("musicbrainz", "rg:1", "Greatest Hits", "album", 100, 1981),
+    make("musicbrainz", "rg:2", "Jazz", "album", 130, 1978),
   ];
 
   it("groups results by category in display order, sorted by score within each group", () => {
@@ -407,9 +385,10 @@ describe("search result normalization", () => {
     expect(blended.filter((result) => result.snapshot.type === "artist")).toHaveLength(1);
   });
 
-  it("merges duplicate artists, keeping Wikipedia text and a Spotify image", () => {
+  it("merges duplicate artists, keeping Wikipedia text and the other source's image", () => {
     const merged = dedupeExternalSearchResults([
       {
+        kind: "addable-work" as const,
         identity: { source: "wikipedia", externalId: "Queen_(band)" },
         snapshot: { name: "Queen (band)", type: "artist" },
         searchHint: { title: "Queen", wikiSlug: "Queen_(band)" },
@@ -417,11 +396,16 @@ describe("search result normalization", () => {
         externalUrl: "https://en.wikipedia.org/wiki/Queen_(band)",
       },
       {
-        identity: { source: "spotify", externalId: "artist:1" },
-        snapshot: { name: "Queen", type: "artist", image: "https://i.scdn.co/image/queen.jpg" },
+        kind: "addable-work" as const,
+        identity: { source: "musicbrainz", externalId: "artist:1" },
+        snapshot: {
+          name: "Queen",
+          type: "artist",
+          image: "https://commons.wikimedia.org/queen.jpg",
+        },
         searchHint: { title: "Queen" },
         meta: "rock",
-        externalUrl: "https://open.spotify.com/artist/1",
+        externalUrl: "https://musicbrainz.org/artist/1",
       },
     ]);
 
@@ -431,7 +415,7 @@ describe("search result normalization", () => {
       snapshot: {
         name: "Queen (band)",
         type: "artist",
-        image: "https://i.scdn.co/image/queen.jpg",
+        image: "https://commons.wikimedia.org/queen.jpg",
       },
       meta: "British rock band",
     });
@@ -440,6 +424,7 @@ describe("search result normalization", () => {
   it("prefers TMDB over Wikipedia for duplicate film results", () => {
     const deduped = dedupeExternalSearchResults([
       {
+        kind: "addable-work" as const,
         identity: { source: "tmdb", externalId: "movie:10537" },
         snapshot: {
           name: "The Doors",
@@ -452,6 +437,7 @@ describe("search result normalization", () => {
         externalUrl: "https://www.themoviedb.org/movie/10537",
       },
       {
+        kind: "addable-work" as const,
         identity: { source: "wikipedia", externalId: "The_Doors_(film)" },
         snapshot: {
           name: "The Doors (film)",
@@ -463,6 +449,7 @@ describe("search result normalization", () => {
         externalUrl: "https://en.wikipedia.org/wiki/The_Doors_(film)",
       },
       {
+        kind: "addable-work" as const,
         identity: { source: "wikipedia", externalId: "The_Doors" },
         snapshot: {
           name: "The Doors",
@@ -602,18 +589,20 @@ describe("search result normalization", () => {
   it("dedupes a Wikipedia person against the TMDB person, keeping TMDB", () => {
     const deduped = dedupeExternalSearchResults([
       {
+        kind: "expandable-subject" as const,
         identity: { source: "tmdb", externalId: "person:1032" },
         snapshot: { name: "Martin Scorsese", type: "person" },
         searchHint: { title: "Martin Scorsese" },
         score: 110,
       },
       {
+        kind: "expandable-subject" as const,
         identity: { source: "wikipedia", externalId: "Martin_Scorsese" },
         snapshot: { name: "Martin Scorsese", type: "person" },
         searchHint: { title: "Martin Scorsese" },
         score: 95,
       },
-    ] as never[]);
+    ]);
 
     expect(deduped).toHaveLength(1);
     expect(deduped[0].identity).toMatchObject({ source: "tmdb", externalId: "person:1032" });
@@ -635,5 +624,57 @@ describe("search result normalization", () => {
       identity: { source: "wikipedia", externalId: "Martin_Scorsese" },
       snapshot: { name: "Martin Scorsese", type: "person" },
     });
+  });
+});
+
+describe("work-branch strong title gate", () => {
+  it("accepts an exact (and article-insensitive) title match", () => {
+    expect(isStrongWorkTitleMatch("blue", "Blue")).toBe(true);
+    // Article-insensitive: the leading article is stripped from the title side.
+    expect(isStrongWorkTitleMatch("warriors", "The Warriors")).toBe(true);
+    expect(isStrongWorkTitleMatch("blue", "Blue (Remastered)")).toBe(true);
+  });
+
+  it("rejects single-word queries that only appear inside a longer title", () => {
+    // The noise the old flat search produced: "Blue" dragging in everything blue-ish.
+    expect(isStrongWorkTitleMatch("blue", "Blue Valentine")).toBe(false);
+    expect(isStrongWorkTitleMatch("heroes", "Guardians: Heroes Reborn")).toBe(false);
+    expect(isStrongWorkTitleMatch("heat", "Heatwave")).toBe(false);
+  });
+
+  it("lets specific multi-word queries match by containment", () => {
+    expect(
+      isStrongWorkTitleMatch(
+        "lord of the rings",
+        "The Lord of the Rings: The Fellowship of the Ring",
+      ),
+    ).toBe(true);
+    expect(isStrongWorkTitleMatch("in rainbows", "In Rainbows")).toBe(true);
+  });
+});
+
+describe("confident MusicBrainz artist gate", () => {
+  it("treats an exact / article-insensitive artist name as confident", () => {
+    expect(isConfidentMusicBrainzArtist("Radiohead", "radiohead", 100, 0)).toBe(true);
+    expect(isConfidentMusicBrainzArtist("The Beatles", "beatles", 100, 0)).toBe(true);
+  });
+
+  it("accepts an exact name match regardless of rank/score (same rule as 'Radiohead')", () => {
+    expect(isConfidentMusicBrainzArtist("Blue", "blue", 50, 0)).toBe(true);
+  });
+
+  it("treats the top relevance hit on a distinctive token as confident", () => {
+    expect(isConfidentMusicBrainzArtist("David Bowie", "bowie", 100, 0)).toBe(true);
+  });
+
+  it("rejects a non-top or low-relevance single-token match (avoids the wrong creator)", () => {
+    // Not the top result → not confident, so "blue" doesn't route into a deep-list band.
+    expect(isConfidentMusicBrainzArtist("Bobby Blue", "blue", 100, 3)).toBe(false);
+    // Top result but weak relevance → not confident.
+    expect(isConfidentMusicBrainzArtist("David Bowie", "bowie", 70, 0)).toBe(false);
+  });
+
+  it("rejects multi-word non-exact queries as too ambiguous to be a creator name", () => {
+    expect(isConfidentMusicBrainzArtist("David Bowie", "david bowie songs", 100, 0)).toBe(false);
   });
 });

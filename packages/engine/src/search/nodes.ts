@@ -1,12 +1,18 @@
-import type { ExternalNodeSearchResult, NodeTypeValue, SearchHint } from "@repo/schemas";
+import type {
+  ExternalNodeSearchResult,
+  NodeTypeValue,
+  SearchHint,
+  TreeNodeIdentity,
+} from "@repo/schemas";
 
 import {
-  type SpotifyAlbumItem,
-  type SpotifyArtistItem,
-  type SpotifyTrackItem,
-  fetchSpotifyArtistAlbums,
-  fetchSpotifySearch,
-} from "./spotify";
+  type MusicBrainzArtist,
+  type MusicBrainzReleaseGroup,
+  coverArtFrontUrl,
+  fetchMusicBrainzArtistAlbums,
+  fetchMusicBrainzArtists,
+  fetchMusicBrainzReleaseGroups,
+} from "./musicbrainz";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG = "https://image.tmdb.org/t/p";
@@ -36,19 +42,23 @@ const CONFIDENT_PERSON_POPULARITY = 6;
 // their own popularity boost.
 const RESOLVED_WORK_BASE = 150;
 const GOOGLE_BOOKS_CANDIDATE_LIMIT = 20;
-// Spotify returns up to `limit` items per requested type in a single search call.
-// The docs say max 50, but this app's quota rejects anything over 10 with
-// HTTP 400 "Invalid limit" — so keep it at 10 or every music search fails.
-const SPOTIFY_SEARCH_LIMIT = 10;
-const SPOTIFY_ARTIST_CANDIDATE_LIMIT = 10;
-const SPOTIFY_ALBUM_CANDIDATE_LIMIT = 10;
-const SPOTIFY_TRACK_CANDIDATE_LIMIT = 10;
-// When the query resolves to a clear artist match, pull this many pages of their
-// studio discography (SPOTIFY_SEARCH_LIMIT per page) so the catalogue is fuller
-// than search relevance alone returns. Pages are fetched in parallel.
-const SPOTIFY_ARTIST_ALBUMS_PAGES = 3;
+// MusicBrainz candidate limits. Artist search is shallow (we only want the dominant
+// match); the album browse pulls a fuller studio discography; the title search feeds the
+// work branch.
+const MUSICBRAINZ_ARTIST_CANDIDATE_LIMIT = 8;
+const MUSICBRAINZ_ARTIST_ALBUMS_LIMIT = 25;
+const MUSICBRAINZ_RELEASE_GROUP_SEARCH_LIMIT = 12;
 const WIKIPEDIA_CANDIDATE_LIMIT = 15;
 const FINAL_RESULT_LIMIT = 200;
+// Hop one returns at most this many creator subjects. One artist for "Radiohead",
+// but an ambiguous name ("Bowie") may legitimately surface a musician AND an actor,
+// so we don't collapse to a single subject.
+const MAX_CREATOR_SUBJECT_RESULTS = 3;
+// MusicBrainz has no popularity metric, only a 0–100 text-relevance `score`. For a
+// non-exact single-token artist hit ("bowie" → "David Bowie") to count as a confident
+// subject it must be the top result at this near-perfect relevance — keeping obscure
+// same-token artists out without a notability signal (that arrives with the entity store).
+const MUSICBRAINZ_CONFIDENT_ARTIST_SCORE = 95;
 // Results are grouped by category in this order (artist → album → song → book → film …),
 // sorted by score within each group.
 const CATEGORY_ORDER: readonly NodeTypeValue[] = [
@@ -306,6 +316,63 @@ export function isConfidentCreatorMatch(
   return nameTokens.has(normalizedQuery) && (popularity ?? 0) >= CONFIDENT_PERSON_POPULARITY;
 }
 
+// Whether a MusicBrainz artist hit is confidently the creator the query means. MusicBrainz
+// has no popularity, so an exact / article-insensitive name match always qualifies; a single
+// distinctive token ("bowie" → "David Bowie") qualifies only as the top result at near-
+// perfect relevance, keeping obscure same-token artists out. `rank` is the artist's position
+// in the (relevance-ordered) MusicBrainz results.
+export function isConfidentMusicBrainzArtist(
+  name: string | undefined,
+  query: string,
+  score: number | undefined,
+  rank: number,
+): boolean {
+  if (!name) {
+    return false;
+  }
+  if (isExactTitleMatch(name, query) || isArticleInsensitiveExactMatch(name, query)) {
+    return true;
+  }
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery || normalizedQuery.includes(" ")) {
+    return false;
+  }
+  const nameTokens = new Set(normalizeText(name).split(" ").filter(Boolean));
+  return (
+    rank === 0 &&
+    nameTokens.has(normalizedQuery) &&
+    (score ?? 0) >= MUSICBRAINZ_CONFIDENT_ARTIST_SCORE
+  );
+}
+
+// The work-branch gate. When the query isn't a creator, a result earns its place only on a
+// strong title match, so loose token overlaps can't recreate the old noise. The bar scales
+// with query specificity:
+//   - single-word queries ("Blue", "Heroes", "Heat") must match a title *exactly* —
+//     otherwise "Blue" drags in "Blue Valentine", "Blue Jasmine", etc.
+//   - multi-word queries ("lord of the rings", "in rainbows") are specific enough that a
+//     prefix or whole-phrase containment is strong (TMDB returns "The Lord of the Rings:
+//     The Fellowship of the Ring" for "lord of the rings").
+// Conservatively strict; tunable.
+export function isStrongWorkTitleMatch(query: string, title: string): boolean {
+  if (
+    isExactTitleMatch(title, query) ||
+    isArticleInsensitiveExactMatch(title, query) ||
+    comparableExactMatch(title, query)
+  ) {
+    return true;
+  }
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery || normalizedQuery.split(" ").length < 2) {
+    return false;
+  }
+  const normalizedTitle = normalizeText(title);
+  const articleInsensitiveTitle = normalizeText(stripLeadingArticle(title));
+  return (
+    normalizedTitle.includes(normalizedQuery) || articleInsensitiveTitle.includes(normalizedQuery)
+  );
+}
+
 function isWikipediaDisambiguation(summary: { description?: string; extract?: string }): boolean {
   const blob = normalizeText(`${summary.description ?? ""} ${summary.extract ?? ""}`);
   return (
@@ -487,8 +554,6 @@ function sourcePriority(result: ExternalNodeSearchResult): number {
   switch (result.identity.source) {
     case "tmdb":
       return 3;
-    case "spotify":
-      return 3;
     case "musicbrainz":
       return 3;
     case "google-books":
@@ -565,7 +630,7 @@ function isSameSearchEntity(
 
 function mergeArtistDuplicate<T extends ExternalNodeSearchResult>(existing: T, incoming: T): T {
   // Prefer the Wikipedia record for description/links, but keep whichever image
-  // exists — Spotify's clean artist photo wins when Wikipedia has none.
+  // exists when only one side has one.
   const wiki =
     existing.identity.source === "wikipedia"
       ? existing
@@ -648,9 +713,9 @@ export function blendByCategoryQuota(
     if (!bucket) {
       continue;
     }
-    // Sort by score within each section. Score now folds in each source's best
-    // popularity signal (TMDB popularity, Spotify's native rank order, Google Books
-    // ratingsCount), so a single uniform sort gives popularity-aware ordering.
+    // Sort by score within each section. Score folds in each source's best relevance/
+    // popularity signal (TMDB popularity, MusicBrainz relevance, Google Books
+    // ratingsCount), so a single uniform sort gives a relevance-aware ordering.
     bucket.sort(compareByScore);
     const cap = enforceQuotas ? (CATEGORY_QUOTAS[type] ?? DEFAULT_CATEGORY_QUOTA) : bucket.length;
     for (const result of bucket.slice(0, cap)) {
@@ -813,6 +878,7 @@ export function normalizeTmdbSearchResult(
     tributeNoisePenalty(name) -
     rank * 2;
   return {
+    kind: "addable-work",
     identity: {
       source: "tmdb",
       externalId: `${mediaType}:${item.id}`,
@@ -869,6 +935,7 @@ export function normalizeTmdbPersonResult(
     tributeNoisePenalty(name) -
     rank * 2;
   return {
+    kind: "expandable-subject",
     identity: {
       source: "tmdb",
       externalId: `person:${item.id}`,
@@ -909,6 +976,7 @@ export function normalizeTmdbCreditResult(
   const image = item.poster_path ? `${TMDB_IMG}/w185${item.poster_path}` : undefined;
   const score = RESOLVED_WORK_BASE + tmdbPopularityBoost(item.popularity) - rank;
   return {
+    kind: "addable-work",
     identity: {
       source: "tmdb",
       externalId: `${mediaType}:${item.id}`,
@@ -982,6 +1050,7 @@ export function normalizeGoogleBooksSearchResult(
     rank * 2;
 
   return {
+    kind: "addable-work",
     identity: {
       source: "google-books",
       externalId: item.id,
@@ -1058,6 +1127,7 @@ export function normalizeWikipediaSearchResult(input: {
   }
 
   return {
+    kind: "addable-work",
     identity: {
       source: "wikipedia",
       externalId: normalizedKey,
@@ -1075,6 +1145,8 @@ export function normalizeWikipediaSearchResult(input: {
   };
 }
 
+// Title search only — the work branch of hop one. Creator resolution (person →
+// filmography) is no longer eager here; it's hop two (resolveSearchSubjectWorks).
 async function searchTmdb(query: string): Promise<RankedSearchResult[]> {
   if (!hasTmdbCredentials()) {
     return [];
@@ -1097,79 +1169,10 @@ async function searchTmdb(query: string): Promise<RankedSearchResult[]> {
       .filter((item): item is RankedSearchResult => item != null);
   }
 
-  // Stage one: resolve the dominant creator for the query, if any is confident.
-  async function resolveConfidentPerson(): Promise<TmdbPersonItem | null> {
-    const url = new URL(`${TMDB_BASE}/search/person`);
-    url.searchParams.set("query", query);
-    const response = await fetch(url, tmdbFetchInit(url));
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { results?: TmdbPersonItem[] };
-    const candidates = (data.results ?? []).slice(0, TMDB_PERSON_CANDIDATE_LIMIT);
-    // TMDB returns people ranked by relevance/popularity; the most popular
-    // confident match is the one the query means.
-    return (
-      candidates
-        .filter((person) => isConfidentCreatorMatch(person.name, query, person.popularity))
-        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))[0] ?? null
-    );
-  }
-
-  // Stage two: fetch that creator's actual filmography (cast + key crew),
-  // deduped and ranked by the work's own popularity.
-  async function fetchPersonCredits(person: TmdbPersonItem): Promise<RankedSearchResult[]> {
-    if (person.id == null) {
-      return [];
-    }
-    const url = new URL(`${TMDB_BASE}/person/${person.id}/combined_credits`);
-    const response = await fetch(url, tmdbFetchInit(url));
-    if (!response.ok) {
-      return [];
-    }
-    const data = (await response.json()) as { cast?: TmdbCreditItem[]; crew?: TmdbCreditItem[] };
-    // Pick the credits matching what the person is known for. Directors, writers and
-    // producers are credited in `crew` under their department; actors in `cast`. This
-    // keeps "Scorsese" on his directed films, not his (more popular) talk-show cameos,
-    // which are high-popularity `cast` credits that would otherwise dominate.
-    const primaryDept = person.known_for_department;
-    const chosen =
-      primaryDept && primaryDept !== "Acting"
-        ? (data.crew ?? []).filter((credit) => credit.department === primaryDept)
-        : (data.cast ?? []);
-    const pool = chosen.length > 0 ? chosen : [...(data.cast ?? []), ...(data.crew ?? [])];
-    const byId = new Map<string, TmdbCreditItem>();
-    for (const credit of pool) {
-      const mediaType = credit.media_type;
-      if (credit.id == null || (mediaType !== "movie" && mediaType !== "tv")) {
-        continue;
-      }
-      const key = `${mediaType}:${credit.id}`;
-      const existing = byId.get(key);
-      if (!existing || (credit.popularity ?? 0) > (existing.popularity ?? 0)) {
-        byId.set(key, credit);
-      }
-    }
-    return Array.from(byId.values())
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .slice(0, TMDB_CREDITS_LIMIT)
-      .map((credit, index) => normalizeTmdbCreditResult(credit, person.name, index))
-      .filter((item): item is RankedSearchResult => item != null);
-  }
-
-  async function fetchResolvedWorks(): Promise<RankedSearchResult[]> {
-    const person = await resolveConfidentPerson();
-    return person ? fetchPersonCredits(person) : [];
-  }
-
   const tmdbQueries = buildTmdbSearchQueries(query);
-  const settled = await Promise.all([
-    ...tmdbQueries.flatMap((tmdbQuery) => [
-      fetchList("movie", tmdbQuery),
-      fetchList("tv", tmdbQuery),
-    ]),
-    fetchResolvedWorks(),
-  ]);
+  const settled = await Promise.all(
+    tmdbQueries.flatMap((tmdbQuery) => [fetchList("movie", tmdbQuery), fetchList("tv", tmdbQuery)]),
+  );
 
   const deduped = new Map<string, RankedSearchResult>();
   for (const result of settled.flat()) {
@@ -1181,6 +1184,80 @@ async function searchTmdb(query: string): Promise<RankedSearchResult[]> {
   }
 
   return Array.from(deduped.values());
+}
+
+// Confident TMDB people for the query, ranked by popularity — the subject-classification
+// input. TMDB returns people ranked by relevance/popularity; we keep those whose name the
+// query confidently names (whole name, or a distinctive token backed by popularity).
+async function fetchTmdbConfidentPersons(query: string): Promise<TmdbPersonItem[]> {
+  if (!hasTmdbCredentials()) {
+    return [];
+  }
+  const url = new URL(`${TMDB_BASE}/search/person`);
+  url.searchParams.set("query", query);
+  const response = await fetch(url, tmdbFetchInit(url));
+  if (!response.ok) {
+    return [];
+  }
+  const data = (await response.json()) as { results?: TmdbPersonItem[] };
+  return (data.results ?? [])
+    .slice(0, TMDB_PERSON_CANDIDATE_LIMIT)
+    .filter((person) => isConfidentCreatorMatch(person.name, query, person.popularity))
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+}
+
+// Hop two: resolve a TMDB person id to their filmography. Re-fetches the person detail
+// for `known_for_department` (hop one only carried the id through `identity`), then their
+// credits — directed films first for directors, otherwise their acting roles.
+async function fetchTmdbPersonById(personId: string): Promise<TmdbPersonItem | null> {
+  if (!hasTmdbCredentials()) {
+    return null;
+  }
+  const url = new URL(`${TMDB_BASE}/person/${personId}`);
+  const response = await fetch(url, tmdbFetchInit(url));
+  if (!response.ok) {
+    return null;
+  }
+  return (await response.json()) as TmdbPersonItem;
+}
+
+// A creator's filmography, ranked by the work's own popularity. Phase 1 is movies only
+// (no TV). Credits are picked by what the person is known for: directors/writers/producers
+// are credited in `crew` under their department; actors in `cast`. This keeps "Scorsese"
+// on his directed films, not his higher-popularity talk-show cameos.
+async function fetchTmdbPersonCredits(person: TmdbPersonItem): Promise<RankedSearchResult[]> {
+  if (person.id == null || !hasTmdbCredentials()) {
+    return [];
+  }
+  const url = new URL(`${TMDB_BASE}/person/${person.id}/combined_credits`);
+  const response = await fetch(url, tmdbFetchInit(url));
+  if (!response.ok) {
+    return [];
+  }
+  const data = (await response.json()) as { cast?: TmdbCreditItem[]; crew?: TmdbCreditItem[] };
+  const primaryDept = person.known_for_department;
+  const chosen =
+    primaryDept && primaryDept !== "Acting"
+      ? (data.crew ?? []).filter((credit) => credit.department === primaryDept)
+      : (data.cast ?? []);
+  const pool = chosen.length > 0 ? chosen : [...(data.cast ?? []), ...(data.crew ?? [])];
+  const byId = new Map<string, TmdbCreditItem>();
+  for (const credit of pool) {
+    // Phase 1: movies only; TV credits are out of scope for expansion.
+    if (credit.id == null || credit.media_type !== "movie") {
+      continue;
+    }
+    const key = `movie:${credit.id}`;
+    const existing = byId.get(key);
+    if (!existing || (credit.popularity ?? 0) > (existing.popularity ?? 0)) {
+      byId.set(key, credit);
+    }
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .slice(0, TMDB_CREDITS_LIMIT)
+    .map((credit, index) => normalizeTmdbCreditResult(credit, person.name, index))
+    .filter((item): item is RankedSearchResult => item != null);
 }
 
 async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
@@ -1209,28 +1286,17 @@ async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
     .filter((item): item is RankedSearchResult => item != null);
 }
 
-// Spotify popularity is 0–100; cap its contribution in line with TMDB's vote boost.
-function spotifyPopularityBoost(popularity: number | undefined): number {
-  if (!Number.isFinite(popularity) || popularity == null || popularity <= 0) {
+// MusicBrainz has no popularity, only a 0–100 text-relevance `score`. Use it as a mild
+// tie-breaker (capped, in line with the other source boosts) so the strongest match leads.
+function musicBrainzScoreBoost(score: number | undefined): number {
+  if (!Number.isFinite(score) || score == null || score <= 0) {
     return 0;
   }
-  return Math.min(24, popularity * 0.24);
+  return Math.min(20, (score / 100) * 20);
 }
 
-function artistNameMatchesQuery(name: string | undefined, query: string): boolean {
-  if (!name) {
-    return false;
-  }
-  const normalizedName = normalizeText(name);
-  const normalizedQuery = normalizeText(query);
-  if (!normalizedName || !normalizedQuery) {
-    return false;
-  }
-  return normalizedName === normalizedQuery || normalizedName.includes(normalizedQuery);
-}
-
-export function normalizeSpotifyArtist(
-  item: SpotifyArtistItem,
+export function normalizeMusicBrainzArtist(
+  item: MusicBrainzArtist,
   query: string,
   rank: number,
 ): RankedSearchResult | null {
@@ -1238,179 +1304,87 @@ export function normalizeSpotifyArtist(
   if (!item.id || !name) {
     return null;
   }
-  const image = item.images?.[0]?.url;
   const exactMatch = isExactTitleMatch(name, query);
   const score =
     baseMatchScore(name, query) +
-    spotifyPopularityBoost(item.popularity) +
-    exactMatchTypeBoost("artist", exactMatch) +
-    (image ? 4 : 0) -
+    musicBrainzScoreBoost(item.score) +
+    exactMatchTypeBoost("artist", exactMatch) -
     tributeNoisePenalty(name) -
     rank * 2;
 
   return {
-    identity: {
-      source: "spotify",
-      externalId: `artist:${item.id}`,
-    },
-    snapshot: {
-      name,
-      type: "artist",
-      image,
-    },
-    searchHint: {
-      title: name,
-    },
-    meta: pickMetadata([item.genres?.[0]]),
-    externalUrl: item.external_urls?.spotify,
+    kind: "expandable-subject",
+    // Artist subjects are never added, so the `artist:` prefix is safe — only
+    // resolveSearchSubjectWorks reads it. (Album works below use the bare MBID, which is
+    // what the entity resolver expects for a committed node.)
+    identity: { source: "musicbrainz", externalId: `artist:${item.id}` },
+    snapshot: { name, type: "artist" },
+    searchHint: { title: name },
+    meta: pickMetadata([item.disambiguation, item.country]),
+    externalUrl: `https://musicbrainz.org/artist/${item.id}`,
     score,
   };
 }
 
-export function normalizeSpotifyAlbum(
-  item: SpotifyAlbumItem,
+export function normalizeMusicBrainzReleaseGroup(
+  item: MusicBrainzReleaseGroup,
   query: string,
   rank: number,
   options: { resolvedWork?: boolean } = {},
 ): RankedSearchResult | null {
-  const name = item.name?.trim();
+  const name = item.title?.trim();
   if (!item.id || !name) {
     return null;
   }
-  // Keep studio albums only; singles/compilations/appears-on add noise to a catalogue.
-  if ((item.album_type ?? "").toLowerCase() !== "album") {
-    return null;
-  }
-  const creator = item.artists?.[0]?.name?.trim();
-  const year = parseYear(item.release_date);
-  const image = item.images?.[0]?.url;
-  // An album by a confidently-resolved artist (the query IS the artist name, e.g.
-  // "radiohead" → every Radiohead album) is a resolved work, scored above incidental
-  // matches — so the discography leads instead of being buried under films/books
-  // that merely contain the artist's name. Otherwise an artist-credit hit carries the
-  // score (an artist-name query won't match the album title), with a direct title
-  // match still rewarded.
+  const creator = item.artistName?.trim();
+  const year = parseYear(item.firstReleaseDate);
+  // Cover Art Archive front cover, keyed by release-group MBID. 404s when there's no art,
+  // so the UI must fall back to a placeholder on image error.
+  const image = coverArtFrontUrl(item.id);
+  // An album from a confidently-resolved artist's discography (hop two) is a resolved work;
+  // otherwise a title-search hit carries the title-match score.
   const resolvedWork = options.resolvedWork || isConfidentCreatorMatch(creator, query, undefined);
-  const matchScore = resolvedWork
-    ? RESOLVED_WORK_BASE
-    : Math.max(baseMatchScore(name, query), artistNameMatchesQuery(creator, query) ? 90 : 0);
+  const matchScore = resolvedWork ? RESOLVED_WORK_BASE : baseMatchScore(name, query);
   const score =
     matchScore +
-    spotifyPopularityBoost(item.popularity) +
-    (year != null ? 6 : 0) +
-    (image ? 4 : 0) -
+    musicBrainzScoreBoost(item.score) +
+    (year != null ? 6 : 0) -
     tributeNoisePenalty(name) -
     rank * 2;
 
   return {
-    identity: {
-      source: "spotify",
-      externalId: `album:${item.id}`,
-    },
-    snapshot: {
-      name,
-      type: "album",
-      year,
-      image,
-    },
-    searchHint: {
-      title: name,
-      creator,
-    },
+    kind: "addable-work",
+    // Bare release-group MBID — the convention the entity resolver expects for an album.
+    identity: { source: "musicbrainz", externalId: item.id },
+    snapshot: { name, type: "album", year, image },
+    searchHint: { title: name, creator },
     meta: pickMetadata([creator, year != null ? String(year) : undefined]),
-    externalUrl: item.external_urls?.spotify,
+    externalUrl: `https://musicbrainz.org/release-group/${item.id}`,
     score,
   };
 }
 
-export function normalizeSpotifyTrack(
-  item: SpotifyTrackItem,
-  query: string,
-  rank: number,
-  options: { resolvedWork?: boolean } = {},
-): RankedSearchResult | null {
-  const name = item.name?.trim();
-  if (!item.id || !name) {
-    return null;
-  }
-  const creator = item.artists?.[0]?.name?.trim();
-  const year = parseYear(item.album?.release_date);
-  const image = item.album?.images?.[0]?.url;
-  // Slightly below a resolved album so a discography query leads with albums, not
-  // loose singles; popularity still orders within each tier.
-  const resolvedWork = options.resolvedWork || isConfidentCreatorMatch(creator, query, undefined);
-  const matchScore = resolvedWork
-    ? RESOLVED_WORK_BASE - 8
-    : Math.max(baseMatchScore(name, query), artistNameMatchesQuery(creator, query) ? 88 : 0);
-  const score =
-    matchScore +
-    spotifyPopularityBoost(item.popularity) +
-    (year != null ? 6 : 0) +
-    (image ? 4 : 0) -
-    tributeNoisePenalty(name) -
-    rank * 2;
-
-  return {
-    identity: {
-      source: "spotify",
-      externalId: `track:${item.id}`,
-    },
-    snapshot: {
-      name,
-      type: "song",
-      year,
-      image,
-    },
-    searchHint: {
-      title: name,
-      creator,
-    },
-    meta: pickMetadata([creator, year != null ? String(year) : undefined]),
-    externalUrl: item.external_urls?.spotify,
-    score,
-  };
+// Album title search — the work branch. Artist discography is hop two
+// (resolveSearchSubjectWorks); creator classification runs its own artist search via
+// fetchMusicBrainzArtistSubjects.
+async function searchMusicBrainz(query: string): Promise<RankedSearchResult[]> {
+  const releaseGroups = await fetchMusicBrainzReleaseGroups(
+    query,
+    MUSICBRAINZ_RELEASE_GROUP_SEARCH_LIMIT,
+  );
+  return releaseGroups
+    .map((item, index) => normalizeMusicBrainzReleaseGroup(item, query, index))
+    .filter((item): item is RankedSearchResult => item != null);
 }
 
-async function searchSpotify(query: string): Promise<RankedSearchResult[]> {
-  const data = await fetchSpotifySearch(query, {
-    types: ["artist", "album", "track"],
-    limit: SPOTIFY_SEARCH_LIMIT,
-  });
-  if (!data) {
-    return [];
-  }
-
-  const artistItems = (data.artists?.items ?? []).slice(0, SPOTIFY_ARTIST_CANDIDATE_LIMIT);
-
-  // If the query clearly names an artist Spotify knows, pull their studio
-  // discography so we get the full back catalogue, not just search-relevant hits.
-  const matchedArtist = artistItems.find(
-    (item) => item.id && artistNameMatchesQuery(item.name, query),
-  );
-  const discographyItems =
-    matchedArtist?.id != null
-      ? ((await fetchSpotifyArtistAlbums(matchedArtist.id, {
-          limit: SPOTIFY_SEARCH_LIMIT,
-          pages: SPOTIFY_ARTIST_ALBUMS_PAGES,
-        })) ?? [])
-      : [];
-
-  const artists = artistItems.map((item, index) => normalizeSpotifyArtist(item, query, index));
-  // Search albums first (most relevant), then discography fills in the rest; the
-  // shared dedupe collapses the overlap by name + creator + year. A resolved artist's
-  // works are scored as resolved inside normalizeSpotifyAlbum/Track (creator == query).
-  const albumItems = [
-    ...(data.albums?.items ?? []).slice(0, SPOTIFY_ALBUM_CANDIDATE_LIMIT),
-    ...discographyItems,
-  ];
-  const albums = albumItems.map((item, index) => normalizeSpotifyAlbum(item, query, index));
-  const tracks = (data.tracks?.items ?? [])
-    .slice(0, SPOTIFY_TRACK_CANDIDATE_LIMIT)
-    .map((item, index) => normalizeSpotifyTrack(item, query, index));
-
-  return [...artists, ...albums, ...tracks].filter(
-    (item): item is RankedSearchResult => item != null,
-  );
+// Confident MusicBrainz artist subjects for the query (see isConfidentMusicBrainzArtist):
+// exact name match, or the top relevance hit on a distinctive token.
+async function fetchMusicBrainzArtistSubjects(query: string): Promise<RankedSearchResult[]> {
+  const artists = await fetchMusicBrainzArtists(query, MUSICBRAINZ_ARTIST_CANDIDATE_LIMIT);
+  return artists
+    .filter((item, index) => isConfidentMusicBrainzArtist(item.name, query, item.score, index))
+    .map((item, index) => normalizeMusicBrainzArtist(item, query, index))
+    .filter((item): item is RankedSearchResult => item != null);
 }
 
 async function fetchWikipediaSummary(title: string) {
@@ -1508,6 +1482,19 @@ function logSearchResults(
   console.log("");
 }
 
+function logSearchSubjects(query: string, subjects: RankedSearchResult[]): void {
+  if (!DEBUG_SEARCH) {
+    return;
+  }
+  console.log(`\n[search] query="${query}" → CREATOR branch (${subjects.length} subject(s)):`);
+  for (const r of subjects) {
+    console.log(
+      `    ${r.snapshot.type.padEnd(7)} ${r.score.toFixed(0).padStart(4)}  ${r.snapshot.name}  [${r.identity.source}]`,
+    );
+  }
+  console.log("");
+}
+
 // The additive type only Wikipedia produces and the primary sources can't:
 // artworks. When the authoritative sources found usable results, Wikipedia is
 // restricted to this — its film/tv/book/music entries are dropped as weak
@@ -1528,28 +1515,124 @@ export function filterWikipediaFallbackResults(
   );
 }
 
-export async function searchExternalNodes(query: string): Promise<ExternalNodeSearchResult[]> {
-  const trimmed = query.trim();
-  if (trimmed.length < 2) {
-    return [];
+function stripScore(result: RankedSearchResult): ExternalNodeSearchResult {
+  const { score: _score, ...rest } = result;
+  return rest;
+}
+
+// Hop one, classification. Confident creator subjects for the query — MusicBrainz artists
+// and TMDB people, each scored by their normaliser. Both facets are kept for ambiguous names
+// (a musician AND an actor named the same); only the total is capped. Empty result =>
+// "not a creator query", so the caller runs the work branch instead.
+async function resolveCreatorSubjects(query: string): Promise<RankedSearchResult[]> {
+  const [artistSubjects, persons] = await Promise.all([
+    fetchMusicBrainzArtistSubjects(query),
+    fetchTmdbConfidentPersons(query),
+  ]);
+  const personSubjects = persons
+    .map((person, index) => normalizeTmdbPersonResult(person, query, index))
+    .filter((item): item is RankedSearchResult => item != null);
+  return [...artistSubjects, ...personSubjects]
+    .sort(compareByScore)
+    .slice(0, MAX_CREATOR_SUBJECT_RESULTS);
+}
+
+// MusicBrainz release-groups are already deduped to the canonical album, but the occasional
+// deluxe/remaster release-group slips through; strip the trailing variant marker so the
+// catalogue shows one entry per album.
+function stripAlbumVariantName(name: string): string {
+  return stripTrailingDisambiguator(name)
+    .replace(
+      /\s*[-–—:]\s*(deluxe|remaster(ed)?|expanded|anniversary|special|collector'?s|bonus|mono|stereo|live|reissue|legacy|super deluxe)\b.*$/i,
+      "",
+    )
+    .trim();
+}
+
+// Collapse album variants within a single artist's catalogue by their stripped name,
+// keeping the highest-scoring pressing (score folds in popularity).
+function dedupeAlbumVariants(results: readonly RankedSearchResult[]): RankedSearchResult[] {
+  const byName = new Map<string, RankedSearchResult>();
+  for (const result of results) {
+    const key = normalizeText(stripAlbumVariantName(result.snapshot.name));
+    const existing = byName.get(key);
+    if (!existing || result.score > existing.score) {
+      byName.set(key, result);
+    }
+  }
+  return Array.from(byName.values());
+}
+
+// Thrown when the authoritative source can't be reached (rate-limited, network, auth) —
+// distinct from a creator who genuinely has no resolvable works. Lets the UI show "couldn't
+// load, try again" instead of a misleading "no works found".
+export class SubjectWorksUnavailableError extends Error {
+  constructor(source: string) {
+    super(`Could not load works from ${source}.`);
+    this.name = "SubjectWorksUnavailableError";
+  }
+}
+
+// Hop two. Resolve a creator subject's `identity` to their works from the one authoritative
+// source: a MusicBrainz artist → studio albums; a TMDB person → filmography (movies, Phase 1).
+// ID-scoped, so structurally free of the keyword-blend noise the old flat search produced.
+export async function resolveSearchSubjectWorks(
+  identity: TreeNodeIdentity,
+): Promise<ExternalNodeSearchResult[]> {
+  const { source, externalId } = identity;
+
+  if (source === "musicbrainz" && externalId.startsWith("artist:")) {
+    const artistMbid = externalId.slice("artist:".length);
+    const releaseGroups = await fetchMusicBrainzArtistAlbums(
+      artistMbid,
+      MUSICBRAINZ_ARTIST_ALBUMS_LIMIT,
+    );
+    // null = the browse failed (network/503); [] = artist has no studio albums.
+    if (releaseGroups == null) {
+      throw new SubjectWorksUnavailableError("MusicBrainz");
+    }
+    const albums = releaseGroups
+      .map((item, index) =>
+        normalizeMusicBrainzReleaseGroup(item, "", index, { resolvedWork: true }),
+      )
+      .filter((item): item is RankedSearchResult => item != null);
+    return dedupeAlbumVariants(albums).sort(compareByScore).map(stripScore);
   }
 
-  const [tmdb, googleBooks, spotify, wikipedia] = await Promise.allSettled([
+  if (source === "tmdb" && externalId.startsWith("person:")) {
+    const person = await fetchTmdbPersonById(externalId.slice("person:".length));
+    if (!person) {
+      throw new SubjectWorksUnavailableError("TMDB");
+    }
+    const credits = await fetchTmdbPersonCredits(person);
+    return credits.sort(compareByScore).map(stripScore);
+  }
+
+  return [];
+}
+
+type WorkSearchOutcome = {
+  works: RankedSearchResult[];
+  perSource: Record<string, PromiseSettledResult<RankedSearchResult[]>>;
+};
+
+// Title search for works across the sources, gated hard by isStrongWorkTitleMatch so loose
+// token overlaps don't leak ("Blue" must not drag in "Blue Valentine").
+async function searchWorks(trimmed: string): Promise<WorkSearchOutcome> {
+  const [tmdb, googleBooks, musicbrainz, wikipedia] = await Promise.allSettled([
     searchTmdb(trimmed),
     searchGoogleBooks(trimmed),
-    searchSpotify(trimmed),
+    searchMusicBrainz(trimmed),
     searchWikipedia(trimmed),
   ]);
 
   const fulfilled = (result: PromiseSettledResult<RankedSearchResult[]>) =>
     result.status === "fulfilled" ? result.value : [];
 
-  // TMDB, Google Books, and Spotify are the authoritative sources. Wikipedia is a
-  // fallback: when the primary sources surface anything usable it contributes only
-  // the types they structurally can't produce (people outside TMDB's film index,
-  // artworks); otherwise it stands in as the full backup. The shared dedupe then
-  // collapses any overlap (e.g. a Wikipedia "Martin Scorsese" against the TMDB one).
-  const primaryResults = [...fulfilled(tmdb), ...fulfilled(googleBooks), ...fulfilled(spotify)];
+  // TMDB, Google Books, and MusicBrainz are the authoritative sources. Wikipedia is a
+  // fallback: when the primary sources surface anything usable it contributes only the types
+  // they structurally can't produce (artworks); otherwise it stands in as the full backup.
+  const primaryResults = [...fulfilled(tmdb), ...fulfilled(googleBooks), ...fulfilled(musicbrainz)];
   const hasUsablePrimaryResult = primaryResults.some((result) => result.score >= RELEVANCE_FLOOR);
   const wikipediaResults = filterWikipediaFallbackResults(fulfilled(wikipedia), {
     hasUsablePrimaryResult,
@@ -1557,19 +1640,44 @@ export async function searchExternalNodes(query: string): Promise<ExternalNodeSe
 
   const rankedResults = [...primaryResults, ...wikipediaResults]
     .filter((result) => !NON_WORK_TYPES.has(result.snapshot.type))
+    .filter((result) => isStrongWorkTitleMatch(trimmed, result.snapshot.name))
     .sort((left, right) => right.score - left.score);
 
   const deduped = dedupeExternalSearchResults(rankedResults);
-  // Relevance floor: drop sub-threshold noise before blending. Dedupe first so a
-  // merged artist (which keeps the higher of two scores) isn't cut on its weaker half.
+  // Relevance floor: drop sub-threshold noise before blending. Dedupe first so a merged
+  // artist (which keeps the higher of two scores) isn't cut on its weaker half.
   const aboveFloor = deduped.filter((result) => result.score >= RELEVANCE_FLOOR);
   const focused = collapseArtistsToExactMatch(aboveFloor, trimmed);
-  // Quota-cap each category (anti-flood), then order the whole list by relevance so
-  // the strongest results lead regardless of type — a resolved creator's films sit
-  // at the top instead of being buried under the music/book sections.
-  const blended = blendByCategoryQuota(focused, FINAL_RESULT_LIMIT).sort(compareByScore);
+  const works = blendByCategoryQuota(focused, FINAL_RESULT_LIMIT).sort(compareByScore);
 
-  logSearchResults(trimmed, { tmdb, googleBooks, spotify, wikipedia }, blended);
+  return { works, perSource: { tmdb, googleBooks, musicbrainz, wikipedia } };
+}
 
-  return blended.map(({ score: _score, ...result }) => result);
+export async function searchExternalNodes(query: string): Promise<ExternalNodeSearchResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return [];
+  }
+
+  // Surface BOTH interpretations rather than destructively classifying: works the query
+  // could name (addable) AND creators it could name (expandable). Suppressing one branch
+  // when the other matches is how "Rubber Soul" returned an obscure band instead of the
+  // Beatles album. Works lead — a work-title query has a matching work while a creator-name
+  // query usually doesn't (titles don't contain the creator's name), so the artist/person
+  // naturally shows when there's no competing work. True notability ranking comes with the
+  // entity store (ADR 0004); this is the interim, non-destructive ordering.
+  const [subjects, { works, perSource }] = await Promise.all([
+    resolveCreatorSubjects(trimmed),
+    searchWorks(trimmed),
+  ]);
+
+  const orderedWorks = works.sort(compareByScore);
+  const orderedSubjects = subjects.sort(compareByScore);
+
+  logSearchResults(trimmed, perSource, orderedWorks);
+  if (orderedSubjects.length > 0) {
+    logSearchSubjects(trimmed, orderedSubjects);
+  }
+
+  return [...orderedWorks, ...orderedSubjects].map(stripScore);
 }

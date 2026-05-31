@@ -36,6 +36,7 @@ const tree: CultureTree = CultureTreeSchema.parse({
 
 function result(name: string, externalId: string, year: number): ExternalNodeSearchResult {
   return {
+    kind: "addable-work",
     identity: { source: "wikipedia", externalId },
     snapshot: { name, type: "film", year },
     searchHint: { title: name },

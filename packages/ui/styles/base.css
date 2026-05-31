@@ -125,6 +125,46 @@
   --sidebar-ring: #7a9e7e;
 }
 
+/* Reusable enter animations for content that swaps in place (e.g. cycling
+   through items in a lightbox/preview). Re-trigger by remounting the element
+   with a changing `key`. Honors reduced-motion. */
+@keyframes content-fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.625rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes content-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility content-fade-rise {
+  animation: content-fade-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility content-fade-scale {
+  animation: content-fade-scale 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-fade-rise,
+  .content-fade-scale {
+    animation: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

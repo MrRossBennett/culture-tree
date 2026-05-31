@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/too
 import { cn } from "@repo/ui/lib/utils";
 import {
   ChevronLeftIcon,
+  ChevronRightIcon,
   HeartIcon,
   ImageIcon,
   LoaderCircleIcon,
@@ -30,8 +31,9 @@ import {
   PlusIcon,
   SparklesIcon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { AddToTreePopover, type AddToTreeTarget } from "~/components/add-to-tree-popover";
 import { Masonry } from "~/components/masonry";
@@ -41,6 +43,7 @@ import { NodeTypeFilterList } from "~/components/node-type-filter-list";
 import { TreeNodeDialog } from "~/components/tree-node-popover";
 import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
 import { TreeSummaryCard } from "~/components/tree-summary-card";
+import { resolveDisplayImageUrl } from "~/lib/display-image";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
 
 function formatConnectionLabel(connectionType: ConnectionTypeValue): string {
@@ -221,13 +224,7 @@ function coverSrcForItem({
   readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
 }): string | undefined {
   const media = enrichments[item.id];
-  return (
-    media?.coverUrl ??
-    media?.thumbnailUrl ??
-    item.snapshot?.image ??
-    resolvedEntity?.imageUrl ??
-    undefined
-  );
+  return resolveDisplayImageUrl(item, media) ?? resolvedEntity?.imageUrl ?? undefined;
 }
 
 export function CultureTreeItemCard({
@@ -305,8 +302,12 @@ function BranchFocusDialog({
   addToTreeTargets = [],
   item,
   enrichments,
+  hasNext = false,
+  hasPrevious = false,
   isGeneratingNewTree,
   onClose,
+  onNext,
+  onPrevious,
   onAddToTree,
   onStartNewTree,
   onDeleteItem,
@@ -318,8 +319,12 @@ function BranchFocusDialog({
   readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly item: TreeItem | null;
   readonly enrichments: TreeEnrichmentsMap;
+  readonly hasNext?: boolean;
+  readonly hasPrevious?: boolean;
   readonly isGeneratingNewTree: boolean;
   readonly onClose: () => void;
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
   readonly onAddToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
   readonly onStartNewTree?: (item: TreeItem) => Promise<void>;
   readonly onDeleteItem?: (item: TreeItem) => void;
@@ -338,6 +343,28 @@ function BranchFocusDialog({
   useEffect(() => {
     setIsPlayingTrailer(false);
   }, [item?.id]);
+
+  // Cycle branches with the arrow keys while the focus dialog is open.
+  useEffect(() => {
+    if (item == null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.closest("input, textarea") || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === "ArrowRight" && hasNext) {
+        event.preventDefault();
+        onNext?.();
+      } else if (event.key === "ArrowLeft" && hasPrevious) {
+        event.preventDefault();
+        onPrevious?.();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [item, hasNext, hasPrevious, onNext, onPrevious]);
 
   return (
     <Dialog open={item != null} onOpenChange={(open) => !open && onClose()}>
@@ -360,11 +387,11 @@ function BranchFocusDialog({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="absolute top-5 left-5 z-10 rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)]"
+                className="absolute top-5 left-5 z-20 rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)]"
                 onClick={onClose}
                 aria-label="Back to tree"
               >
-                <ChevronLeftIcon className="size-4" aria-hidden />
+                <XIcon className="size-4" aria-hidden />
               </Button>
               {trailerVideoId && isPlayingTrailer ? (
                 <Button
@@ -378,17 +405,44 @@ function BranchFocusDialog({
                   <ImageIcon className="size-4" aria-hidden />
                 </Button>
               ) : null}
-              <div className="flex h-full min-h-0 items-center justify-center px-6 py-16 md:px-12">
+              {hasPrevious ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute inset-y-0 left-5 z-20 my-auto rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)] active:translate-y-0"
+                  onClick={() => onPrevious?.()}
+                  aria-label="Previous branch"
+                >
+                  <ChevronLeftIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              {hasNext ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute inset-y-0 right-5 z-20 my-auto rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)] active:translate-y-0"
+                  onClick={() => onNext?.()}
+                  aria-label="Next branch"
+                >
+                  <ChevronRightIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              <div
+                key={item.id}
+                className="pointer-events-none flex h-full min-h-0 content-fade-scale items-center justify-center px-6 py-16 md:px-12"
+              >
                 {trailerVideoId && isPlayingTrailer ? (
                   <iframe
                     title={`${itemHeading.primary} trailer`}
                     src={`https://www.youtube-nocookie.com/embed/${trailerVideoId}?autoplay=1&rel=0`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
-                    className="aspect-video max-h-full w-full max-w-5xl rounded-sm shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
+                    className="pointer-events-auto aspect-video max-h-full w-full max-w-5xl rounded-sm shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
                   />
                 ) : coverSrc ? (
-                  <div className="relative inline-flex max-h-full max-w-full">
+                  <div className="pointer-events-auto relative inline-flex max-h-full max-w-full">
                     <img
                       alt=""
                       referrerPolicy="no-referrer"
@@ -462,7 +516,10 @@ function BranchFocusDialog({
                   </DropdownMenu>
                 ) : null}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+              <div
+                key={`body-${item.id}`}
+                className="min-h-0 flex-1 content-fade-rise overflow-y-auto px-6 py-6"
+              >
                 <div className="space-y-4">
                   <div>
                     <NodeTypeBadge
@@ -534,7 +591,10 @@ function BranchFocusDialog({
                   ) : null}
                 </div>
               </div>
-              <div className="space-y-3 border-t border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
+              <div
+                key={`footer-${item.id}`}
+                className="content-fade-rise space-y-3 border-t border-[oklch(0.9_0.01_120/0.1)] px-6 py-5 [animation-delay:80ms]"
+              >
                 <div className="flex flex-wrap gap-2">
                   {onAddToTree && item && sourceTreeId ? (
                     <AddToTreePopover
@@ -587,6 +647,7 @@ export function TreePreview({
   addToTreeTargets = [],
   tree,
   enrichments = {},
+  headerActions,
   loadingItemIds = [],
   isAddItemPending = false,
   isGrowItemPending = false,
@@ -605,6 +666,7 @@ export function TreePreview({
   readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
+  readonly headerActions?: ReactNode;
   readonly loadingItemIds?: readonly string[];
   readonly isAddItemPending?: boolean;
   readonly isGrowItemPending?: boolean;
@@ -637,8 +699,22 @@ export function TreePreview({
     sections: previewSections,
   });
   const loadingItemIdSet = new Set(loadingItemIds);
-  const [selectedItem, setSelectedItem] = useState<TreeItem | null>(null);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const selectedIndex = selectedBoardId
+    ? boardItems.findIndex((board) => board.id === selectedBoardId)
+    : -1;
+  const selectedItem = selectedIndex >= 0 ? boardItems[selectedIndex].item : null;
   const selectedResolvedEntity = selectedItem ? resolvedEntities[selectedItem.id] : undefined;
+  const goToBoardOffset = (offset: number) => {
+    setSelectedBoardId((current) => {
+      const index = current ? boardItems.findIndex((board) => board.id === current) : -1;
+      const next = index + offset;
+      if (index < 0 || next < 0 || next >= boardItems.length) {
+        return current;
+      }
+      return boardItems[next].id;
+    });
+  };
   const filterActive = !allBranchTypesSelected;
   const toggleBranchType = (type: NodeTypeValue) => {
     setSelectedBranchTypes((current) => {
@@ -670,28 +746,33 @@ export function TreePreview({
         ) : (
           <span />
         )}
-        {onAddItem || onGrowItem || onSuggestItems ? (
-          <TreeNodeDialog
-            triggerLabel="Add Branch"
-            triggerIcon={<PlusIcon className="size-3.5" />}
-            triggerVariant="outline"
-            title="Add Branch"
-            existingBranches={tree.items}
-            isPending={isAddItemPending}
-            isAiPending={isGrowItemPending}
-            onSuggestBranches={onSuggestItems}
-            onSubmit={
-              onAddItem ??
-              (async (nodes) => {
-                const node = nodes.at(0);
-                if (node && onGrowItem) {
-                  await onGrowItem(node);
+        {(onAddItem || onGrowItem || onSuggestItems || headerActions) && (
+          <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+            {onAddItem || onGrowItem || onSuggestItems ? (
+              <TreeNodeDialog
+                triggerLabel="Add Branch"
+                triggerIcon={<PlusIcon className="size-3.5" />}
+                triggerVariant="outline"
+                title="Add Branch"
+                existingBranches={tree.items}
+                isPending={isAddItemPending}
+                isAiPending={isGrowItemPending}
+                onSuggestBranches={onSuggestItems}
+                onSubmit={
+                  onAddItem ??
+                  (async (nodes) => {
+                    const node = nodes.at(0);
+                    if (node && onGrowItem) {
+                      await onGrowItem(node);
+                    }
+                  })
                 }
-              })
-            }
-            onAiSubmit={onGrowItem}
-          />
-        ) : null}
+                onAiSubmit={onGrowItem}
+              />
+            ) : null}
+            {headerActions}
+          </div>
+        )}
       </div>
       {boardItems.length > 0 ? (
         <Masonry
@@ -703,12 +784,12 @@ export function TreePreview({
           hoverScale={0.97}
           scaleOnHover
           stagger={0.035}
-          renderItem={({ item, sectionTitle }) => (
+          renderItem={({ id, item, sectionTitle }) => (
             <CultureTreeItemCard
               enrichments={enrichments}
               isLoading={loadingItemIdSet.has(item.id)}
               item={item}
-              onOpen={setSelectedItem}
+              onOpen={() => setSelectedBoardId(id)}
               resolvedEntity={resolvedEntities[item.id]}
               sectionTitle={sectionTitle}
             />
@@ -738,11 +819,15 @@ export function TreePreview({
       <BranchFocusDialog
         addToTreeTargets={addToTreeTargets}
         enrichments={enrichments}
+        hasNext={selectedIndex >= 0 && selectedIndex < boardItems.length - 1}
+        hasPrevious={selectedIndex > 0}
         isGeneratingNewTree={isGeneratingNewTree}
         item={selectedItem}
         onAddToTree={onAddBranchToTree}
         onStartNewTree={onStartNewTree}
-        onClose={() => setSelectedItem(null)}
+        onClose={() => setSelectedBoardId(null)}
+        onNext={() => goToBoardOffset(1)}
+        onPrevious={() => goToBoardOffset(-1)}
         onDeleteItem={onDeleteItem}
         onGenerateNewTree={onGenerateNewTree}
         onToggleLike={onToggleLike}

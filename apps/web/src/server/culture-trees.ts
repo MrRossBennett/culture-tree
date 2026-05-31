@@ -2,8 +2,13 @@ import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, user as authUser } from "@repo/db/schema";
-import { searchExternalNodes } from "@repo/engine";
-import { CultureTreeSchema, ExternalNodeSearchResultSchema, GuideSectionId } from "@repo/schemas";
+import { resolveSearchSubjectWorks, searchExternalNodes } from "@repo/engine";
+import {
+  CultureTreeSchema,
+  ExternalNodeSearchResultSchema,
+  GuideSectionId,
+  TreeNodeIdentitySchema,
+} from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -53,8 +58,22 @@ const DeleteCultureTreeNodeInputSchema = z.object({
   nodeId: z.string().min(1),
 });
 
+const DeleteCultureTreeInputSchema = z.object({
+  treeId: z.string().min(1),
+});
+
+const UpdateCultureTreeDetailsInputSchema = z.object({
+  treeId: z.string().min(1),
+  title: z.string().trim().min(1).max(140),
+  description: z.string().trim().max(500).optional(),
+});
+
 const SearchCultureTreeNodesInputSchema = z.object({
   query: z.string().trim().min(1),
+});
+
+const ResolveSearchSubjectWorksInputSchema = z.object({
+  identity: TreeNodeIdentitySchema,
 });
 
 const SuggestCultureTreeBranchesInputSchema = z.object({
@@ -165,6 +184,14 @@ export const $searchCultureTreeNodes = createServerFn({ method: "POST" })
     return { results };
   });
 
+export const $resolveSearchSubjectWorks = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(ResolveSearchSubjectWorksInputSchema)
+  .handler(async ({ data }) => {
+    const results = await resolveSearchSubjectWorks(data.identity);
+    return { results };
+  });
+
 export const $suggestCultureTreeBranches = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(SuggestCultureTreeBranchesInputSchema)
@@ -259,6 +286,50 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
       .where(eq(cultureTree.id, data.treeId));
 
     return { ok: true as const, removedBranchCount: countRemovedBranches(removedBranches) };
+  });
+
+export const $deleteCultureTree = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(DeleteCultureTreeInputSchema)
+  .handler(async ({ data, context }) => {
+    const [row] = await db
+      .select({ id: cultureTree.id, userId: cultureTree.userId })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.treeId))
+      .limit(1);
+    if (!row || row.userId !== context.user.id) {
+      throw new Error("Tree not found");
+    }
+
+    await db.delete(cultureTree).where(eq(cultureTree.id, data.treeId));
+
+    return { ok: true as const };
+  });
+
+export const $updateCultureTreeDetails = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(UpdateCultureTreeDetailsInputSchema)
+  .handler(async ({ data, context }) => {
+    const [row] = await db
+      .select({ id: cultureTree.id, userId: cultureTree.userId, data: cultureTree.data })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.treeId))
+      .limit(1);
+    if (!row || row.userId !== context.user.id) {
+      throw new Error("Tree not found");
+    }
+
+    const tree = CultureTreeSchema.parse(row.data);
+    const description = data.description?.trim();
+    const nextTree = {
+      ...tree,
+      title: data.title.trim(),
+      description: description && description.length > 0 ? description : undefined,
+    };
+
+    await db.update(cultureTree).set({ data: nextTree }).where(eq(cultureTree.id, data.treeId));
+
+    return { ok: true as const, title: nextTree.title, description: nextTree.description };
   });
 
 export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(async () => {

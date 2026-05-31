@@ -257,7 +257,7 @@ export function HomeSeedForm({
       >
         <DialogContent showCloseButton={!generate.isPending} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl">
+            <DialogTitle className="font-heading text-2xl">
               {generate.isPending ? "Generating" : "Generate Tree"}
             </DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">

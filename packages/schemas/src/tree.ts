@@ -125,7 +125,18 @@ export const TreeNodeSnapshotSchema = z.object({
   image: z.url().optional(),
 });
 
+// Two-hop search produces two kinds of result. An "addable-work" is a concrete
+// work the user can stage into the branch tray. An "expandable-subject" is a
+// creator (artist/person) the user explores — it is never addable; expanding it
+// resolves that creator's works (hop two). A discriminant, not an optional flag,
+// so "can this be added?" is never ambiguous: the kind says exactly what it is.
+export const ExternalSearchResultKind = z.enum(["addable-work", "expandable-subject"]);
+export type ExternalSearchResultKindValue = z.infer<typeof ExternalSearchResultKind>;
+
 export const ExternalNodeSearchResultSchema = z.object({
+  // Defaulted so existing producers (AI suggestions, node-builder) need no change;
+  // the search engine sets "expandable-subject" explicitly for creator subjects.
+  kind: ExternalSearchResultKind.default("addable-work"),
   identity: TreeNodeIdentitySchema,
   snapshot: TreeNodeSnapshotSchema,
   /**

@@ -9,11 +9,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/dropdown-menu";
 import { Input } from "@repo/ui/components/input";
 import { Textarea } from "@repo/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
-import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
+import {
+  LoaderCircleIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  SproutIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +34,7 @@ import {
   CultureTreeToneSelector,
   type CultureTreeTone,
 } from "~/components/culture-tree-tone-selector";
+import { DeleteTreeDialog } from "~/components/delete-tree-dialog";
 import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
 import {
   CULTURE_TREE_NODE_TYPES,
@@ -34,10 +48,12 @@ import { loaderContainsCommittedTree, treeForVisiblePreview } from "~/lib/tree-p
 import {
   $addManualCultureTreeBranches,
   $addPublicCultureTreeBranchToMyTree,
+  $deleteCultureTree,
   $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
   $suggestCultureTreeBranches,
+  $updateCultureTreeDetails,
 } from "~/server/culture-trees";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
 import {
@@ -297,6 +313,10 @@ function TreePage() {
   const [namingItem, setNamingItem] = useState<TreeItem | null>(null);
   const [newTreeTitle, setNewTreeTitle] = useState("");
   const [newTreeDescription, setNewTreeDescription] = useState("");
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [deleteTreeOpen, setDeleteTreeOpen] = useState(false);
   const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
   const [committedTreeState, setCommittedTreeState] = useState<{
     treeId: string;
@@ -466,6 +486,36 @@ function TreePage() {
     },
   });
 
+  const updateDetails = useMutation({
+    mutationFn: (input: { title: string; description?: string }) =>
+      $updateCultureTreeDetails({
+        data: { treeId, title: input.title, description: input.description },
+      }),
+    onSuccess: async () => {
+      toast.success("Tree details updated.");
+      setEditDetailsOpen(false);
+      setCommittedTreeState(null);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not update tree details.");
+    },
+  });
+
+  const deleteTree = useMutation({
+    mutationFn: () => $deleteCultureTree({ data: { treeId } }),
+    onSuccess: async () => {
+      setDeleteTreeOpen(false);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      toast.success("Tree deleted.");
+      void navigate({ to: "/" });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not delete this tree.");
+    },
+  });
+
   const toggleLike = useMutation({
     mutationFn: async (input: { entityId: string; liked: boolean }) => {
       if (input.liked) {
@@ -539,6 +589,41 @@ function TreePage() {
     return result.suggestions;
   };
 
+  const openEditDetails = () => {
+    setEditTitle(tree.title?.trim() ?? "");
+    setEditDescription(tree.description?.trim() ?? "");
+    setEditDetailsOpen(true);
+  };
+
+  const treeOptionsMenu =
+    isOwner && treeIsReady ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Tree options"
+              className="shrink-0"
+            >
+              <MoreHorizontalIcon className="size-4" aria-hidden />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={openEditDetails}>
+            <PencilIcon aria-hidden />
+            Edit details
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleteTreeOpen(true)}>
+            <Trash2Icon aria-hidden />
+            Delete tree
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
       <div className="flex w-full flex-1 flex-col gap-4 px-4 pt-3 pb-12 sm:px-6 lg:px-8">
@@ -570,6 +655,7 @@ function TreePage() {
             key={treeId}
             addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
+            headerActions={treeOptionsMenu}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
             isGrowItemPending={suggestBranches.isPending}
@@ -626,6 +712,7 @@ function TreePage() {
             key={treeId}
             addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
+            headerActions={treeOptionsMenu}
             loadingItemIds={pendingItemIds}
             isAddItemPending={addItem.isPending}
             isGrowItemPending={suggestBranches.isPending}
@@ -689,7 +776,7 @@ function TreePage() {
       >
         <DialogContent showCloseButton={!seedFromItem.isPending} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl">
+            <DialogTitle className="font-heading text-2xl">
               {seedFromItem.isPending ? "Exploring" : "Explore This"}
             </DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">
@@ -758,7 +845,7 @@ function TreePage() {
       >
         <DialogContent showCloseButton={!startTreeFromBranch.isPending} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl">Start a new tree</DialogTitle>
+            <DialogTitle className="font-heading text-2xl">Start a new tree</DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">
               {namingItem ? (
                 <>
@@ -833,6 +920,96 @@ function TreePage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={editDetailsOpen}
+        onOpenChange={(open) => {
+          if (!open && !updateDetails.isPending) {
+            setEditDetailsOpen(false);
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!updateDetails.isPending} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl">Edit tree details</DialogTitle>
+            <DialogDescription className="font-body text-base leading-relaxed">
+              Update the name and description for this Culture Tree.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const title = editTitle.trim();
+              if (!title || updateDetails.isPending) {
+                return;
+              }
+              updateDetails.mutate({
+                title,
+                description: editDescription.trim() || undefined,
+              });
+            }}
+          >
+            <div className="space-y-1.5">
+              <label
+                htmlFor="edit-tree-title"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Tree name
+              </label>
+              <Input
+                id="edit-tree-title"
+                value={editTitle}
+                disabled={updateDetails.isPending}
+                maxLength={140}
+                onChange={(event) => setEditTitle(event.target.value)}
+                placeholder="Name your tree…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="edit-tree-description"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Description <span className="normal-case">(optional)</span>
+              </label>
+              <Textarea
+                id="edit-tree-description"
+                value={editDescription}
+                disabled={updateDetails.isPending}
+                maxLength={500}
+                rows={3}
+                onChange={(event) => setEditDescription(event.target.value)}
+                placeholder="What ties this tree together?"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="amber"
+              className="w-full rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+              disabled={updateDetails.isPending || editTitle.trim().length === 0}
+            >
+              {updateDetails.isPending ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteTreeDialog
+        open={deleteTreeOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteTree.isPending) {
+            setDeleteTreeOpen(false);
+          }
+        }}
+        treeLabel={tree.title?.trim() || tree.seed?.trim() || "This tree"}
+        isPending={deleteTree.isPending}
+        onConfirm={() => deleteTree.mutate()}
+      />
 
       <DeleteTreeNodeDialog
         open={deleteTarget != null}

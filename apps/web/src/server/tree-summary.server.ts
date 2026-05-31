@@ -1,6 +1,7 @@
 import { CultureTreeSchema, type CultureTree, type TreeEnrichmentsMap } from "@repo/schemas";
 
 import type { TreeSummaryCardData } from "~/components/tree-summary-card";
+import { resolveDisplayImageUrl } from "~/lib/display-image";
 
 import { parseTreeEnrichments } from "./committed-branch-enrichment";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
@@ -38,7 +39,7 @@ function treeListPreviewItems(
     const media = enrichments[item.id];
     return {
       type: item.type,
-      imageUrl: media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image ?? undefined,
+      imageUrl: resolveDisplayImageUrl(item, media),
     };
   });
 }
