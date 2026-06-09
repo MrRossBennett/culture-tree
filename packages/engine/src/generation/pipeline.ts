@@ -5,7 +5,9 @@ import {
   TreeItemSchema,
   TreeRequestSchema,
   acceptCultureTreeGenerationOutput,
+  filterCultureTreeToNodeTypes,
   type CultureTree,
+  type NodeTypeValue,
   type TreeItem,
   type TreeRequest,
 } from "@repo/schemas";
@@ -51,22 +53,21 @@ function treeMatchesMediaFilter(tree: CultureTree, mediaFilter?: readonly string
   return tree.items.every((item) => allowedTypes.has(item.type));
 }
 
-function pruneTreeToMediaFilter(tree: CultureTree, mediaFilter?: readonly string[]): CultureTree {
+function pruneTreeToMediaFilter(
+  tree: CultureTree,
+  mediaFilter?: readonly NodeTypeValue[],
+): CultureTree {
   if (!mediaFilter?.length) {
     return tree;
   }
 
-  const allowedTypes = new Set(mediaFilter);
-  return {
-    ...tree,
-    items: tree.items.filter((item) => allowedTypes.has(item.type)),
-  };
+  return filterCultureTreeToNodeTypes(tree, mediaFilter);
 }
 
 async function repairTreeForMediaFilter(
   query: string,
   tree: CultureTree,
-  mediaFilter?: readonly string[],
+  mediaFilter?: readonly NodeTypeValue[],
 ): Promise<CultureTree> {
   if (treeMatchesMediaFilter(tree, mediaFilter)) {
     return tree;

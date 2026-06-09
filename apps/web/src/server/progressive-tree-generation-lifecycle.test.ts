@@ -8,6 +8,7 @@ import {
   isGenerationTerminal,
   nextRevealItemIndex,
   parseGenerationMetadata,
+  treeForRevealProgress,
 } from "./progressive-tree-generation-lifecycle";
 
 describe("progressive tree generation lifecycle", () => {
@@ -17,6 +18,7 @@ describe("progressive tree generation lifecycle", () => {
     expect(CultureTreeSchema.parse(tree)).toEqual({
       seed: "Ok Computer",
       seedType: "root",
+      guideSections: [],
       items: [],
     });
   });
@@ -70,5 +72,131 @@ describe("progressive tree generation lifecycle", () => {
   it("reveals the next final-result item after already committed canonical items", () => {
     expect(nextRevealItemIndex(0)).toBe(0);
     expect(nextRevealItemIndex(3)).toBe(3);
+  });
+
+  it("keeps reveal progress guide-shaped, then returns the final tree when complete", () => {
+    const finalTree = CultureTreeSchema.parse({
+      seed: "Ghost Dog",
+      seedType: "root",
+      guideSections: [
+        {
+          id: "start-here",
+          title: "Start Here",
+          items: [
+            {
+              id: "item_1",
+              name: "Le Samourai",
+              type: "film",
+              reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+              connectionType: "influence",
+              branchRole: "essential-next",
+              searchHint: { title: "Le Samourai" },
+              source: "ai",
+            },
+          ],
+        },
+        {
+          id: "more-like-this",
+          title: "More Like This",
+          items: [
+            {
+              id: "item_2",
+              name: "Branded to Kill",
+              type: "film",
+              reason: "A stranger variation on hitman cool and dream logic.",
+              connectionType: "spiritual-kin",
+              branchRole: "similar-appetite",
+              searchHint: { title: "Branded to Kill" },
+              source: "ai",
+            },
+          ],
+        },
+        {
+          id: "go-sideways",
+          title: "Go Sideways",
+          items: [
+            {
+              id: "item_3",
+              name: "Liquid Swords",
+              type: "album",
+              reason: "Moves the same lone-warrior code into icy street mythology.",
+              connectionType: "spiritual-kin",
+              branchRole: "sideways-path",
+              searchHint: { title: "Liquid Swords", creator: "GZA" },
+              source: "ai",
+            },
+          ],
+        },
+        {
+          id: "go-deeper",
+          title: "Go Deeper",
+          items: [
+            {
+              id: "item_4",
+              name: "A Colt Is My Passport",
+              type: "film",
+              reason: "A leaner, stranger route into the same assassin fatalism.",
+              connectionType: "contemporary",
+              branchRole: "deep-cut",
+              searchHint: { title: "A Colt Is My Passport" },
+              source: "ai",
+            },
+          ],
+        },
+      ],
+      items: [
+        {
+          id: "item_1",
+          name: "Le Samourai",
+          type: "film",
+          reason: "A near-perfect next stop for ritualized solitude and cool restraint.",
+          connectionType: "influence",
+          branchRole: "essential-next",
+          searchHint: { title: "Le Samourai" },
+          source: "ai",
+        },
+        {
+          id: "item_2",
+          name: "Branded to Kill",
+          type: "film",
+          reason: "A stranger variation on hitman cool and dream logic.",
+          connectionType: "spiritual-kin",
+          branchRole: "similar-appetite",
+          searchHint: { title: "Branded to Kill" },
+          source: "ai",
+        },
+        {
+          id: "item_3",
+          name: "Liquid Swords",
+          type: "album",
+          reason: "Moves the same lone-warrior code into icy street mythology.",
+          connectionType: "spiritual-kin",
+          branchRole: "sideways-path",
+          searchHint: { title: "Liquid Swords", creator: "GZA" },
+          source: "ai",
+        },
+        {
+          id: "item_4",
+          name: "A Colt Is My Passport",
+          type: "film",
+          reason: "A leaner, stranger route into the same assassin fatalism.",
+          connectionType: "contemporary",
+          branchRole: "deep-cut",
+          searchHint: { title: "A Colt Is My Passport" },
+          source: "ai",
+        },
+      ],
+    });
+
+    expect(treeForRevealProgress(finalTree, 2)).toMatchObject({
+      guideSections: [
+        { id: "start-here", items: [{ id: "item_1" }] },
+        { id: "more-like-this", items: [{ id: "item_2" }] },
+        { id: "go-sideways", items: [] },
+        { id: "go-deeper", items: [] },
+      ],
+      items: [{ id: "item_1" }, { id: "item_2" }],
+    });
+    expect(treeForRevealProgress(finalTree, finalTree.items.length).guideSections).toHaveLength(4);
   });
 });

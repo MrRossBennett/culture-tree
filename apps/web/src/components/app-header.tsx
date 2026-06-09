@@ -37,7 +37,7 @@ export function AppHeader() {
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           {user ? (
             <p className="max-w-36 truncate font-mono text-[0.65rem] tracking-wide text-muted-foreground sm:max-w-none">
-              {trees ? `${trees.count} seed${trees.count === 1 ? "" : "s"} planted` : "…"}
+              {trees ? `${trees.count} tree${trees.count === 1 ? "" : "s"} started` : "…"}
             </p>
           ) : (
             <button

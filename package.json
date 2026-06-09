@@ -35,6 +35,7 @@
     "@tanstack/eslint-plugin-query": "catalog:",
     "@tanstack/eslint-plugin-router": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
+    "fallow": "catalog:",
     "vite-plus": "catalog:"
   },
   "engines": {

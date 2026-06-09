@@ -1,23 +1,33 @@
 # Culture Tree — Enrichment API Reference
 
-**Not used:** Spotify Web API, YouTube Data API v3, MusicBrainz, or Cover Art Archive. **`album` / `song` nodes use Wikipedia** (same stack as people/artists). Trailer `youtubeVideoId` / `youtubeUrl` on film/TV nodes come **only** from TMDB’s `videos` payload (embedded YouTube keys), not from Google.
+> **Update (2026-05-31): search and the canonical record are Wikidata-spined — see ADR 0004.**
+> Every Branch's canonical record and notability ranking come from **Wikidata** (`wbsearchentities`
+>
+> - `wbgetentities`); the APIs below now act as **cover/media enrichers only**, keyed off IDs
+>   carried on the Wikidata item. **Spotify and Google Books are removed.** MusicBrainz returns as
+>   an _expansion_ source (a creator's studio discography) and as the key for Cover Art Archive.
+>   The table below reflects the cover source per type; the older per-type "record" prose further
+>   down predates the spine.
 
-## Node Type → API Mapping
+## Node Type → cover/media enricher
 
-| Node Type | API                | Auth                             | What It Returns                                                                 |
-| --------- | ------------------ | -------------------------------- | ------------------------------------------------------------------------------- |
-| `film`    | TMDB               | Bearer token (Read Access Token) | Poster, rating, description, trailer YouTube ID via `append_to_response=videos` |
-| `tv`      | TMDB               | Bearer token (Read Access Token) | Poster, rating, description, trailer YouTube ID via `append_to_response=videos` |
-| `book`    | Google Books       | None                             | Cover image, description, rating, info link                                     |
-| `album`   | Wikipedia REST API | None                             | Article image, extract, link (search: title + creator + `album`)                |
-| `song`    | Wikipedia REST API | None                             | Same pattern (`song` disambiguation in search)                                  |
-| `artist`  | Wikipedia REST API | None                             | Photo, bio extract, Wikipedia link                                              |
-| `person`  | Wikipedia REST API | None                             | Portrait, bio extract, Wikipedia link                                           |
-| `artwork` | Wikipedia REST API | None                             | Image of the work, description, Wikipedia link                                  |
-| `place`   | Wikipedia REST API | None                             | Lead image, extract, Wikipedia link, coordinates when available                 |
-| `event`   | Wikipedia REST API | None                             | Lead image, extract, Wikipedia link, event date from `searchHint.dateRange`     |
-| `podcast` | Not yet            | —                                | —                                                                               |
-| `article` | Not yet            | —                                | —                                                                               |
+The record (name, type, year, creator, notability) always comes from Wikidata. This is the
+**cover** source per type, with the Wikidata `P18` Commons image as the universal fallback:
+
+| Node Type | Cover source                            | Key on Wikidata item            | Auth         |
+| --------- | --------------------------------------- | ------------------------------- | ------------ |
+| `film`    | TMDB poster                             | `P4947` (TMDB movie ID)         | Bearer token |
+| `tv`      | TMDB poster                             | `P4983` (TMDB series ID)        | Bearer token |
+| `book`    | Open Library cover                      | `P212`/`P957` ISBN, then `P648` | None         |
+| `album`   | Cover Art Archive                       | `P436` (MusicBrainz RG ID)      | None         |
+| `song`    | Wikidata `P18` (Commons)                | `P18`                           | None         |
+| `artist`  | Wikidata `P18` (Commons)                | `P18`                           | None         |
+| `person`  | Wikidata `P18` (Commons)                | `P18`                           | None         |
+| `artwork` | Wikidata `P18` (Commons)                | `P18`                           | None         |
+| `place`   | Deferred (not classified in search yet) | —                               | —            |
+| `event`   | Deferred (not classified in search yet) | —                               | —            |
+| `podcast` | Deferred                                | —                               | —            |
+| `article` | Deferred                                | —                               | —            |
 
 ---
 

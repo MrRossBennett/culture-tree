@@ -6,8 +6,10 @@ import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import {
   decideGenerateTreeAllowance,
   decideGrowBranchAllowance,
+  decideTreeCreationAllowance,
   type GenerateTreeAllowanceResult,
   type GrowBranchAllowanceResult,
+  type TreeCreationAllowanceResult,
 } from "./allowance-gates";
 import { currentAllowancePeriod, type AllowancePeriod } from "./usage-history";
 
@@ -19,6 +21,10 @@ type GenerationPerson = {
 export type GenerateTreeAllowanceDecision = {
   allowance: GenerateTreeAllowanceResult;
   allowancePeriod: AllowancePeriod;
+};
+
+export type TreeCreationAllowanceDecision = {
+  allowance: TreeCreationAllowanceResult;
 };
 
 export type GrowBranchAllowanceDecision = {
@@ -35,6 +41,18 @@ export async function countGeneratedTreeUsage(personId: string): Promise<number>
         eq(usageHistory.personId, personId),
         eq(usageHistory.usageType, ENTITLEMENTS.generateTree),
       ),
+    )
+    .limit(1);
+
+  return row?.value ?? 0;
+}
+
+export async function countTreeCreationUsage(personId: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(usageHistory)
+    .where(
+      and(eq(usageHistory.personId, personId), eq(usageHistory.usageType, ENTITLEMENTS.createTree)),
     )
     .limit(1);
 
@@ -97,6 +115,19 @@ export async function prepareGenerateTreeAllowanceDecision(input: {
   });
 
   return { allowance, allowancePeriod };
+}
+
+export async function prepareTreeCreationAllowanceDecision(input: {
+  person: GenerationPerson;
+  proAllowlist?: string | readonly string[] | null;
+}): Promise<TreeCreationAllowanceDecision> {
+  const allowance = decideTreeCreationAllowance({
+    person: input.person,
+    proAllowlist: input.proAllowlist,
+    treeCreationUsageCount: await countTreeCreationUsage(input.person.id),
+  });
+
+  return { allowance };
 }
 
 export async function prepareGrowBranchAllowanceDecision(input: {

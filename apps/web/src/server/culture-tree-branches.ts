@@ -1,6 +1,11 @@
-import type { CultureTree, TreeEnrichmentsMap, TreeItem } from "@repo/schemas";
-
-export const CULTURE_TREE_SEED_BRANCH_ID = "root";
+import {
+  addBranchToGuideSection,
+  removeBranchFromGuideSections,
+  type CultureTree,
+  type GuideSectionIdValue,
+  type TreeEnrichmentsMap,
+  type TreeItem,
+} from "@repo/schemas";
 
 export type DeleteBranchResult = {
   tree: CultureTree;
@@ -9,13 +14,16 @@ export type DeleteBranchResult = {
 
 export function growBranchInCultureTree(input: {
   tree: CultureTree;
-  parentBranchId: string;
+  guideSectionId: GuideSectionIdValue;
   branch: TreeItem;
 }): CultureTree {
-  if (input.parentBranchId !== CULTURE_TREE_SEED_BRANCH_ID) {
-    throw new Error("Child Branch growth is not available yet.");
-  }
+  return addBranchToGuideSection(input);
+}
 
+export function addManualBranchToCultureTree(input: {
+  tree: CultureTree;
+  branch: TreeItem;
+}): CultureTree {
   return {
     ...input.tree,
     items: [...input.tree.items, input.branch],
@@ -32,10 +40,7 @@ export function deleteBranchFromCultureTree(
   }
 
   return {
-    tree: {
-      ...tree,
-      items: tree.items.filter((item) => item.id !== branchId),
-    },
+    tree: removeBranchFromGuideSections(tree, branchId),
     removedBranches: [removed],
   };
 }
@@ -48,6 +53,6 @@ export function removeEnrichmentsForBranches(
   return Object.fromEntries(Object.entries(enrichments).filter(([id]) => !removedIds.has(id)));
 }
 
-export function countBranchesInSubtree(branches: readonly TreeItem[]): number {
+export function countRemovedBranches(branches: readonly TreeItem[]): number {
   return branches.length;
 }

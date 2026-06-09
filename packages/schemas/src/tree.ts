@@ -31,7 +31,48 @@ export const ConnectionType = z.enum([
 ]);
 
 export const NodeSource = z.enum(["ai", "user"]);
-export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "google-books", "musicbrainz"]);
+export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "musicbrainz", "wikidata"]);
+export const GuideSectionId = z.enum([
+  "start-here",
+  "more-like-this",
+  "join-the-dots",
+  "go-sideways",
+  "go-deeper",
+]);
+export const BranchRole = z.enum([
+  "essential-next",
+  "similar-appetite",
+  "documented-context",
+  "sideways-path",
+  "deep-cut",
+]);
+
+export const CORE_RECOMMENDATION_GUIDE_SECTION_IDS = [
+  "start-here",
+  "more-like-this",
+  "go-sideways",
+  "go-deeper",
+] as const satisfies readonly GuideSectionIdValue[];
+
+export const GUIDE_SECTION_DISPLAY_ORDER = [
+  "start-here",
+  "more-like-this",
+  "join-the-dots",
+  "go-sideways",
+  "go-deeper",
+] as const satisfies readonly GuideSectionIdValue[];
+
+const GUIDE_SECTION_BRANCH_ROLE: Record<GuideSectionIdValue, BranchRoleValue> = {
+  "start-here": "essential-next",
+  "more-like-this": "similar-appetite",
+  "join-the-dots": "documented-context",
+  "go-sideways": "sideways-path",
+  "go-deeper": "deep-cut",
+};
+
+export function branchRoleForGuideSection(id: GuideSectionIdValue): BranchRoleValue {
+  return GUIDE_SECTION_BRANCH_ROLE[id];
+}
 
 export const SearchHintSchema = z.object({
   title: z
@@ -68,6 +109,8 @@ export type NodeTypeValue = z.infer<typeof NodeType>;
 export type ConnectionTypeValue = z.infer<typeof ConnectionType>;
 export type NodeSourceValue = z.infer<typeof NodeSource>;
 export type ExternalNodeSourceValue = z.infer<typeof ExternalNodeSource>;
+export type GuideSectionIdValue = z.infer<typeof GuideSectionId>;
+export type BranchRoleValue = z.infer<typeof BranchRole>;
 export type SearchHint = z.infer<typeof SearchHintSchema>;
 
 export const TreeNodeIdentitySchema = z.object({
@@ -82,7 +125,18 @@ export const TreeNodeSnapshotSchema = z.object({
   image: z.url().optional(),
 });
 
+// Two-hop search produces two kinds of result. An "addable-work" is a concrete
+// work the user can stage into the branch tray. An "expandable-subject" is a
+// creator (artist/person) the user explores — it is never addable; expanding it
+// resolves that creator's works (hop two). A discriminant, not an optional flag,
+// so "can this be added?" is never ambiguous: the kind says exactly what it is.
+export const ExternalSearchResultKind = z.enum(["addable-work", "expandable-subject"]);
+export type ExternalSearchResultKindValue = z.infer<typeof ExternalSearchResultKind>;
+
 export const ExternalNodeSearchResultSchema = z.object({
+  // Defaulted so existing producers (AI suggestions, node-builder) need no change;
+  // the search engine sets "expandable-subject" explicitly for creator subjects.
+  kind: ExternalSearchResultKind.default("addable-work"),
   identity: TreeNodeIdentitySchema,
   snapshot: TreeNodeSnapshotSchema,
   /**
@@ -105,6 +159,7 @@ export interface TreeItem {
   year?: number;
   reason: string;
   connectionType: ConnectionTypeValue;
+  branchRole?: BranchRoleValue;
   searchHint: SearchHint;
   identity?: TreeNodeIdentity;
   snapshot?: TreeNodeSnapshot;
@@ -116,25 +171,102 @@ export const TreeItemSchema: z.ZodType<TreeItem> = z.object({
   name: z.string().trim().min(1),
   type: NodeType,
   year: z.number().int().optional(),
-  reason: z.string(),
+  reason: z.string().default(""),
   connectionType: ConnectionType,
+  branchRole: BranchRole.optional(),
   searchHint: SearchHintSchema,
   identity: TreeNodeIdentitySchema.optional(),
   snapshot: TreeNodeSnapshotSchema.optional(),
   source: NodeSource.default("ai"),
 });
 
-export const CultureTreeSchema = z.object({
-  seed: z.string().trim().min(1),
-  seedType: z.literal("root").or(NodeType),
+export const GuideSectionSchema = z.object({
+  id: GuideSectionId,
+  title: z.string().trim().min(1),
+  description: z.string().trim().min(1).optional(),
   items: z.array(TreeItemSchema),
 });
 
-export type CultureTree = z.infer<typeof CultureTreeSchema>;
+export const CultureTreeSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
+    notes: z.string().trim().min(1).optional(),
+    seed: z.string().trim().min(1).optional(),
+    seedType: z.literal("root").or(NodeType).optional(),
+    guideSections: z.array(GuideSectionSchema).default([]),
+    items: z.array(TreeItemSchema).default([]),
+  })
+  .superRefine((tree, ctx) => {
+    if (tree.guideSections.length === 0) {
+      return;
+    }
 
-/** Total nodes in the tree (seed plus all flat items). */
+    const sectionIds = tree.guideSections.map((section) => section.id);
+    const sectionIdSet = new Set(sectionIds);
+
+    for (const requiredId of CORE_RECOMMENDATION_GUIDE_SECTION_IDS) {
+      if (!sectionIdSet.has(requiredId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Culture Tree Guide Sections must include ${formatGuideSectionTitle(requiredId)}.`,
+          path: ["guideSections"],
+        });
+      }
+    }
+
+    for (const [index, section] of tree.guideSections.entries()) {
+      if (sectionIds.indexOf(section.id) !== index) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Duplicate Guide Section ${formatGuideSectionTitle(section.id)}.`,
+          path: ["guideSections", index, "id"],
+        });
+      }
+
+      const expectedRole = GUIDE_SECTION_BRANCH_ROLE[section.id];
+      for (const [itemIndex, item] of section.items.entries()) {
+        if (item.branchRole !== expectedRole) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${formatGuideSectionTitle(section.id)} Branches must use ${expectedRole}.`,
+            path: ["guideSections", index, "items", itemIndex, "branchRole"],
+          });
+        }
+      }
+    }
+
+    const seenItemIds = new Set<string>();
+    for (const [sectionIndex, section] of tree.guideSections.entries()) {
+      for (const [itemIndex, item] of section.items.entries()) {
+        if (seenItemIds.has(item.id)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `Duplicate Branch ${item.id} across Guide Sections.`,
+            path: ["guideSections", sectionIndex, "items", itemIndex, "id"],
+          });
+        }
+        seenItemIds.add(item.id);
+      }
+    }
+
+    const actualOrder = sectionIds.map((id) => GUIDE_SECTION_DISPLAY_ORDER.indexOf(id));
+    const sortedOrder = [...actualOrder].sort((a, b) => a - b);
+    if (!actualOrder.every((order, index) => order === sortedOrder[index])) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Guide Sections must use the fixed display order.",
+        path: ["guideSections"],
+      });
+    }
+  });
+
+export type CultureTree = z.infer<typeof CultureTreeSchema>;
+export type GuideSection = z.infer<typeof GuideSectionSchema>;
+
+/** Total Branches in the tree, plus the Seed. */
 export function countCultureTreeNodes(tree: CultureTree): number {
-  return 1 + tree.items.length;
+  return (tree.seed ? 1 : 0) + tree.items.length;
 }
 
 const DEFAULT_ITEM_CONNECTION: ConnectionTypeValue = "thematic";
@@ -236,9 +368,19 @@ export function deriveSearchHintFromName(
 }
 
 function finalizeSearchHints(tree: CultureTree): CultureTree {
+  const guideSections = tree.guideSections.map((section) => ({
+    ...section,
+    items: section.items.map(finalizeItemSearchHints),
+  }));
+  const sectionItems = flattenGuideSectionItems(guideSections);
+
   return {
     ...tree,
-    items: tree.items.map(finalizeItemSearchHints),
+    guideSections,
+    items:
+      tree.items.length > 0
+        ? tree.items.map(finalizeItemSearchHints)
+        : sectionItems.map(finalizeItemSearchHints),
   };
 }
 
@@ -263,6 +405,7 @@ function normalizeTreeItem(raw: unknown, index: number): TreeItem {
   const aliased = typeof rawConn === "string" ? CONNECTION_TYPE_ALIASES[rawConn] : undefined;
   const connResult = ConnectionType.safeParse(aliased ?? rawConn);
   const connectionType = connResult.success ? connResult.data : DEFAULT_ITEM_CONNECTION;
+  const roleResult = BranchRole.safeParse(o.branchRole);
   const searchHint = normalizeSearchHint(o.searchHint, name, type);
   const sourceResult = NodeSource.safeParse(o.source);
   const source = sourceResult.success ? sourceResult.data : "ai";
@@ -276,6 +419,7 @@ function normalizeTreeItem(raw: unknown, index: number): TreeItem {
     year: typeof o.year === "number" ? o.year : undefined,
     reason,
     connectionType,
+    branchRole: roleResult.success ? roleResult.data : undefined,
     searchHint,
     identity: o.identity,
     snapshot: o.snapshot,
@@ -283,14 +427,93 @@ function normalizeTreeItem(raw: unknown, index: number): TreeItem {
   });
 }
 
-/**
- * Model output can be partial or malformed; coerce into a valid {@link CultureTree} for persistence.
- * Also tolerates the legacy nested tree shape by flattening descendants into `items`.
- */
+function flattenGuideSectionItems(sections: readonly GuideSection[]): TreeItem[] {
+  return sections.flatMap((section) => section.items);
+}
+
+function normalizeGuideSections(raw: unknown): GuideSection[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const seenItemIds = new Set<string>();
+  const sections = raw
+    .map((section) => {
+      const o = section && typeof section === "object" ? (section as Record<string, unknown>) : {};
+      const idResult = GuideSectionId.safeParse(o.id);
+      if (!idResult.success) {
+        return null;
+      }
+
+      const rawItems = Array.isArray(o.items) ? o.items : [];
+      const expectedRole = GUIDE_SECTION_BRANCH_ROLE[idResult.data];
+      const items = rawItems
+        .map((item, index) => normalizeTreeItem(item, index))
+        .filter((item) => {
+          if (seenItemIds.has(item.id)) {
+            return false;
+          }
+          seenItemIds.add(item.id);
+          return true;
+        })
+        .map((item) => ({ ...item, branchRole: expectedRole }));
+
+      return GuideSectionSchema.parse({
+        id: idResult.data,
+        title:
+          typeof o.title === "string" && o.title.trim().length > 0
+            ? o.title.trim()
+            : formatGuideSectionTitle(idResult.data),
+        description:
+          typeof o.description === "string" && o.description.trim().length > 0
+            ? o.description.trim()
+            : undefined,
+        items,
+      });
+    })
+    .filter((section): section is GuideSection => section != null);
+
+  return sections.sort(
+    (a, b) => GUIDE_SECTION_DISPLAY_ORDER.indexOf(a.id) - GUIDE_SECTION_DISPLAY_ORDER.indexOf(b.id),
+  );
+}
+
+function hasCultureTreeShape(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") {
+    return false;
+  }
+
+  const o = raw as Record<string, unknown>;
+  return (
+    "seed" in o ||
+    "title" in o ||
+    "description" in o ||
+    "notes" in o ||
+    "guideSections" in o ||
+    "items" in o
+  );
+}
+
+export function formatGuideSectionTitle(id: GuideSectionIdValue): string {
+  switch (id) {
+    case "start-here":
+      return "Start Here";
+    case "more-like-this":
+      return "More Like This";
+    case "join-the-dots":
+      return "Join The Dots";
+    case "go-sideways":
+      return "Go Sideways";
+    case "go-deeper":
+      return "Go Deeper";
+  }
+}
+
+/** Model output can be partial or malformed; coerce into a valid {@link CultureTree}. */
 export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): CultureTree {
   const fallbackSeed = seedLabel.trim() || "Culture tree";
   const parsed = CultureTreeSchema.safeParse(raw);
-  if (parsed.success) {
+  if (parsed.success && hasCultureTreeShape(raw)) {
     return finalizeSearchHints(parsed.data);
   }
 
@@ -310,22 +533,20 @@ export function normalizeCultureTreeOutput(raw: unknown, seedLabel: string): Cul
     seedType = nt.success ? nt.data : "root";
   }
 
-  const legacyChildren = Array.isArray(o.children) ? o.children : [];
   const rawItems = Array.isArray(o.items) ? o.items : [];
+  const guideSections = normalizeGuideSections(o.guideSections);
 
   const items: unknown[] =
     rawItems.length > 0
       ? rawItems
-      : legacyChildren.flatMap((child) => {
-          const childObj =
-            child && typeof child === "object" ? (child as Record<string, unknown>) : {};
-          const descendants = Array.isArray(childObj.children) ? childObj.children : [];
-          return [{ ...childObj, children: undefined }, ...descendants];
-        });
+      : guideSections.length > 0
+        ? flattenGuideSectionItems(guideSections)
+        : [];
 
   const coerced = CultureTreeSchema.parse({
     seed: legacySeed,
     seedType,
+    guideSections,
     items: items.map((item, index) => normalizeTreeItem(item, index)),
   });
 

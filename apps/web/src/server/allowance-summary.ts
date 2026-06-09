@@ -12,8 +12,10 @@ export type AllowanceSummary =
       effectivePlan: { key: PlanKey; label: string };
       usage: {
         kind: "free";
+        cultureTreesCreated: number;
+        treeCreationLimit: number | null;
         generatedTreesUsed: number;
-        generatedTreeLimit: number | null;
+        aiGeneratedTreeLimit: number | null;
         growBranchPerCultureTree: number | null;
         deletionDoesNotRestoreUsage: true;
       };
@@ -32,6 +34,7 @@ export type AllowanceSummary =
 export type BuildAllowanceSummaryInput = {
   person: { email?: string | null } | null | undefined;
   proAllowlist?: ProAllowlistSource;
+  treeCreationUsageCount: number;
   generatedTreeUsageCount: number;
   paidAiGenerationUsageCountForAllowancePeriod: number;
   allowancePeriod: AllowancePeriod;
@@ -48,8 +51,10 @@ export function buildAllowanceSummary(input: BuildAllowanceSummaryInput): Allowa
       effectivePlan: { key: plan.key, label: plan.label },
       usage: {
         kind: "free",
+        cultureTreesCreated: input.treeCreationUsageCount,
+        treeCreationLimit: plan.allowances.lifetimeTreeCreations,
         generatedTreesUsed: input.generatedTreeUsageCount,
-        generatedTreeLimit: plan.allowances.lifetimeGenerateTree,
+        aiGeneratedTreeLimit: plan.allowances.lifetimeGenerateTree,
         growBranchPerCultureTree: plan.allowances.growBranchPerCultureTree,
         deletionDoesNotRestoreUsage: true,
       },

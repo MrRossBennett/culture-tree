@@ -1,71 +1,60 @@
 import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
-import { cultureTree, usageHistory, user as authUser } from "@repo/db/schema";
-import { completeTreeItemConnection, searchExternalNodes } from "@repo/engine";
-import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
+import { cultureTree, user as authUser } from "@repo/db/schema";
 import {
-  countCultureTreeNodes,
+  resolveSearchSubjectBio,
+  resolveSearchSubjectWorks,
+  searchExternalNodes,
+} from "@repo/engine";
+import {
   CultureTreeSchema,
-  type CultureTree,
-  type NodeTypeValue,
-  type TreeEnrichmentsMap,
+  ExternalNodeSearchResultSchema,
+  GuideSectionId,
+  TreeNodeIdentitySchema,
 } from "@repo/schemas";
 import { createServerFn } from "@tanstack/react-start";
 import { count, desc, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { prepareGrowBranchAllowanceDecision } from "./ai-generation-usage";
+import type { TreeSummaryCardData } from "~/components/tree-summary-card";
+
+import { suggestBranchesForAddToTree } from "./ai-assisted-add-to-tree";
 import type { AllowanceLimitReached } from "./allowance-gates";
+import { parseTreeEnrichments } from "./committed-branch-enrichment";
 import {
-  parseTreeEnrichments,
-  prepareEnrichmentsForCommittedBranches,
-  resolveCommittedBranches,
-} from "./committed-branch-enrichment";
-import {
-  countBranchesInSubtree,
+  countRemovedBranches,
   deleteBranchFromCultureTree,
-  growBranchInCultureTree,
   removeEnrichmentsForBranches,
 } from "./culture-tree-branches";
-import { AddCultureTreeNodeDraftSchema, buildCultureTreeNode } from "./culture-tree-node-builder";
+import { AddCultureTreeNodeDraftSchema } from "./culture-tree-node-builder";
 import { getResolvedEntitiesForTree } from "./entity-resolver.server";
-import { withLimitReachedMessage } from "./limit-reached-messages";
+import { growBranch } from "./grow-branch";
+import { manualAddBranchesToTree, manualAddToTree } from "./manual-add-to-tree";
 import { parseGenerationMetadata } from "./progressive-tree-generation-lifecycle";
-import { buildAcceptedAiGenerationUsage } from "./usage-history";
-
-function formatCuratorTreeListTitle(tree: CultureTree, seedQuery: string): string {
-  const seed = tree.seed?.trim();
-  if (seed) {
-    return seed;
-  }
-  const q = seedQuery.trim();
-  return q.length > 0 ? q : "Untitled tree";
-}
-
-type TreeListPreviewItem = {
-  type: NodeTypeValue;
-  imageUrl?: string;
-};
-
-function treeListPreviewItems(
-  tree: CultureTree,
-  enrichments: TreeEnrichmentsMap,
-): TreeListPreviewItem[] {
-  return tree.items.slice(0, 6).map((item) => {
-    const media = enrichments[item.id];
-    return {
-      type: item.type,
-      imageUrl: media?.coverUrl ?? media?.thumbnailUrl ?? item.snapshot?.image ?? undefined,
-    };
-  });
-}
+import { addPublicBranchToTree } from "./public-branch-add-to-tree";
+import { buildTreeSummaryCardData } from "./tree-summary.server";
 
 const AddCultureTreeNodeInputSchema = z.object({
   treeId: z.string().min(1),
-  parentNodeId: z.string().min(1),
+  guideSectionId: GuideSectionId.optional(),
   node: AddCultureTreeNodeDraftSchema,
+});
+
+const AddManualCultureTreeBranchInputSchema = z.object({
+  treeId: z.string().min(1),
+  node: AddCultureTreeNodeDraftSchema,
+});
+
+const AddManualCultureTreeBranchesInputSchema = z.object({
+  treeId: z.string().min(1),
+  nodes: z.array(AddCultureTreeNodeDraftSchema).min(1),
+});
+
+const AddPublicCultureTreeBranchInputSchema = z.object({
+  sourceTreeId: z.string().min(1),
+  sourceBranchId: z.string().min(1),
+  targetTreeId: z.string().min(1),
 });
 
 const DeleteCultureTreeNodeInputSchema = z.object({
@@ -73,11 +62,43 @@ const DeleteCultureTreeNodeInputSchema = z.object({
   nodeId: z.string().min(1),
 });
 
+const DeleteCultureTreeInputSchema = z.object({
+  treeId: z.string().min(1),
+});
+
+const UpdateCultureTreeDetailsInputSchema = z.object({
+  treeId: z.string().min(1),
+  title: z.string().trim().min(1).max(140),
+  description: z.string().trim().max(500).optional(),
+});
+
 const SearchCultureTreeNodesInputSchema = z.object({
   query: z.string().trim().min(1),
 });
 
+const ResolveSearchSubjectWorksInputSchema = z.object({
+  identity: TreeNodeIdentitySchema,
+});
+
+const SuggestCultureTreeBranchesInputSchema = z.object({
+  treeId: z.string().min(1),
+  trayResults: z.array(ExternalNodeSearchResultSchema),
+});
+
 type AddCultureTreeNodeResult = { ok: true } | { ok: false; limitReached: AllowanceLimitReached };
+
+export function canReadCultureTree(input: {
+  readonly currentUserId?: string | null;
+  readonly ownerUserId: string;
+  readonly isPublic: boolean;
+  readonly generationStatus: string;
+}): boolean {
+  if (input.currentUserId === input.ownerUserId) {
+    return true;
+  }
+
+  return input.isPublic && input.generationStatus === "ready";
+}
 
 export const $getCultureTreeById = createServerFn({ method: "GET" })
   .inputValidator(z.object({ treeId: z.string().min(1) }))
@@ -107,7 +128,12 @@ export const $getCultureTreeById = createServerFn({ method: "GET" })
       return null;
     }
     const generation = parseGenerationMetadata(row);
-    const allowed = (row.isPublic && generation.status === "ready") || user?.id === row.userId;
+    const allowed = canReadCultureTree({
+      currentUserId: user?.id,
+      ownerUserId: row.userId,
+      isPublic: row.isPublic,
+      generationStatus: generation.status,
+    });
     if (!allowed) {
       return null;
     }
@@ -162,79 +188,82 @@ export const $searchCultureTreeNodes = createServerFn({ method: "POST" })
     return { results };
   });
 
+export const $resolveSearchSubjectWorks = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(ResolveSearchSubjectWorksInputSchema)
+  .handler(async ({ data }) => {
+    const results = await resolveSearchSubjectWorks(data.identity);
+    return { results };
+  });
+
+export const $resolveSearchSubjectBio = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(ResolveSearchSubjectWorksInputSchema)
+  .handler(async ({ data }) => {
+    return resolveSearchSubjectBio(data.identity);
+  });
+
+export const $suggestCultureTreeBranches = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(SuggestCultureTreeBranchesInputSchema)
+  .handler(async ({ data, context }) => {
+    return suggestBranchesForAddToTree({
+      treeId: data.treeId,
+      trayResults: data.trayResults,
+      person: context.user,
+      proAllowlist: process.env.PRO_ALLOWLIST,
+    });
+  });
+
 export const $addCultureTreeNode = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(AddCultureTreeNodeInputSchema)
   .handler(async ({ data, context }): Promise<AddCultureTreeNodeResult> => {
-    const [row] = await db
-      .select({
-        id: cultureTree.id,
-        userId: cultureTree.userId,
-        data: cultureTree.data,
-        enrichmentData: cultureTree.enrichmentData,
-      })
-      .from(cultureTree)
-      .where(eq(cultureTree.id, data.treeId))
-      .limit(1);
-    if (!row || row.userId !== context.user.id) {
-      throw new Error("Tree not found");
-    }
-
-    const tree = CultureTreeSchema.parse(row.data);
-    const { allowance, allowancePeriod } = await prepareGrowBranchAllowanceDecision({
+    const result = await growBranch({
+      treeId: data.treeId,
+      guideSectionId: data.guideSectionId,
+      node: data.node,
       person: context.user,
-      cultureTreeId: data.treeId,
       proAllowlist: process.env.PRO_ALLOWLIST,
     });
-    if (!allowance.allowed) {
-      return {
-        ok: false,
-        limitReached: withLimitReachedMessage({
-          action: "grow_branch",
-          limitReached: allowance.limitReached,
-        }),
-      };
-    }
+    return result.ok ? { ok: true } : result;
+  });
 
-    const draftNode = buildCultureTreeNode(data.node);
-    const nextNode = await completeTreeItemConnection(tree, draftNode);
-    const nextTree = growBranchInCultureTree({
-      tree,
-      parentBranchId: data.parentNodeId,
-      branch: nextNode,
-    });
-    const currentEnrichments = parseTreeEnrichments(row.enrichmentData);
-    const nextEnrichments = await prepareEnrichmentsForCommittedBranches({
-      tree,
-      branches: [nextNode],
-      currentEnrichments,
-    });
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(cultureTree)
-        .set({ data: nextTree, enrichmentData: nextEnrichments })
-        .where(eq(cultureTree.id, data.treeId));
-
-      await tx.insert(usageHistory).values(
-        buildAcceptedAiGenerationUsage({
-          id: nanoid(),
-          person: context.user,
-          cultureTreeId: data.treeId,
-          usageType: ENTITLEMENTS.growBranch,
-          proAllowlist: process.env.PRO_ALLOWLIST,
-          allowancePeriod: allowance.effectivePlan === PLANS.pro ? allowancePeriod : null,
-        }),
-      );
-    });
-
-    await resolveCommittedBranches({
+export const $addManualCultureTreeBranch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddManualCultureTreeBranchInputSchema)
+  .handler(async ({ data, context }) => {
+    const result = await manualAddToTree({
       treeId: data.treeId,
-      branches: [nextNode],
-      enrichments: nextEnrichments,
+      node: data.node,
+      person: context.user,
     });
+    return result;
+  });
 
-    return { ok: true };
+export const $addManualCultureTreeBranches = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddManualCultureTreeBranchesInputSchema)
+  .handler(async ({ data, context }) => {
+    const result = await manualAddBranchesToTree({
+      treeId: data.treeId,
+      nodes: data.nodes,
+      person: context.user,
+    });
+    return result;
+  });
+
+export const $addPublicCultureTreeBranchToMyTree = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(AddPublicCultureTreeBranchInputSchema)
+  .handler(async ({ data, context }) => {
+    await addPublicBranchToTree({
+      sourceTreeId: data.sourceTreeId,
+      sourceBranchId: data.sourceBranchId,
+      targetTreeId: data.targetTreeId,
+      person: context.user,
+    });
+    return { ok: true as const };
   });
 
 export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
@@ -267,7 +296,51 @@ export const $deleteCultureTreeNode = createServerFn({ method: "POST" })
       .set({ data: nextTree, enrichmentData: nextEnrichments })
       .where(eq(cultureTree.id, data.treeId));
 
-    return { ok: true as const, removedBranchCount: countBranchesInSubtree(removedBranches) };
+    return { ok: true as const, removedBranchCount: countRemovedBranches(removedBranches) };
+  });
+
+export const $deleteCultureTree = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(DeleteCultureTreeInputSchema)
+  .handler(async ({ data, context }) => {
+    const [row] = await db
+      .select({ id: cultureTree.id, userId: cultureTree.userId })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.treeId))
+      .limit(1);
+    if (!row || row.userId !== context.user.id) {
+      throw new Error("Tree not found");
+    }
+
+    await db.delete(cultureTree).where(eq(cultureTree.id, data.treeId));
+
+    return { ok: true as const };
+  });
+
+export const $updateCultureTreeDetails = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(UpdateCultureTreeDetailsInputSchema)
+  .handler(async ({ data, context }) => {
+    const [row] = await db
+      .select({ id: cultureTree.id, userId: cultureTree.userId, data: cultureTree.data })
+      .from(cultureTree)
+      .where(eq(cultureTree.id, data.treeId))
+      .limit(1);
+    if (!row || row.userId !== context.user.id) {
+      throw new Error("Tree not found");
+    }
+
+    const tree = CultureTreeSchema.parse(row.data);
+    const description = data.description?.trim();
+    const nextTree = {
+      ...tree,
+      title: data.title.trim(),
+      description: description && description.length > 0 ? description : undefined,
+    };
+
+    await db.update(cultureTree).set({ data: nextTree }).where(eq(cultureTree.id, data.treeId));
+
+    return { ok: true as const, title: nextTree.title, description: nextTree.description };
   });
 
 export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(async () => {
@@ -275,16 +348,7 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
   if (!user) {
     return {
       count: 0,
-      trees: [] as {
-        id: string;
-        seedQuery: string;
-        createdAt: string;
-        nodeCount: number;
-        listTitle: string;
-        isPublic: boolean;
-        generationStatus: string;
-        previewItems: TreeListPreviewItem[];
-      }[],
+      trees: [] as (TreeSummaryCardData & { seedQuery: string })[],
     };
   }
   const [countRow] = await db
@@ -309,34 +373,6 @@ export const $listMyCultureTrees = createServerFn({ method: "GET" }).handler(asy
     .from(cultureTree)
     .where(eq(cultureTree.userId, user.id))
     .orderBy(desc(cultureTree.createdAt));
-  const trees = rows.map((r) => {
-    const parsed = CultureTreeSchema.safeParse(r.data);
-    if (!parsed.success) {
-      const generation = parseGenerationMetadata(r);
-      return {
-        id: r.id,
-        seedQuery: r.seedQuery,
-        createdAt: r.createdAt.toISOString(),
-        nodeCount: 0,
-        listTitle: r.seedQuery.trim() || "Untitled tree",
-        isPublic: r.isPublic,
-        generationStatus: generation.status,
-        previewItems: [],
-      };
-    }
-    const t = parsed.data;
-    const generation = parseGenerationMetadata(r);
-    const enrichments = parseTreeEnrichments(r.enrichmentData);
-    return {
-      id: r.id,
-      seedQuery: r.seedQuery,
-      createdAt: r.createdAt.toISOString(),
-      nodeCount: countCultureTreeNodes(t),
-      listTitle: formatCuratorTreeListTitle(t, r.seedQuery),
-      isPublic: r.isPublic,
-      generationStatus: generation.status,
-      previewItems: treeListPreviewItems(t, enrichments),
-    };
-  });
+  const trees = rows.map((r) => ({ seedQuery: r.seedQuery, ...buildTreeSummaryCardData(r) }));
   return { count: countRow?.value ?? 0, trees };
 });

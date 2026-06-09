@@ -1,18 +1,33 @@
 import type { NodeTypeValue } from "@repo/schemas";
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { HeartIcon } from "lucide-react";
+import { Button } from "@repo/ui/components/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/ui/components/select";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, notFound, redirect, useRouter } from "@tanstack/react-router";
+import { HeartIcon, LoaderCircleIcon, PlusIcon, UserPlusIcon } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
 import { YourTreesSection } from "~/components/your-trees-section";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
-import { $listMyLikedEntities } from "~/server/entity-resolver";
+import { $followCurator, $getCuratorProfile, $unfollowCurator } from "~/server/curator-profile";
+import { $addLikedEntityToTree, $listMyLikedEntities } from "~/server/entity-resolver";
 
-import { Route as AuthLayoutRoute } from "../route";
+type LikedEntity = Awaited<ReturnType<typeof $listMyLikedEntities>>["entities"][number];
+type AddToTreeTarget = {
+  id: string;
+  title: string;
+};
 
 export const Route = createFileRoute("/_auth/curator/$username")({
-  beforeLoad: ({ context, params }) => {
+  beforeLoad: ({ context }) => {
     const user = context.user;
     if (!user) {
       throw redirect({ to: "/sign-in" });
@@ -20,45 +35,75 @@ export const Route = createFileRoute("/_auth/curator/$username")({
     if (!user.username) {
       throw redirect({ to: "/onboarding" });
     }
-    if (params.username !== user.username) {
-      throw redirect({
-        to: "/curator/$username",
-        params: { username: user.username },
-        replace: true,
-      });
-    }
   },
-  loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(myCultureTreesQueryOptions());
-    const liked = await $listMyLikedEntities();
-    return { likedEntities: liked.entities };
+  loader: async ({ params }) => {
+    const profile = await $getCuratorProfile({ data: { username: params.username } });
+    if (!profile) {
+      throw notFound();
+    }
+
+    const liked = profile.isOwnProfile ? await $listMyLikedEntities() : { entities: [] };
+    return { likedEntities: liked.entities, profile };
   },
   component: CuratorProfilePage,
 });
 
 function CuratorProfilePage() {
-  const { user } = AuthLayoutRoute.useRouteContext();
-  const { username: profileUsername } = Route.useParams();
-  const { likedEntities } = Route.useLoaderData();
-  const { data } = useQuery(myCultureTreesQueryOptions());
+  const router = useRouter();
+  const { likedEntities, profile } = Route.useLoaderData();
+  const queryClient = useQueryClient();
+  const addLikedEntity = useMutation({
+    mutationFn: (input: { entityId: string; targetTreeId: string }) =>
+      $addLikedEntityToTree({ data: input }),
+    onSuccess: async () => {
+      toast.success("Branch added to your tree.");
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not add that Branch.");
+    },
+  });
+  const toggleFollow = useMutation({
+    mutationFn: async (
+      isFollowing: boolean,
+    ): Promise<{ isFollowing: boolean; followerCount: number }> => {
+      return isFollowing
+        ? await $unfollowCurator({ data: { username: profile.profile.username } })
+        : await $followCurator({ data: { username: profile.profile.username } });
+    },
+    onSuccess: async (result) => {
+      toast.success(result.isFollowing ? "Curator followed." : "Curator unfollowed.");
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not update that follow.");
+    },
+  });
 
-  const trees = data?.trees ?? [];
-  const count = data?.count ?? 0;
-  const isOwnProfile = user.username === profileUsername;
-  const bioText = isOwnProfile ? (user.bio?.trim() ? user.bio.trim() : "—") : "—";
+  const trees = profile.trees;
+  const count = trees.length;
+  const addToTreeTargets: AddToTreeTarget[] = trees
+    .filter((tree) => tree.generationStatus === "ready")
+    .map((tree) => ({ id: tree.id, title: tree.listTitle }));
+  const bioText = profile.profile.bio?.trim() ? profile.profile.bio.trim() : "—";
 
   return (
     <div className="flex flex-1 flex-col py-8">
       <div className="relative z-10 mx-auto w-full max-w-3xl px-4 sm:px-6 md:px-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-3">
-            <p className="font-heading text-2xl text-foreground">@{profileUsername}</p>
+            <p className="font-heading text-2xl text-foreground">@{profile.profile.username}</p>
             <p className="font-body text-sm text-muted-foreground">
               <span className="text-foreground/80">bio:</span>{" "}
               <span className="text-foreground/90">&ldquo;{bioText}&rdquo;</span>
             </p>
+            <p className="font-mono text-[0.65rem] tracking-[0.16em] text-muted-foreground uppercase">
+              {profile.follow.followerCount}{" "}
+              {profile.follow.followerCount === 1 ? "follower" : "followers"}
+            </p>
           </div>
-          {isOwnProfile ? (
+          {profile.isOwnProfile ? (
             <p className="font-body shrink-0 pt-1 text-sm">
               <Link
                 to="/settings/profile"
@@ -67,64 +112,156 @@ function CuratorProfilePage() {
                 Edit profile
               </Link>
             </p>
-          ) : null}
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant={profile.follow.isFollowing ? "outline" : "default"}
+              className="shrink-0 rounded-full"
+              disabled={toggleFollow.isPending}
+              onClick={() => toggleFollow.mutate(profile.follow.isFollowing)}
+            >
+              {toggleFollow.isPending ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <UserPlusIcon className="size-3.5" aria-hidden />
+              )}
+              {profile.follow.isFollowing ? "Following" : "Follow"}
+            </Button>
+          )}
         </div>
 
         <hr className="my-8 border-border" />
 
-        <YourTreesSection count={count} trees={trees} />
+        <YourTreesSection
+          count={count}
+          trees={trees}
+          emptyMessage={
+            profile.isOwnProfile
+              ? "Create a Culture Tree to start shaping your library."
+              : "No public Culture Trees yet."
+          }
+          title={profile.isOwnProfile ? "Your trees" : "Public trees"}
+        />
 
-        <section className="mt-10 space-y-4">
-          <div className="flex items-center gap-2">
-            <HeartIcon className="size-4 text-rose-600" aria-hidden />
-            <h2 className="font-heading text-xl tracking-tight text-foreground">Liked things</h2>
-          </div>
-          {likedEntities.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {likedEntities.map((item) => (
-                <article
-                  key={item.id}
-                  className="flex min-w-0 items-center gap-3 rounded border border-border/70 bg-card/80 p-3"
-                >
-                  <NodeThumbnail
-                    type={item.type as NodeTypeValue}
-                    src={item.imageUrl ?? undefined}
-                    size="sm"
-                    className="size-11 rounded-none object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <p className="font-heading min-w-0 truncate text-base text-card-foreground">
-                        {item.name}
-                      </p>
-                      {item.year ? (
-                        <span className="font-mono text-[0.6rem] text-muted-foreground tabular-nums">
-                          {item.year}
-                        </span>
-                      ) : null}
-                    </div>
-                    {item.creatorName ? (
-                      <p className="mt-0.5 truncate font-mono text-[0.62rem] tracking-wide text-primary/80">
-                        {item.creatorName}
-                      </p>
-                    ) : null}
-                    <div className="mt-1 flex items-center gap-2">
-                      <NodeTypeBadge type={item.type as NodeTypeValue} className="text-[0.52rem]" />
-                      <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground uppercase">
-                        {item.likeCount} like{item.likeCount === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              ))}
+        {profile.isOwnProfile ? (
+          <section className="mt-10 space-y-4">
+            <div className="flex items-center gap-2">
+              <HeartIcon className="size-4 text-rose-600" aria-hidden />
+              <h2 className="font-heading text-xl tracking-tight text-foreground">
+                Liked Branches
+              </h2>
             </div>
-          ) : (
-            <p className="font-body rounded border border-border/60 bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-              No liked things yet.
-            </p>
-          )}
-        </section>
+            {likedEntities.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {likedEntities.map((item) => (
+                  <LikedBranchCard
+                    key={item.id}
+                    item={item}
+                    targets={addToTreeTargets}
+                    isPending={addLikedEntity.isPending}
+                    onAddToTree={(targetTreeId) =>
+                      addLikedEntity.mutateAsync({ entityId: item.id, targetTreeId })
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="font-body rounded border border-border/60 bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+                No liked Branches yet.
+              </p>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function LikedBranchCard({
+  item,
+  targets,
+  isPending,
+  onAddToTree,
+}: {
+  readonly item: LikedEntity;
+  readonly targets: readonly AddToTreeTarget[];
+  readonly isPending: boolean;
+  readonly onAddToTree: (targetTreeId: string) => Promise<unknown>;
+}) {
+  const [targetTreeId, setTargetTreeId] = useState("");
+  const resolvedTargetTreeId = targetTreeId || targets[0]?.id || "";
+
+  return (
+    <article className="flex min-w-0 flex-col gap-3 rounded border border-border/70 bg-card/80 p-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <NodeThumbnail
+          type={item.type as NodeTypeValue}
+          src={item.imageUrl ?? undefined}
+          size="sm"
+          className="size-11 rounded-none object-cover"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="font-heading min-w-0 truncate text-base text-card-foreground">
+              {item.name}
+            </p>
+            {item.year ? (
+              <span className="font-mono text-[0.6rem] text-muted-foreground tabular-nums">
+                {item.year}
+              </span>
+            ) : null}
+          </div>
+          {item.creatorName ? (
+            <p className="mt-0.5 truncate font-mono text-[0.62rem] tracking-wide text-primary/80">
+              {item.creatorName}
+            </p>
+          ) : null}
+          <div className="mt-1 flex items-center gap-2">
+            <NodeTypeBadge type={item.type as NodeTypeValue} className="text-[0.52rem]" />
+            <span className="font-mono text-[0.58rem] tracking-wide text-muted-foreground uppercase">
+              {item.likeCount} like{item.likeCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Select
+          value={resolvedTargetTreeId}
+          onValueChange={(value) => setTargetTreeId(value ?? "")}
+        >
+          <SelectTrigger size="sm" className="max-w-44 rounded-full">
+            <SelectValue placeholder="Choose tree" />
+          </SelectTrigger>
+          <SelectContent>
+            {targets.map((target) => (
+              <SelectItem key={target.id} value={target.id}>
+                {target.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={isPending || !resolvedTargetTreeId}
+          className="rounded-full"
+          onClick={() => {
+            if (!resolvedTargetTreeId) {
+              return;
+            }
+            void onAddToTree(resolvedTargetTreeId);
+          }}
+        >
+          {isPending ? (
+            <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+          ) : (
+            <PlusIcon className="size-3.5" aria-hidden />
+          )}
+          Add to Tree
+        </Button>
+      </div>
+    </article>
   );
 }

@@ -1,6 +1,175 @@
 {
   "seed": "Grimy New York 70s",
   "seedType": "root",
+  "guideSections": [
+    {
+      "id": "start-here",
+      "title": "Start Here",
+      "description": "The strongest first paths into grimy 1970s New York.",
+      "items": [
+        {
+          "id": "item_001",
+          "name": "Taxi Driver",
+          "type": "film",
+          "year": 1976,
+          "reason": "Scorsese's fever dream captures the psychic rot beneath the city's neon decay, where alienation stops being mood and becomes the weather itself.",
+          "connectionType": "thematic",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Taxi Driver",
+            "creator": "Martin Scorsese"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_002",
+          "name": "The Friends of Eddie Coyle",
+          "type": "film",
+          "year": 1973,
+          "reason": "Peter Yates's crime film shares the same exhausted masculinity and urban corrosion, showing a city that does not contain violence so much as manufacture it.",
+          "connectionType": "spiritual-kin",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "The Friends of Eddie Coyle",
+            "creator": "Peter Yates"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_004",
+          "name": "Frankie Teardrop",
+          "type": "song",
+          "year": 1977,
+          "reason": "Ten minutes of factory-floor panic and domestic collapse, like the sound of the American Dream cracking open in a Lower East Side hallway.",
+          "connectionType": "catalyst",
+          "branchRole": "essential-next",
+          "searchHint": {
+            "title": "Frankie Teardrop",
+            "creator": "Suicide"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "more-like-this",
+      "title": "More Like This",
+      "description": "Works that keep the same urban corrosion and exhausted danger in view.",
+      "items": [
+        {
+          "id": "item_003",
+          "name": "Suicide",
+          "type": "artist",
+          "reason": "Alan Vega and Martin Rev turned cheap electronics into downtown menace, making music that sounded less performed than exhaled by the city itself.",
+          "connectionType": "thematic",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "Suicide band New York"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_005",
+          "name": "The Power Broker",
+          "type": "book",
+          "year": 1974,
+          "reason": "Caro shows how Robert Moses built the physical systems that later decayed into 70s New York, turning policy into a hidden prehistory of urban ruin.",
+          "connectionType": "catalyst",
+          "branchRole": "similar-appetite",
+          "searchHint": {
+            "title": "The Power Broker",
+            "creator": "Robert Caro"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-sideways",
+      "title": "Go Sideways",
+      "description": "Other ways into the same downtown collapse and reinvention.",
+      "items": [
+        {
+          "id": "item_006",
+          "name": "Co-op City",
+          "type": "place",
+          "reason": "This Bronx megaproject embodies the era's busted utopianism, a vertical suburb where planning ambition hardened into concrete estrangement.",
+          "connectionType": "catalyst",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Co-op City",
+            "location": {
+              "city": "Bronx",
+              "country": "United States"
+            }
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_007",
+          "name": "New York Dolls at the Mercer Arts Center Collapse",
+          "type": "event",
+          "year": 1973,
+          "reason": "A glam-rock venue literally caving in feels like the perfect emblem of the period, when every cultural breakthrough seemed balanced on rotten infrastructure.",
+          "connectionType": "thematic",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "Mercer Arts Center collapse",
+            "dateRange": {
+              "start": "1973-08-03",
+              "end": "1973-08-03"
+            }
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_012",
+          "name": "The Colossus of New York",
+          "type": "book",
+          "year": 2003,
+          "reason": "Whitehead's essay-book turns sidewalks, subways, and towers into memory devices, proving the ruined city never stopped shaping the people who survived it.",
+          "connectionType": "documented-by",
+          "branchRole": "sideways-path",
+          "searchHint": {
+            "title": "The Colossus of New York",
+            "creator": "Colson Whitehead"
+          },
+          "source": "ai"
+        }
+      ]
+    },
+    {
+      "id": "go-deeper",
+      "title": "Go Deeper",
+      "description": "More specific places and afterimages once the core mood is clear.",
+      "items": [
+        {
+          "id": "item_008",
+          "name": "Oscar Wilde Room",
+          "type": "place",
+          "reason": "This tiny Mercer basement was the larval stage of punk, a room where glam collapse and downtown reinvention still looked like the same scene.",
+          "connectionType": "birthplace",
+          "branchRole": "deep-cut",
+          "searchHint": {
+            "title": "Oscar Wilde Room Mercer Arts Center"
+          },
+          "source": "ai"
+        },
+        {
+          "id": "item_010",
+          "name": "Loisaida",
+          "type": "place",
+          "reason": "The Puerto Rican name for the Lower East Side preserves the community imagination that survived even as the neighborhood around it was left to crumble.",
+          "connectionType": "thematic",
+          "branchRole": "deep-cut",
+          "searchHint": {
+            "title": "Loisaida Lower East Side"
+          },
+          "source": "ai"
+        }
+      ]
+    }
+  ],
   "items": [
     {
       "id": "item_001",
@@ -13,6 +182,7 @@
         "title": "Taxi Driver",
         "creator": "Martin Scorsese"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {
@@ -26,6 +196,7 @@
         "title": "The Friends of Eddie Coyle",
         "creator": "Peter Yates"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {
@@ -50,6 +221,7 @@
         "title": "Frankie Teardrop",
         "creator": "Suicide"
       },
+      "branchRole": "essential-next",
       "source": "ai"
     },
     {

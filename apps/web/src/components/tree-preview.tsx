@@ -1,107 +1,166 @@
-import type {
-  ConnectionTypeValue,
-  CultureTree,
-  SearchHint,
-  TreeEnrichmentsMap,
-  TreeItem,
+import {
+  filterCultureTreeToNodeTypes,
+  formatGuideSectionTitle,
+  type ConnectionTypeValue,
+  type CultureTree,
+  type GuideSection,
+  type GuideSectionIdValue,
+  type NodeTypeValue,
+  type SearchHint,
+  type TreeEnrichmentsMap,
+  type TreeItem,
 } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@repo/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repo/ui/components/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import { ClipboardIcon, HeartIcon, LoaderCircleIcon, SparklesIcon, Trash2Icon } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import type { CSSProperties, ReactNode } from "react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  HeartIcon,
+  ImageIcon,
+  LoaderCircleIcon,
+  MoreHorizontalIcon,
+  PlayIcon,
+  PlusIcon,
+  SparklesIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { AddToTreePopover, type AddToTreeTarget } from "~/components/add-to-tree-popover";
+import { Masonry } from "~/components/masonry";
 import { NodeThumbnail } from "~/components/node-thumbnail";
 import { NodeTypeBadge } from "~/components/node-type-badge";
+import { NodeTypeFilterList } from "~/components/node-type-filter-list";
+import { TreeNodeDialog } from "~/components/tree-node-popover";
+import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
+import { TreeSummaryCard } from "~/components/tree-summary-card";
+import { resolveDisplayImageUrl } from "~/lib/display-image";
 import type { TreeResolvedEntitiesMap } from "~/server/entity-resolver";
-
-type TreeRow = {
-  capacity: number;
-  items: TreeItem[];
-  startIndex: number;
-};
-
-function splitItemsIntoTreeRows(items: readonly TreeItem[]): TreeRow[] {
-  const rows: TreeRow[] = [];
-  let index = 0;
-  let capacity = 2;
-
-  while (index < items.length) {
-    rows.push({
-      capacity,
-      items: items.slice(index, index + capacity),
-      startIndex: index,
-    });
-    index += capacity;
-    capacity = Math.min(capacity + 1, 4);
-  }
-
-  return rows;
-}
-
-function rowMaxWidth(capacity: number): string {
-  switch (capacity) {
-    case 1:
-      return "22rem";
-    case 2:
-      return "48rem";
-    case 3:
-      return "72rem";
-    case 4:
-      return "96rem";
-    default:
-      return "100%";
-  }
-}
-
-function partialFourUpCardStyle(): CSSProperties {
-  return {
-    flex: "0 1 clamp(16rem, calc((100% - 3 * 1.25rem) / 4), 22rem)",
-  };
-}
-
-function itemSpanStyle(itemCount: number, capacity: number, index: number): CSSProperties {
-  if (capacity >= 4) {
-    if (itemCount >= 4) {
-      return {
-        gridColumn: `${index * 3 + 1} / span 3`,
-      };
-    }
-
-    if (itemCount === 3) {
-      return {
-        gridColumn: `${index * 3 + 2} / span 3`,
-      };
-    }
-
-    if (itemCount === 2) {
-      return {
-        gridColumn: `${index * 3 + 4} / span 3`,
-      };
-    }
-
-    return {
-      gridColumn: "5 / span 3",
-    };
-  }
-
-  const baseSpan = Math.floor(capacity / itemCount);
-  const remainder = capacity % itemCount;
-  const spans = Array.from(
-    { length: itemCount },
-    (_, itemIndex) => baseSpan + (itemIndex < remainder ? 1 : 0),
-  );
-  const start = spans.slice(0, index).reduce((sum, span) => sum + span, 1);
-  const span = spans[index] ?? 1;
-
-  return {
-    gridColumn: `${start} / span ${span}`,
-  };
-}
 
 function formatConnectionLabel(connectionType: ConnectionTypeValue): string {
   return connectionType.replaceAll("-", " ").toUpperCase();
+}
+
+type PreviewSection = {
+  id: GuideSectionIdValue | "unsectioned";
+  title: string;
+  description?: string;
+  items: TreeItem[];
+};
+
+type PreviewBoardItem = {
+  aspectRatio: number;
+  chromeHeight: number;
+  height: number;
+  id: string;
+  img: string;
+  sectionId: PreviewSection["id"];
+  sectionTitle: string;
+  item: TreeItem;
+};
+
+export type { AddToTreeTarget };
+
+function buildPreviewSections(tree: CultureTree): PreviewSection[] {
+  if (tree.guideSections.length === 0) {
+    return [{ id: "unsectioned", title: "Branches", items: tree.items }];
+  }
+
+  const sectionItemIds = new Set(
+    tree.guideSections.flatMap((section) => section.items.map((item) => item.id)),
+  );
+  const unsectionedItems = tree.items.filter((item) => !sectionItemIds.has(item.id));
+  const sections: PreviewSection[] = tree.guideSections.map((section: GuideSection) => ({
+    id: section.id,
+    title: section.title || formatGuideSectionTitle(section.id),
+    description: section.description,
+    items: section.items,
+  }));
+
+  if (unsectionedItems.length > 0) {
+    sections.push({ id: "unsectioned", title: "More Branches", items: unsectionedItems });
+  }
+
+  return sections;
+}
+
+function masonryHeightForItem(item: TreeItem): number {
+  switch (item.type) {
+    case "album":
+    case "song":
+    case "person":
+    case "artist":
+      return 620;
+    case "book":
+    case "film":
+    case "tv":
+    case "artwork":
+      return 780;
+    case "place":
+    case "event":
+    case "article":
+    case "podcast":
+      return 680;
+  }
+}
+
+function masonryAspectRatioForItem(item: TreeItem): number {
+  switch (item.type) {
+    case "album":
+    case "song":
+      return 1;
+    case "book":
+    case "film":
+    case "tv":
+    case "artwork":
+      return 1.48;
+    case "person":
+    case "artist":
+      return 1.1;
+    case "place":
+    case "event":
+    case "article":
+    case "podcast":
+      return 0.72;
+  }
+}
+
+function buildPreviewBoardItems({
+  enrichments,
+  resolvedEntities,
+  sections,
+}: {
+  readonly enrichments: TreeEnrichmentsMap;
+  readonly resolvedEntities: TreeResolvedEntitiesMap;
+  readonly sections: readonly PreviewSection[];
+}): PreviewBoardItem[] {
+  return sections.flatMap((section) =>
+    section.items.map((item) => ({
+      aspectRatio: masonryAspectRatioForItem(item),
+      chromeHeight: 78,
+      height: masonryHeightForItem(item),
+      id: `${section.id}-${item.id}`,
+      img: coverSrcForItem({ item, enrichments, resolvedEntity: resolvedEntities[item.id] }) ?? "",
+      item,
+      sectionId: section.id,
+      sectionTitle: section.title,
+    })),
+  );
+}
+
+function availableBranchTypes(tree: CultureTree): NodeTypeValue[] {
+  return Array.from(new Set(tree.items.map((item) => item.type))).sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function headingFromSearchHint(
@@ -116,345 +175,665 @@ function headingFromSearchHint(
   return { primary: displayName };
 }
 
-function EntityStat({
-  icon,
-  value,
-  tooltip,
+function memberTooltip(count: number): string {
+  return `Liked by ${count} member${count === 1 ? "" : "s"}`;
+}
+
+function LikeToggle({
+  likeCount,
+  liked,
+  onToggle,
 }: {
-  readonly icon: ReactNode;
-  readonly value: number;
-  readonly tooltip: string;
+  readonly likeCount: number;
+  readonly liked: boolean;
+  readonly onToggle: () => void;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-muted-foreground transition-colors hover:text-foreground" />
+          <button
+            type="button"
+            aria-pressed={liked}
+            onClick={onToggle}
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-1 text-muted-foreground transition-colors hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-rose-300/40 focus-visible:outline-none",
+              liked && "text-rose-300 hover:text-rose-200",
+            )}
+          />
         }
       >
-        {icon}
-        <span className="font-mono text-[0.62rem] leading-none tabular-nums">{value}</span>
+        <HeartIcon className={cn("size-3.5", liked && "fill-current")} aria-hidden />
+        <span className="font-mono text-[0.62rem] leading-none tabular-nums">{likeCount}</span>
       </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
+      <TooltipContent>
+        {liked ? "You liked this · " : ""}
+        {memberTooltip(likeCount)}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
-function memberTooltip(count: number): string {
-  return `Liked by ${count} member${count === 1 ? "" : "s"}`;
-}
-
-function treeTooltip(count: number): string {
-  return `Appears in ${count} tree${count === 1 ? "" : "s"}`;
+function coverSrcForItem({
+  item,
+  enrichments,
+  resolvedEntity,
+}: {
+  readonly item: TreeItem;
+  readonly enrichments: TreeEnrichmentsMap;
+  readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
+}): string | undefined {
+  const media = enrichments[item.id];
+  return resolveDisplayImageUrl(item, media) ?? resolvedEntity?.imageUrl ?? undefined;
 }
 
 export function CultureTreeItemCard({
   item,
   enrichments,
   isLoading = false,
-  isGeneratingNewTree = false,
-  onDeleteItem,
-  onGenerateNewTree,
-  onToggleLike,
+  onOpen,
   resolvedEntity,
-  revealIndex = 0,
-  style,
+  sectionTitle,
 }: {
   readonly item: TreeItem;
   readonly enrichments: TreeEnrichmentsMap;
   readonly isLoading?: boolean;
-  readonly isGeneratingNewTree?: boolean;
+  readonly onOpen: (item: TreeItem) => void;
+  readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
+  readonly sectionTitle?: string;
+}) {
+  const itemHeading = headingFromSearchHint(item.name, item.searchHint);
+  const coverSrc = coverSrcForItem({ item, enrichments, resolvedEntity });
+
+  return (
+    <article className="group h-full min-w-0">
+      <button
+        type="button"
+        className="flex h-full w-full min-w-0 flex-col rounded-md border border-border/75 bg-card/70 p-2 text-left shadow-[0_18px_60px_-52px_rgba(20,26,16,0.65)] transition-colors duration-200 ease-out outline-none hover:border-primary/35 hover:bg-card focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background"
+        onClick={() => onOpen(item)}
+      >
+        <span className="relative block min-h-0 flex-1 overflow-hidden rounded bg-muted/30">
+          <NodeThumbnail
+            type={item.type}
+            src={coverSrc}
+            size="md"
+            className="absolute inset-0 size-full rounded object-contain object-center transition duration-300 ease-out group-hover:scale-[1.018]"
+          />
+          {isLoading ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-background/70">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1.5 font-mono text-[0.6rem] tracking-[0.08em] text-muted-foreground uppercase shadow-sm">
+                <LoaderCircleIcon className="size-3.5 animate-spin text-primary" aria-hidden />
+                Adding
+              </span>
+            </span>
+          ) : null}
+          {resolvedEntity?.likedByCurrentUser ? (
+            <span className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-full bg-background/88 text-rose-600 shadow-sm">
+              <HeartIcon className="size-3.5 fill-current" aria-hidden />
+            </span>
+          ) : null}
+        </span>
+        <span className="block min-w-0 shrink-0 px-1 pt-2 pb-1.5">
+          <span className="font-heading block truncate text-[1.05rem] leading-snug tracking-tight text-foreground">
+            {itemHeading.primary}
+          </span>
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.74rem] leading-tight text-muted-foreground">
+            {itemHeading.secondary ? (
+              <span className="min-w-0 truncate">{itemHeading.secondary}</span>
+            ) : (
+              <span>{formatConnectionLabel(item.connectionType).toLowerCase()}</span>
+            )}
+            {item.year != null ? (
+              <span className="shrink-0 font-mono tabular-nums">{item.year}</span>
+            ) : null}
+          </span>
+          {sectionTitle ? (
+            <span className="mt-1 block truncate font-mono text-[0.58rem] tracking-[0.1em] text-muted-foreground/70 uppercase">
+              {sectionTitle}
+            </span>
+          ) : null}
+        </span>
+      </button>
+    </article>
+  );
+}
+
+function BranchFocusDialog({
+  addToTreeTargets = [],
+  item,
+  enrichments,
+  hasNext = false,
+  hasPrevious = false,
+  isGeneratingNewTree,
+  onClose,
+  onNext,
+  onPrevious,
+  onAddToTree,
+  onStartNewTree,
+  onDeleteItem,
+  onGenerateNewTree,
+  onToggleLike,
+  resolvedEntity,
+  sourceTreeId,
+}: {
+  readonly addToTreeTargets?: readonly AddToTreeTarget[];
+  readonly item: TreeItem | null;
+  readonly enrichments: TreeEnrichmentsMap;
+  readonly hasNext?: boolean;
+  readonly hasPrevious?: boolean;
+  readonly isGeneratingNewTree: boolean;
+  readonly onClose: () => void;
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
+  readonly onAddToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
+  readonly onStartNewTree?: (item: TreeItem) => Promise<void>;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
-  readonly revealIndex?: number;
   readonly resolvedEntity?: TreeResolvedEntitiesMap[string];
-  readonly style?: CSSProperties;
+  readonly sourceTreeId?: string;
 }) {
-  const media = enrichments[item.id];
-  const itemHeading = headingFromSearchHint(item.name, item.searchHint);
-  const coverSrc =
-    media?.coverUrl ??
-    media?.thumbnailUrl ??
-    item.snapshot?.image ??
-    resolvedEntity?.imageUrl ??
-    undefined;
+  const media = item ? enrichments[item.id] : undefined;
+  const itemHeading = item ? headingFromSearchHint(item.name, item.searchHint) : null;
+  const coverSrc = item ? coverSrcForItem({ item, enrichments, resolvedEntity }) : undefined;
+  const trailerVideoId = media?.youtubeVideoId;
+  const [isPlayingTrailer, setIsPlayingTrailer] = useState(false);
+
+  // Each branch opens on its poster; reset when the focused branch changes.
+  useEffect(() => {
+    setIsPlayingTrailer(false);
+  }, [item?.id]);
+
+  // Cycle branches with the arrow keys while the focus dialog is open.
+  useEffect(() => {
+    if (item == null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.closest("input, textarea") || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === "ArrowRight" && hasNext) {
+        event.preventDefault();
+        onNext?.();
+      } else if (event.key === "ArrowLeft" && hasPrevious) {
+        event.preventDefault();
+        onPrevious?.();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [item, hasNext, hasPrevious, onNext, onPrevious]);
 
   return (
-    <motion.article
-      layout="position"
-      initial={{ opacity: 0, y: 18, scale: 0.982, filter: "blur(10px)" }}
-      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-      exit={{ opacity: 0, y: -8, scale: 0.99, filter: "blur(6px)" }}
-      whileHover={{ y: -2 }}
-      transition={{
-        layout: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
-        opacity: { duration: 0.5, delay: Math.min(revealIndex, 6) * 0.035 },
-        y: { duration: 0.58, delay: Math.min(revealIndex, 6) * 0.035, ease: [0.22, 1, 0.36, 1] },
-        scale: {
-          duration: 0.58,
-          delay: Math.min(revealIndex, 6) * 0.035,
-          ease: [0.22, 1, 0.36, 1],
-        },
-        filter: { duration: 0.44, delay: Math.min(revealIndex, 6) * 0.035, ease: "easeOut" },
-      }}
-      className="group relative overflow-hidden rounded-[1.4rem] border border-border/70 bg-card/92 shadow-[0_24px_70px_-46px_rgba(30,22,10,0.55)] will-change-transform"
-      style={style}
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.1),transparent_52%)]" />
-      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
-      <div className="relative flex items-start justify-between gap-3 border-b border-border/45 px-4 py-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-muted-foreground uppercase">
-          <NodeTypeBadge type={item.type} showIcon className="text-[0.54rem]" />
-          {isLoading ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide">
-              <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
-              Adding
-            </span>
-          ) : (
-            <span
-              className="rounded-full border border-border/60 bg-background/70 px-2 py-1 text-[0.56rem] tracking-wide"
-              title="Relationship to seed"
-            >
-              {formatConnectionLabel(item.connectionType)}
-            </span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {resolvedEntity && !isLoading ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className={
-                resolvedEntity.likedByCurrentUser
-                  ? "shrink-0 text-rose-600 hover:text-rose-700"
-                  : "shrink-0 text-muted-foreground hover:text-rose-600"
-              }
-              onClick={() =>
-                void onToggleLike?.(resolvedEntity.id, resolvedEntity.likedByCurrentUser)
-              }
-              aria-label={
-                resolvedEntity.likedByCurrentUser
-                  ? `Unlike ${resolvedEntity.name}`
-                  : `Like ${resolvedEntity.name}`
-              }
-            >
-              <HeartIcon
-                className={cn("size-3.5", resolvedEntity.likedByCurrentUser ? "fill-current" : "")}
-                aria-hidden
-              />
-            </Button>
-          ) : null}
-          {onGenerateNewTree && !isLoading ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0 border border-primary/35 bg-primary/10 text-primary shadow-[0_0_0_1px_rgba(214,154,78,0.05)] hover:border-primary/60 hover:bg-primary/20 hover:text-primary focus-visible:ring-primary/80"
-                    disabled={isGeneratingNewTree}
-                    onClick={() => void onGenerateNewTree(item)}
-                    aria-label={`Generate new tree from ${item.name}`}
-                  />
-                }
+    <Dialog open={item != null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName={cn(
+          "transition-[background-color,backdrop-filter] duration-700 ease-out",
+          isPlayingTrailer && "bg-black/95 supports-backdrop-filter:backdrop-blur-md",
+        )}
+        className="grid h-[min(52rem,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] w-[min(96rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden rounded-2xl border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.18_0.012_125)] p-0 text-[oklch(0.91_0.014_125)] shadow-2xl ring-1 ring-[oklch(0.95_0.01_120/0.06)] sm:max-w-none md:grid-cols-[minmax(0,1fr)_22rem]"
+      >
+        {item && itemHeading ? (
+          <>
+            <DialogTitle className="sr-only">{itemHeading.primary}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Branch details and connection notes for {itemHeading.primary}.
+            </DialogDescription>
+            <div className="relative min-h-0 bg-[oklch(0.18_0.012_125)]">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-5 left-5 z-20 rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)]"
+                onClick={onClose}
+                aria-label="Back to tree"
               >
-                <SparklesIcon className="size-3.5 fill-primary/20" aria-hidden />
-              </TooltipTrigger>
-              <TooltipContent>Generate new tree →</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
-      </div>
-      <div className="relative flex gap-0">
-        <div className="shrink-0 border-r border-border/55 bg-muted/10">
-          <NodeThumbnail type={item.type} src={coverSrc} size="md" />
-          {resolvedEntity ? (
-            <div className="flex items-center justify-center gap-1 border-t border-border/45 bg-background/55 px-1 py-1">
-              <EntityStat
-                icon={<HeartIcon className="size-3.5 text-rose-600" aria-hidden />}
-                value={resolvedEntity.likeCount}
-                tooltip={memberTooltip(resolvedEntity.likeCount)}
-              />
-              <EntityStat
-                icon={<ClipboardIcon className="size-3.5 text-primary/80" aria-hidden />}
-                value={resolvedEntity.appearanceCount}
-                tooltip={treeTooltip(resolvedEntity.appearanceCount)}
-              />
-            </div>
-          ) : null}
-        </div>
-        <div className={cn("min-w-0 flex-1 px-4 py-2", onDeleteItem && !isLoading && "pb-9")}>
-          <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <h3 className="font-heading text-xl leading-snug tracking-tight text-card-foreground md:text-2xl">
-              {itemHeading.primary}
-            </h3>
-            {item.year != null ? (
-              <span className="font-mono text-[0.64rem] text-muted-foreground tabular-nums">
-                {item.year}
-              </span>
-            ) : null}
-          </div>
-          {itemHeading.secondary ? (
-            <p className="mb-2 font-mono text-[0.68rem] tracking-wide text-primary/80">
-              {itemHeading.secondary}
-            </p>
-          ) : null}
-          {item.type === "song" && media?.musicAlbumTitle ? (
-            <p className="font-body mt-1.5 text-xs leading-snug text-muted-foreground normal-case">
-              From the album{" "}
-              {media.musicAlbumExternalUrl ? (
-                <a
-                  className="text-primary hover:underline"
-                  href={media.musicAlbumExternalUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  {media.musicAlbumTitle}
-                </a>
-              ) : (
-                <span className="text-foreground/85">{media.musicAlbumTitle}</span>
-              )}
-            </p>
-          ) : null}
-          {item.reason ? (
-            <p className="font-body mt-2 line-clamp-4 text-base leading-relaxed font-medium text-card-foreground">
-              {item.reason}
-            </p>
-          ) : isLoading ? (
-            <div className="mt-3 space-y-2" aria-label="Finding the connection">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <LoaderCircleIcon className="size-3.5 animate-spin text-primary" aria-hidden />
-                Finding the connection…
-              </div>
-              <div className="h-2 w-full animate-pulse rounded-full bg-muted" />
-              <div className="h-2 w-4/5 animate-pulse rounded-full bg-muted" />
-              <div className="h-2 w-2/3 animate-pulse rounded-full bg-muted" />
-            </div>
-          ) : null}
-        </div>
-      </div>
-      {onDeleteItem && !isLoading ? (
-        <div className="absolute right-3 bottom-3 z-10">
-          <Tooltip>
-            <TooltipTrigger
-              render={
+                <XIcon className="size-4" aria-hidden />
+              </Button>
+              {trailerVideoId && isPlayingTrailer ? (
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => onDeleteItem(item)}
-                  aria-label={`Delete ${item.name} from this tree`}
-                />
-              }
-            >
-              <Trash2Icon className="size-3.5" aria-hidden />
-            </TooltipTrigger>
-            <TooltipContent>Delete branch</TooltipContent>
-          </Tooltip>
-        </div>
-      ) : null}
-    </motion.article>
+                  size="icon-sm"
+                  className="absolute top-5 right-5 z-10 rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)]"
+                  onClick={() => setIsPlayingTrailer(false)}
+                  aria-label="Back to poster"
+                >
+                  <ImageIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              {hasPrevious ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute inset-y-0 left-5 z-20 my-auto rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)] active:translate-y-0"
+                  onClick={() => onPrevious?.()}
+                  aria-label="Previous branch"
+                >
+                  <ChevronLeftIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              {hasNext ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute inset-y-0 right-5 z-20 my-auto rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.91_0.014_125)] transition-colors hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.91_0.014_125)] active:translate-y-0"
+                  onClick={() => onNext?.()}
+                  aria-label="Next branch"
+                >
+                  <ChevronRightIcon className="size-4" aria-hidden />
+                </Button>
+              ) : null}
+              <div
+                key={item.id}
+                className="pointer-events-none flex h-full min-h-0 content-fade-scale items-center justify-center px-6 py-16 md:px-12"
+              >
+                {trailerVideoId && isPlayingTrailer ? (
+                  <iframe
+                    title={`${itemHeading.primary} trailer`}
+                    src={`https://www.youtube-nocookie.com/embed/${trailerVideoId}?autoplay=1&rel=0`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="pointer-events-auto aspect-video max-h-full w-full max-w-5xl rounded-sm shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
+                  />
+                ) : coverSrc ? (
+                  <div className="pointer-events-auto relative inline-flex max-h-full max-w-full">
+                    <img
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      src={coverSrc}
+                      className="max-h-full max-w-full rounded-sm object-contain shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]"
+                    />
+                    {trailerVideoId ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsPlayingTrailer(true)}
+                        aria-label={`Play ${itemHeading.primary} trailer`}
+                        className="group absolute inset-0 flex items-center justify-center rounded-sm bg-[oklch(0.12_0.01_125/0)] transition-colors hover:bg-[oklch(0.12_0.01_125/0.35)] focus-visible:bg-[oklch(0.12_0.01_125/0.35)] focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none"
+                      >
+                        <span className="flex size-16 items-center justify-center rounded-full bg-[oklch(0.12_0.01_125/0.6)] text-[oklch(0.95_0.012_125)] ring-1 ring-[oklch(0.95_0.01_120/0.18)] backdrop-blur-sm transition-transform group-hover:scale-105">
+                          <PlayIcon className="size-7 translate-x-0.5 fill-current" aria-hidden />
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="flex aspect-[3/4] w-[min(24rem,70vw)] items-center justify-center rounded-md border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.45)]">
+                    <NodeThumbnail
+                      type={item.type}
+                      size="md"
+                      className="size-24 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <aside className="flex min-h-0 flex-col border-t border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.21_0.012_125)] md:border-t-0 md:border-l">
+              <div className="flex items-center justify-between gap-2 border-b border-[oklch(0.9_0.01_120/0.1)] px-6 py-5">
+                {resolvedEntity ? (
+                  <LikeToggle
+                    likeCount={resolvedEntity.likeCount}
+                    liked={resolvedEntity.likedByCurrentUser}
+                    onToggle={() =>
+                      void onToggleLike?.(resolvedEntity.id, resolvedEntity.likedByCurrentUser)
+                    }
+                  />
+                ) : (
+                  <span />
+                )}
+                {onDeleteItem ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
+                          aria-label="Branch options"
+                        />
+                      }
+                    >
+                      <MoreHorizontalIcon className="size-4" aria-hidden />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => {
+                          onDeleteItem(item);
+                          onClose();
+                        }}
+                      >
+                        <Trash2Icon className="size-3.5" aria-hidden />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </div>
+              <div
+                key={`body-${item.id}`}
+                className="min-h-0 flex-1 content-fade-rise overflow-y-auto px-6 py-6"
+              >
+                <div className="space-y-4">
+                  <div>
+                    <NodeTypeBadge
+                      type={item.type}
+                      className="mb-2 border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)]"
+                    />
+                    <h3 className="font-heading text-2xl leading-tight tracking-tight text-[oklch(0.95_0.012_125)]">
+                      {itemHeading.primary}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[oklch(0.9_0.01_120/0.55)]">
+                      {itemHeading.secondary ? <span>{itemHeading.secondary}</span> : null}
+                      {item.year != null ? (
+                        <span className="font-mono text-xs tabular-nums">{item.year}</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {item.type === "song" && media?.musicAlbumTitle ? (
+                    <p className="text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.58)]">
+                      From the album{" "}
+                      {media.musicAlbumExternalUrl ? (
+                        <a
+                          className="text-[oklch(0.82_0.11_100)] hover:underline"
+                          href={media.musicAlbumExternalUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {media.musicAlbumTitle}
+                        </a>
+                      ) : (
+                        <span className="text-[oklch(0.9_0.01_120/0.78)]">
+                          {media.musicAlbumTitle}
+                        </span>
+                      )}
+                    </p>
+                  ) : null}
+
+                  {item.reason ? (
+                    <div className="space-y-2 pt-2">
+                      <p className="font-mono text-[0.62rem] tracking-[0.14em] text-[oklch(0.9_0.01_120/0.42)] uppercase">
+                        Description
+                      </p>
+                      <p className="font-body text-base leading-relaxed text-[oklch(0.91_0.014_125)]">
+                        {item.reason}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {resolvedEntity &&
+                  (resolvedEntity.appearsInTrees.length > 0 ||
+                    resolvedEntity.privateAppearanceCount > 0) ? (
+                    <div className="space-y-3 pt-2">
+                      <p className="font-mono text-[0.62rem] tracking-[0.14em] text-[oklch(0.9_0.01_120/0.42)] uppercase">
+                        Also appears in
+                      </p>
+                      <div className="space-y-3">
+                        {resolvedEntity.appearsInTrees.map((appearsInTree) => (
+                          <TreeSummaryCard key={appearsInTree.id} tree={appearsInTree} />
+                        ))}
+                      </div>
+                      {resolvedEntity.privateAppearanceCount > 0 ? (
+                        <p className="font-body text-sm leading-relaxed text-[oklch(0.9_0.01_120/0.55)]">
+                          {resolvedEntity.appearsInTrees.length > 0 ? "and in " : "In "}
+                          {resolvedEntity.privateAppearanceCount} private{" "}
+                          {resolvedEntity.privateAppearanceCount === 1 ? "tree" : "trees"}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                key={`footer-${item.id}`}
+                className="content-fade-rise space-y-3 border-t border-[oklch(0.9_0.01_120/0.1)] px-6 py-5 [animation-delay:80ms]"
+              >
+                <div className="flex flex-wrap gap-2">
+                  {onAddToTree && item && sourceTreeId ? (
+                    <AddToTreePopover
+                      sourceTreeId={sourceTreeId}
+                      itemId={item.id}
+                      targets={addToTreeTargets}
+                      onAddToTree={(targetTreeId) => onAddToTree(item, targetTreeId)}
+                      onStartNewTree={onStartNewTree ? () => onStartNewTree(item) : undefined}
+                      trigger={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-full border border-[oklch(0.9_0.01_120/0.1)] bg-[oklch(0.95_0.01_120/0.05)] text-[oklch(0.9_0.01_120/0.72)] hover:bg-[oklch(0.95_0.01_120/0.1)] hover:text-[oklch(0.94_0.01_120)]"
+                        >
+                          <PlusIcon className="size-3.5" aria-hidden />
+                          Add to Tree
+                        </Button>
+                      }
+                    />
+                  ) : null}
+                  {onGenerateNewTree ? (
+                    <Button
+                      type="button"
+                      variant="amber"
+                      size="sm"
+                      className="rounded-full"
+                      disabled={isGeneratingNewTree}
+                      onClick={() => void onGenerateNewTree(item)}
+                    >
+                      {isGeneratingNewTree ? (
+                        <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <SparklesIcon className="size-3.5" aria-hidden />
+                      )}
+                      Explore This
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </aside>
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export function TreePreview({
+  addToTreeTargets = [],
   tree,
   enrichments = {},
+  headerActions,
   loadingItemIds = [],
+  isAddItemPending = false,
+  isGrowItemPending = false,
   isGeneratingNewTree = false,
+  onAddBranchToTree,
+  onStartNewTree,
+  onAddItem,
   onDeleteItem,
   onGenerateNewTree,
+  onGrowItem,
+  onSuggestItems,
   onToggleLike,
   resolvedEntities = {},
+  sourceTreeId,
 }: {
+  readonly addToTreeTargets?: readonly AddToTreeTarget[];
   readonly tree: CultureTree;
   readonly enrichments?: TreeEnrichmentsMap;
+  readonly headerActions?: ReactNode;
   readonly loadingItemIds?: readonly string[];
+  readonly isAddItemPending?: boolean;
+  readonly isGrowItemPending?: boolean;
+  readonly onAddBranchToTree?: (item: TreeItem, targetTreeId: string) => Promise<void>;
+  readonly onStartNewTree?: (item: TreeItem) => Promise<void>;
+  readonly onAddItem?: (node: readonly TreeNodePopoverSubmitInput[]) => Promise<void>;
+  readonly onSuggestItems?: (
+    trayResults: readonly TreeNodePopoverSubmitInput["result"][],
+  ) => Promise<readonly TreeNodePopoverSubmitInput["result"][]>;
   readonly isGeneratingNewTree?: boolean;
   readonly onDeleteItem?: (item: TreeItem) => void;
   readonly onGenerateNewTree?: (item: TreeItem) => Promise<void>;
+  readonly onGrowItem?: (node: TreeNodePopoverSubmitInput) => Promise<void>;
   readonly onToggleLike?: (entityId: string, liked: boolean) => Promise<void>;
   readonly resolvedEntities?: TreeResolvedEntitiesMap;
+  readonly sourceTreeId?: string;
 }) {
-  const itemRows = splitItemsIntoTreeRows(tree.items);
+  const [selectedBranchTypes, setSelectedBranchTypes] = useState<NodeTypeValue[]>([]);
+  const branchTypes = availableBranchTypes(tree);
+  const allBranchTypesSelected = selectedBranchTypes.length === 0;
+  const filteredTree = allBranchTypesSelected
+    ? tree
+    : filterCultureTreeToNodeTypes(tree, selectedBranchTypes);
+  const previewSections = buildPreviewSections(filteredTree).filter(
+    (section) => section.items.length > 0 || section.id !== "unsectioned",
+  );
+  const boardItems = buildPreviewBoardItems({
+    enrichments,
+    resolvedEntities,
+    sections: previewSections,
+  });
   const loadingItemIdSet = new Set(loadingItemIds);
+  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
+  const selectedIndex = selectedBoardId
+    ? boardItems.findIndex((board) => board.id === selectedBoardId)
+    : -1;
+  const selectedItem = selectedIndex >= 0 ? boardItems[selectedIndex].item : null;
+  const selectedResolvedEntity = selectedItem ? resolvedEntities[selectedItem.id] : undefined;
+  const goToBoardOffset = (offset: number) => {
+    setSelectedBoardId((current) => {
+      const index = current ? boardItems.findIndex((board) => board.id === current) : -1;
+      const next = index + offset;
+      if (index < 0 || next < 0 || next >= boardItems.length) {
+        return current;
+      }
+      return boardItems[next].id;
+    });
+  };
+  const filterActive = !allBranchTypesSelected;
+  const toggleBranchType = (type: NodeTypeValue) => {
+    setSelectedBranchTypes((current) => {
+      if (current.length === 0) {
+        return [type];
+      }
+      if (current.includes(type)) {
+        return current.length === 1 ? [] : current.filter((item) => item !== type);
+      }
+      return [...current, type];
+    });
+  };
 
   return (
     <section className="relative w-full text-left">
-      <div className="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top,rgba(214,154,78,0.12),transparent_46%)]" />
-      {itemRows.length > 0 ? (
-        <div className="relative">
-          <motion.div layout className="space-y-4 md:space-y-5">
-            {itemRows.map((row, rowIndex) =>
-              row.capacity >= 4 && row.items.length < 4 ? (
-                <motion.div
-                  layout
-                  key={`tree-row-${rowIndex}`}
-                  className="mx-auto flex max-w-6xl flex-wrap justify-center gap-4 md:gap-5"
-                  style={{ maxWidth: rowMaxWidth(row.capacity) }}
-                >
-                  <AnimatePresence>
-                    {row.items.map((item, itemIndex) => (
-                      <CultureTreeItemCard
-                        key={item.id}
-                        enrichments={enrichments}
-                        isLoading={loadingItemIdSet.has(item.id)}
-                        isGeneratingNewTree={isGeneratingNewTree}
-                        item={item}
-                        onDeleteItem={onDeleteItem}
-                        onGenerateNewTree={onGenerateNewTree}
-                        onToggleLike={onToggleLike}
-                        revealIndex={row.startIndex + itemIndex}
-                        resolvedEntity={resolvedEntities[item.id]}
-                        style={partialFourUpCardStyle()}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              ) : (
-                <motion.div
-                  layout
-                  key={`tree-row-${rowIndex}`}
-                  className="mx-auto grid grid-cols-1 gap-4 md:gap-5"
-                  style={{
-                    gridTemplateColumns:
-                      row.capacity >= 4
-                        ? "repeat(12, minmax(0, 1fr))"
-                        : row.capacity > 1
-                          ? `repeat(${row.capacity}, minmax(0, 1fr))`
-                          : undefined,
-                    maxWidth: rowMaxWidth(row.capacity),
-                  }}
-                >
-                  <AnimatePresence>
-                    {row.items.map((item, itemIndex) => (
-                      <CultureTreeItemCard
-                        key={item.id}
-                        enrichments={enrichments}
-                        isLoading={loadingItemIdSet.has(item.id)}
-                        isGeneratingNewTree={isGeneratingNewTree}
-                        item={item}
-                        onDeleteItem={onDeleteItem}
-                        onGenerateNewTree={onGenerateNewTree}
-                        onToggleLike={onToggleLike}
-                        revealIndex={row.startIndex + itemIndex}
-                        resolvedEntity={resolvedEntities[item.id]}
-                        style={itemSpanStyle(row.items.length, row.capacity, itemIndex)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              ),
-            )}
-          </motion.div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        {branchTypes.length > 0 ? (
+          <div>
+            <NodeTypeFilterList
+              types={branchTypes}
+              selectedTypes={selectedBranchTypes}
+              allSelected={allBranchTypesSelected}
+              allLabel="All Branches"
+              size="md"
+              onSelectAll={() => setSelectedBranchTypes([])}
+              onToggleType={toggleBranchType}
+            />
+          </div>
+        ) : (
+          <span />
+        )}
+        {(onAddItem || onGrowItem || onSuggestItems || headerActions) && (
+          <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+            {onAddItem || onGrowItem || onSuggestItems ? (
+              <TreeNodeDialog
+                triggerLabel="Add Branch"
+                triggerIcon={<PlusIcon className="size-3.5" />}
+                triggerVariant="outline"
+                title="Add Branch"
+                existingBranches={tree.items}
+                isPending={isAddItemPending}
+                isAiPending={isGrowItemPending}
+                onSuggestBranches={onSuggestItems}
+                onSubmit={
+                  onAddItem ??
+                  (async (nodes) => {
+                    const node = nodes.at(0);
+                    if (node && onGrowItem) {
+                      await onGrowItem(node);
+                    }
+                  })
+                }
+                onAiSubmit={onGrowItem}
+              />
+            ) : null}
+            {headerActions}
+          </div>
+        )}
+      </div>
+      {boardItems.length > 0 ? (
+        <Masonry
+          items={boardItems}
+          animateFrom="bottom"
+          blurToFocus
+          duration={0.6}
+          ease="power3.out"
+          hoverScale={0.97}
+          scaleOnHover
+          stagger={0.035}
+          renderItem={({ id, item, sectionTitle }) => (
+            <CultureTreeItemCard
+              enrichments={enrichments}
+              isLoading={loadingItemIdSet.has(item.id)}
+              item={item}
+              onOpen={() => setSelectedBoardId(id)}
+              resolvedEntity={resolvedEntities[item.id]}
+              sectionTitle={sectionTitle}
+            />
+          )}
+        />
+      ) : filterActive ? (
+        <div className="mx-auto flex min-h-48 w-full max-w-xl flex-col items-center justify-center rounded border border-border/60 bg-muted/20 px-4 py-8 text-center">
+          <p className="font-heading text-xl tracking-tight text-foreground">
+            No Branches match those filters.
+          </p>
+          <p className="font-body mt-2 text-sm text-muted-foreground">
+            Show every Branch again to keep browsing this Culture Tree.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-4 rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+            onClick={() => setSelectedBranchTypes([])}
+          >
+            Show all Branches
+          </Button>
         </div>
       ) : (
         <p className="font-body mt-4 text-center text-sm text-muted-foreground">No items yet.</p>
       )}
+      <BranchFocusDialog
+        addToTreeTargets={addToTreeTargets}
+        enrichments={enrichments}
+        hasNext={selectedIndex >= 0 && selectedIndex < boardItems.length - 1}
+        hasPrevious={selectedIndex > 0}
+        isGeneratingNewTree={isGeneratingNewTree}
+        item={selectedItem}
+        onAddToTree={onAddBranchToTree}
+        onStartNewTree={onStartNewTree}
+        onClose={() => setSelectedBoardId(null)}
+        onNext={() => goToBoardOffset(1)}
+        onPrevious={() => goToBoardOffset(-1)}
+        onDeleteItem={onDeleteItem}
+        onGenerateNewTree={onGenerateNewTree}
+        onToggleLike={onToggleLike}
+        resolvedEntity={selectedResolvedEntity}
+        sourceTreeId={sourceTreeId}
+      />
     </section>
   );
 }

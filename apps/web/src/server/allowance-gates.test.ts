@@ -1,7 +1,63 @@
 import { ENTITLEMENTS, PLANS } from "@repo/entitlements";
 import { describe, expect, it } from "vite-plus/test";
 
-import { decideGenerateTreeAllowance, decideGrowBranchAllowance } from "./allowance-gates";
+import {
+  decideGenerateTreeAllowance,
+  decideGrowBranchAllowance,
+  decideTreeCreationAllowance,
+} from "./allowance-gates";
+
+describe("Tree Creation Allowance Gate", () => {
+  it("allows a Free Plan person below the lifetime Tree Creation Limit", () => {
+    const result = decideTreeCreationAllowance({
+      person: { email: "free@example.com" },
+      treeCreationUsageCount: 2,
+    });
+
+    expect(result).toEqual({
+      allowed: true,
+      effectivePlan: PLANS.free,
+      usageType: ENTITLEMENTS.createTree,
+      remaining: 1,
+    });
+  });
+
+  it("blocks a Free Plan person once lifetime Tree Creation usage is exhausted", () => {
+    const result = decideTreeCreationAllowance({
+      person: { email: "free@example.com" },
+      treeCreationUsageCount: 3,
+    });
+
+    expect(result).toEqual({
+      allowed: false,
+      effectivePlan: PLANS.free,
+      limitReached: {
+        code: "limit_reached",
+        allowance: "free_lifetime_tree_creation",
+        usageType: ENTITLEMENTS.createTree,
+        limit: 3,
+        used: 3,
+        remaining: 0,
+        message: "Free Plan includes 3 Culture Trees.",
+      },
+    });
+  });
+
+  it("does not apply the Free Plan Tree Creation Limit to Pro Plan people", () => {
+    const result = decideTreeCreationAllowance({
+      person: { email: "pro@example.com" },
+      proAllowlist: "pro@example.com",
+      treeCreationUsageCount: 99,
+    });
+
+    expect(result).toEqual({
+      allowed: true,
+      effectivePlan: PLANS.pro,
+      usageType: ENTITLEMENTS.createTree,
+      remaining: null,
+    });
+  });
+});
 
 describe("Generate Tree Allowance Gate", () => {
   it("allows a Free Plan person below the lifetime Generate Tree allowance", () => {
@@ -34,7 +90,7 @@ describe("Generate Tree Allowance Gate", () => {
         limit: 3,
         used: 3,
         remaining: 0,
-        message: "Free Plan includes 3 generated Culture Trees.",
+        message: "Free Plan includes 3 AI-generated Culture Trees.",
       },
     });
   });

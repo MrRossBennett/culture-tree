@@ -1,9 +1,9 @@
-import type { CultureTree, TreeItem } from "@repo/schemas";
+import { CultureTreeSchema, type CultureTree, type TreeItem } from "@repo/schemas";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CULTURE_TREE_SEED_BRANCH_ID,
-  countBranchesInSubtree,
+  addManualBranchToCultureTree,
+  countRemovedBranches,
   deleteBranchFromCultureTree,
   growBranchInCultureTree,
   removeEnrichmentsForBranches,
@@ -22,41 +22,135 @@ const branch: TreeItem = {
 const tree: CultureTree = {
   seed: "Ghost Dog",
   seedType: "root",
+  guideSections: [],
   items: [branch],
 };
 
+const guideTree = CultureTreeSchema.parse({
+  seed: "Ghost Dog",
+  seedType: "root",
+  guideSections: [
+    {
+      id: "start-here",
+      title: "Start Here",
+      items: [{ ...branch, id: "start_1", branchRole: "essential-next" }],
+    },
+    {
+      id: "more-like-this",
+      title: "More Like This",
+      items: [{ ...branch, id: "similar_1", branchRole: "similar-appetite" }],
+    },
+    {
+      id: "go-sideways",
+      title: "Go Sideways",
+      items: [{ ...branch, id: "sideways_1", branchRole: "sideways-path" }],
+    },
+    {
+      id: "go-deeper",
+      title: "Go Deeper",
+      items: [{ ...branch, id: "deep_1", branchRole: "deep-cut" }],
+    },
+  ],
+  items: [
+    { ...branch, id: "start_1", branchRole: "essential-next" },
+    { ...branch, id: "similar_1", branchRole: "similar-appetite" },
+    { ...branch, id: "sideways_1", branchRole: "sideways-path" },
+    { ...branch, id: "deep_1", branchRole: "deep-cut" },
+  ],
+});
+
 describe("Culture Tree Branch mutations", () => {
-  it("grows a top-level Branch from the Seed", () => {
-    const nextBranch = { ...branch, id: "branch_2", name: "Le Samourai" };
+  it("adds a manual Branch without requiring Guide Sections", () => {
+    const manualTree = CultureTreeSchema.parse({
+      title: "Private canon",
+      items: [],
+    });
+
+    const nextTree = addManualBranchToCultureTree({
+      tree: manualTree,
+      branch,
+    });
+
+    expect(nextTree).toMatchObject({
+      title: "Private canon",
+      guideSections: [],
+      items: [branch],
+    });
+  });
+
+  it("adds a manual Branch to generated trees as an unsectioned Branch", () => {
+    const nextTree = addManualBranchToCultureTree({
+      tree: guideTree,
+      branch: { ...branch, id: "manual_1", name: "The Warriors" },
+    });
+
+    const addedBranch = nextTree.items.at(-1);
+    expect(addedBranch).toMatchObject({ id: "manual_1" });
+    expect(addedBranch?.branchRole).toBeUndefined();
+    expect(nextTree.guideSections.flatMap((section) => section.items)).not.toContainEqual(
+      expect.objectContaining({ id: "manual_1" }),
+    );
+  });
+
+  it("grows a Branch into a Guide Section with the section Branch Role", () => {
+    const nextBranch = { ...branch, id: "branch_2", name: "Le Samourai", branchRole: undefined };
 
     const nextTree = growBranchInCultureTree({
-      tree,
-      parentBranchId: CULTURE_TREE_SEED_BRANCH_ID,
+      tree: guideTree,
+      guideSectionId: "more-like-this",
       branch: nextBranch,
     });
 
-    expect(nextTree.items.map((item) => item.id)).toEqual(["branch_1", "branch_2"]);
+    expect(
+      nextTree.guideSections.find((section) => section.id === "more-like-this")?.items,
+    ).toEqual([
+      { ...branch, id: "similar_1", branchRole: "similar-appetite" },
+      { ...nextBranch, branchRole: "similar-appetite" },
+    ]);
+    expect(nextTree.items.at(-1)).toMatchObject({
+      id: "branch_2",
+      branchRole: "similar-appetite",
+    });
   });
 
-  it("keeps Child Branch growth behind the Branch mutation interface", () => {
+  it("rejects growth into an unavailable Guide Section", () => {
     expect(() =>
       growBranchInCultureTree({
-        tree,
-        parentBranchId: "branch_1",
+        tree: guideTree,
+        guideSectionId: "join-the-dots",
         branch: { ...branch, id: "branch_2" },
       }),
-    ).toThrow("Child Branch growth is not available yet.");
+    ).toThrow("Guide Section not found.");
   });
 
-  it("deletes a Branch and reports the removed Subtree", () => {
+  it("deletes a Branch and reports the removed Branch", () => {
     const result = deleteBranchFromCultureTree(tree, "branch_1");
 
     expect(result.tree.items).toEqual([]);
     expect(result.removedBranches).toEqual([branch]);
-    expect(countBranchesInSubtree(result.removedBranches)).toBe(1);
+    expect(countRemovedBranches(result.removedBranches)).toBe(1);
   });
 
-  it("removes enrichment data for every Branch in the deleted Subtree", () => {
+  it("deletes a Branch from its Guide Section without affecting unrelated sections", () => {
+    const result = deleteBranchFromCultureTree(guideTree, "similar_1");
+
+    expect(result.removedBranches).toEqual([
+      { ...branch, id: "similar_1", branchRole: "similar-appetite" },
+    ]);
+    expect(result.tree.items.map((item) => item.id)).toEqual(["start_1", "sideways_1", "deep_1"]);
+    expect(result.tree.guideSections).toMatchObject([
+      { id: "start-here", items: [{ id: "start_1" }] },
+      { id: "more-like-this", items: [] },
+      { id: "go-sideways", items: [{ id: "sideways_1" }] },
+      { id: "go-deeper", items: [{ id: "deep_1" }] },
+    ]);
+  });
+
+  it("rejects deleting a Branch that is not in the Culture Tree", () => {
+    expect(() => deleteBranchFromCultureTree(guideTree, "missing")).toThrow("Branch not found.");
+  });
+
+  it("removes enrichment data for every deleted Branch", () => {
     expect(
       removeEnrichmentsForBranches(
         {

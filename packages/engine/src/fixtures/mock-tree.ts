@@ -1,6 +1,7 @@
 import {
   CultureTreeSchema,
   TreeRequestSchema,
+  filterCultureTreeToNodeTypes,
   type CultureTree,
   type TreeRequest,
 } from "@repo/schemas";
@@ -40,9 +41,5 @@ export function mockCultureTreeForRequest(request: TreeRequest): CultureTree {
     return tree;
   }
 
-  const allowedTypes = new Set(data.mediaFilter);
-  return CultureTreeSchema.parse({
-    ...tree,
-    items: tree.items.filter((item) => allowedTypes.has(item.type)),
-  });
+  return filterCultureTreeToNodeTypes(tree, data.mediaFilter);
 }

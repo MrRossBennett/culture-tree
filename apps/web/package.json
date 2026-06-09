@@ -10,6 +10,7 @@
     "backfill:entities": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-entity-resolution.ts",
     "backfill:entity-images": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-entity-image-provenance.ts",
     "backfill:album-images": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/backfill-musicbrainz-album-images.ts",
+    "enrich:tree": "node --env-file=.env --import ../../node_modules/.pnpm/node_modules/tsx/dist/loader.mjs scripts/enrich-culture-tree.ts",
     "ui": "vpx shadcn@latest"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@tanstack/react-start": "catalog:",
     "date-fns": "catalog:",
     "drizzle-orm": "catalog:",
+    "gsap": "catalog:",
     "lucide-react": "catalog:",
     "motion": "catalog:",
     "nanoid": "catalog:",

@@ -1,54 +1,114 @@
-import type { ExternalNodeSearchResult, NodeTypeValue, SearchHint } from "@repo/schemas";
+// Culture Tree search, on the Wikidata spine (ADR 0004). One source, one ranking axis:
+// `wbsearchentities` recalls candidates, `wbgetentities` supplies claims + sitelinks, each
+// candidate is classified by P31 into a Branch Type and ranked by **sitelink count** (a
+// single cross-medium notability signal). Specialists only fill the cover a bare Wikidata
+// item lacks: film/TV posters → TMDB; album covers → Cover Art Archive; book covers → Open
+// Library; everything else → the item's Commons image (P18).
+//
+// Results are a flat list ranked by notability (medium is a filter, not a forced section).
+// Both works (addable) and creators (addable *and* expandable into their works) are surfaced;
+// nothing is destructively suppressed — the most notable thing simply leads.
+//
+// Recall has two paths. (1) Text: `wbsearchentities` matches the query against labels/aliases.
+// (2) Franchise expansion: a keyword only recalls works whose *title* contains it, so a
+// franchise's differently-titled siblings (the "DreamWorks Dragons" TV series under the "How to
+// Train Your Dragon" franchise) are invisible to text search. When a franchise hub turns up in
+// the text candidates, its P527 member works are pulled in as extra candidates, then classified
+// and ranked on the same notability axis as everything else.
+import type { ExternalNodeSearchResult, NodeTypeValue, TreeNodeIdentity } from "@repo/schemas";
+
+import { fetchSummaryByTitle } from "../enrichment/wikipedia";
+import { fetchItunesArtistAlbumCovers, fetchItunesCover, normalizeAlbumTitle } from "./itunes";
+import {
+  coverArtFrontUrl,
+  fetchMusicBrainzArtistAlbums,
+  type MusicBrainzReleaseGroup,
+} from "./musicbrainz";
+import {
+  WD,
+  buildWikidataCover,
+  classifyWikidataType,
+  claimEntityIds,
+  claimString,
+  creatorHintFromDescription,
+  fetchWikidataEnwikiTitle,
+  fetchWikidataEntities,
+  isCreatorType,
+  isFranchiseHub,
+  searchWikidataEntities,
+  yearFromClaims,
+  type WikidataEntity,
+} from "./wikidata";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG = "https://image.tmdb.org/t/p";
-const GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1/volumes";
-const WIKI_REST = "https://en.wikipedia.org/api/rest_v1";
-const WIKI_API = "https://en.wikipedia.org/w/api.php";
-const TMDB_CANDIDATE_LIMIT = 20;
-const GOOGLE_BOOKS_CANDIDATE_LIMIT = 6;
-const WIKIPEDIA_CANDIDATE_LIMIT = 8;
-const FINAL_RESULT_LIMIT = 12;
-const DIVERSIFIED_HEAD_LIMIT = 3;
-const DIVERSIFIED_TYPE_ORDER: readonly NodeTypeValue[] = [
-  "artist",
-  "album",
-  "song",
-  "book",
-  "film",
-  "tv",
-  "person",
-  "artwork",
-  "podcast",
-  "event",
-  "place",
-];
+// A resolved creator's studio discography (MusicBrainz) and filmography (TMDB) on expand.
+// MusicBrainz pages internally to gather a complete studio discography up to this cap; 75 covers
+// even prolific artists' studio albums while bounding the rare outlier (a few hundred RGs).
+const MUSICBRAINZ_ARTIST_ALBUMS_LIMIT = 75;
+// TMDB's combined_credits returns a creator's *entire* filmography in one call (no pagination)
+// with poster paths embedded, so a comprehensive list costs no extra request — Peter Fonda's 126
+// films match Letterboxd exactly. This cap isn't an API bound; it's a payload/render safety net
+// for pathological cases (prolific character actors carry 500+ credits, many of them long-tail
+// noise — uncredited bits, archive footage, "self" appearances). Sorted by popularity first, so
+// the cap only ever trims the least-notable tail.
+const TMDB_CREDITS_LIMIT = 200;
 
-type RankedSearchResult = ExternalNodeSearchResult & { score: number };
+// An exact label match leads ranking, but only if it's a *real* entity (≥ this many Wikipedia
+// editions) — otherwise an obscure work titled exactly the query (a 1-sitelink booklet named
+// "Bowie") would beat a hugely notable prefix match (David Bowie). Not competitor-calibrated:
+// it just distinguishes a genuine exact match from junk.
+const EXACT_MATCH_NOTABILITY_FLOOR = 5;
 
-type TmdbSearchItem = {
-  id?: number;
-  title?: string;
-  name?: string;
-  release_date?: string;
-  first_air_date?: string;
-  poster_path?: string | null;
-  overview?: string;
-  vote_count?: number;
+// The long-tail noise floor: drop classified results below this many Wikipedia language editions.
+// A creator query like "David Bowie" otherwise drags in a 1-sitelink banker, fan-made tribute
+// paintings, and obscure namesakes — all ≤1 sitelink. "In fewer than 2 Wikipedia editions" is,
+// by our own notability definition, not a Branch. Guarded so a genuinely niche query that has
+// only low-notability matches still returns them rather than nothing.
+const MIN_SITELINKS_TO_SURFACE = 2;
+
+// Cap on franchise member works pulled in per search. wbgetentities takes 50 ids per call, so
+// one extra batch bounds the work to a single request even for a sprawling franchise; the
+// sitelink floor and notability ranking downstream keep only the member works worth showing.
+const FRANCHISE_MEMBERS_LIMIT = 50;
+
+// Flip to "0" to silence the per-search result dump.
+const DEBUG_SEARCH = process.env.DEBUG_SEARCH !== "0";
+
+type RankedResult = {
+  result: ExternalNodeSearchResult;
+  /** Number of Wikipedia language editions — the primary notability ranking signal. */
+  sitelinks: number;
+  /** Whether the item's label equals the query — a strong intent signal that leads ranking. */
+  exact: boolean;
+  type: NodeTypeValue;
+  /** The source Wikidata item, kept through ranking so cover enrichers can read its claims. */
+  entity: WikidataEntity;
 };
 
-type GoogleBooksItem = {
-  id?: string;
-  volumeInfo?: Record<string, unknown>;
-};
+function normalizeTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^a-z0-9\s]/gu, " ")
+    .replace(/\b(the|a|an)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-type WikipediaSearchItem = {
-  title?: string;
-  pageid?: number;
-  snippet?: string;
-};
+function pickMeta(parts: Array<string | number | undefined>): string | undefined {
+  const values = parts.map((part) => (part == null ? "" : String(part).trim())).filter(Boolean);
+  return values.length > 0 ? values.join(" • ") : undefined;
+}
 
-const SCREEN_NODE_TYPES = new Set<NodeTypeValue>(["film", "tv"]);
+function parseYear(value: string | undefined): number | undefined {
+  const match = value?.match(/\b(\d{4})\b/);
+  const year = match?.[1] ? Number.parseInt(match[1], 10) : undefined;
+  return year && Number.isFinite(year) ? year : undefined;
+}
+
+// ---- TMDB (covers for film/TV; person expansion) -----------------------------------------
 
 function hasTmdbCredentials(): boolean {
   return Boolean(process.env.TMDB_ACCESS_TOKEN?.trim() || process.env.TMDB_API_KEY?.trim());
@@ -66,705 +126,230 @@ function tmdbFetchInit(url: URL): RequestInit {
   return { headers: {} };
 }
 
-export function buildTmdbSearchQueries(query: string): string[] {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    return [];
-  }
+type TmdbCreditItem = {
+  id?: number;
+  media_type?: string;
+  title?: string;
+  name?: string;
+  release_date?: string;
+  first_air_date?: string;
+  poster_path?: string | null;
+  popularity?: number;
+  department?: string;
+};
 
-  const normalized = normalizeText(trimmed);
-  const queries = [trimmed];
+type TmdbPersonItem = {
+  id?: number;
+  name?: string;
+  known_for_department?: string;
+};
 
-  // TMDB can miss leading-article titles for short ambiguous queries like "queen".
-  if (normalized && !/^(the|a|an)\s/.test(normalized) && normalized.split(" ").length <= 3) {
-    queries.push(`the ${trimmed}`);
-  }
-
-  return queries;
-}
-
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[^a-z0-9\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function parseYear(value: unknown): number | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const match = value.match(/\b(18|19|20)\d{2}\b/);
-  if (!match?.[0]) {
-    return undefined;
-  }
-  const year = Number.parseInt(match[0], 10);
-  return Number.isFinite(year) ? year : undefined;
-}
-
-function pickMetadata(parts: Array<string | undefined>): string | undefined {
-  const values = parts.map((part) => part?.trim()).filter(Boolean);
-  return values.length > 0 ? values.join(" • ") : undefined;
-}
-
-function tmdbVoteCountBoost(voteCount: number | undefined): number {
-  if (!Number.isFinite(voteCount) || voteCount == null || voteCount <= 0) {
-    return 0;
-  }
-
-  return Math.min(24, Math.log10(voteCount + 1) * 8);
-}
-
-function stripLeadingArticle(value: string): string {
-  return value.replace(/^(the|a|an)\s+/i, "").trim();
-}
-
-function baseMatchScore(name: string, query: string): number {
-  const normalizedName = normalizeText(name);
-  const normalizedQuery = normalizeText(query);
-  const articleInsensitiveName = normalizeText(stripLeadingArticle(name));
-  if (!normalizedName || !normalizedQuery) {
-    return 0;
-  }
-  if (normalizedName === normalizedQuery) {
-    return 120;
-  }
-  if (articleInsensitiveName && articleInsensitiveName === normalizedQuery) {
-    return 108;
-  }
-  let score = 0;
-  if (normalizedName.startsWith(normalizedQuery)) {
-    score += 90;
-  } else if (normalizedName.includes(normalizedQuery)) {
-    score += 70;
-  } else if (articleInsensitiveName.startsWith(normalizedQuery)) {
-    score += 84;
-  } else if (articleInsensitiveName.includes(normalizedQuery)) {
-    score += 66;
-  }
-  const queryTokens = normalizedQuery.split(" ").filter((token) => token.length >= 2);
-  const nameTokens = new Set(normalizedName.split(" "));
-  const articleInsensitiveTokens = new Set(articleInsensitiveName.split(" ").filter(Boolean));
-  for (const token of queryTokens) {
-    if (nameTokens.has(token) || articleInsensitiveTokens.has(token)) {
-      score += 12;
-    }
-  }
-  return score;
-}
-
-function isExactTitleMatch(name: string, query: string): boolean {
-  const normalizedName = normalizeText(name);
-  const normalizedQuery = normalizeText(query);
-  return Boolean(normalizedName && normalizedName === normalizedQuery);
-}
-
-function isArticleInsensitiveExactMatch(name: string, query: string): boolean {
-  return Boolean(normalizeText(stripLeadingArticle(name)) === normalizeText(query.trim()));
-}
-
-function isComparableExactTitleMatch(name: string, query: string): boolean {
-  return Boolean(normalizeText(stripTrailingDisambiguator(name)) === normalizeText(query.trim()));
-}
-
-function isWikipediaDisambiguation(summary: { description?: string; extract?: string }): boolean {
-  const blob = normalizeText(`${summary.description ?? ""} ${summary.extract ?? ""}`);
-  return (
-    blob === "topics referred to by the same term" ||
-    blob === "topics referred to by this term" ||
-    blob.includes("topics referred to by the same term") ||
-    blob.includes("topics referred to by this term") ||
-    blob.includes("may refer to")
-  );
-}
-
-function exactMatchTypeBoost(type: NodeTypeValue, exactMatch: boolean): number {
-  if (!exactMatch) {
-    return 0;
-  }
-
-  switch (type) {
-    case "artist":
-      return 28;
-    case "album":
-      return 18;
-    case "song":
-      return 14;
-    case "book":
-      return 12;
-    case "person":
-      return 10;
-    default:
-      return 0;
-  }
-}
-
-function stripTrailingDisambiguator(value: string): string {
-  return value.replace(/\s*\([^()]+\)\s*$/i, "").trim();
-}
-
-function comparableExactMatch(name: string, query: string): boolean {
-  return Boolean(normalizeText(stripTrailingDisambiguator(name)) === normalizeText(query.trim()));
-}
-
-function disambiguatedMatchTypeBoost(type: NodeTypeValue, name: string, query: string): number {
-  const hasDisambiguator = stripTrailingDisambiguator(name) !== name.trim();
-  if (!hasDisambiguator || !comparableExactMatch(name, query)) {
-    return 0;
-  }
-
-  switch (type) {
-    case "artist":
-      return 36;
-    case "album":
-      return 20;
-    case "song":
-      return 16;
-    case "book":
-      return 14;
-    case "person":
-      return 12;
-    default:
-      return 0;
-  }
-}
-
-function httpsify(url: string | undefined): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-  if (url.startsWith("http://")) {
-    return `https://${url.slice("http://".length)}`;
-  }
-  return url;
-}
-
-function isLikelyGoogleBooksPlaceholderUrl(url: string | undefined): boolean {
-  if (!url) {
-    return false;
-  }
+// The real poster for a film/TV item, fetched by its TMDB id (read from Wikidata P4947/P4983).
+// TMDB exposes no constructible poster URL, so this single call is required — bounded to the
+// film/TV candidates actually shown.
+async function fetchTmdbPoster(mediaType: "movie" | "tv", id: string): Promise<string | undefined> {
+  const url = new URL(`${TMDB_BASE}/${mediaType}/${id}`);
   try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === "books.google.com" &&
-      parsed.pathname.includes("/books/content") &&
-      !parsed.searchParams.has("edge") &&
-      !parsed.searchParams.has("imgtk")
-    );
+    const response = await fetch(url, tmdbFetchInit(url));
+    if (!response.ok) {
+      return undefined;
+    }
+    const data = (await response.json()) as { poster_path?: string | null };
+    return data.poster_path ? `${TMDB_IMG}/w500${data.poster_path}` : undefined;
   } catch {
-    return false;
-  }
-}
-
-function volumeDisplayTitle(volumeInfo: Record<string, unknown>): string {
-  const title = typeof volumeInfo.title === "string" ? volumeInfo.title.trim() : "";
-  const subtitle = typeof volumeInfo.subtitle === "string" ? volumeInfo.subtitle.trim() : "";
-  if (title && subtitle) {
-    return `${title}: ${subtitle}`;
-  }
-  return title;
-}
-
-function googleBooksEditionUrl(
-  volumeId: string | undefined,
-  infoLink: string | undefined,
-): string | undefined {
-  const id = volumeId?.trim();
-  if (id) {
-    return `https://books.google.com/books?id=${encodeURIComponent(id)}&hl=en`;
-  }
-  return httpsify(infoLink);
-}
-
-function normalizedWikipediaKey(title: string): string {
-  return title.trim().replace(/\s+/g, "_");
-}
-
-function normalizeComparableTitle(value: string): string {
-  return normalizeText(
-    value.replace(/\s*\((film|tv series|television series|miniseries|soundtrack)\)\s*$/i, ""),
-  );
-}
-
-function inferredScreenType(result: ExternalNodeSearchResult): "film" | "tv" | null {
-  if (result.snapshot.type === "film" || result.snapshot.type === "tv") {
-    return result.snapshot.type;
-  }
-
-  const blob = `${result.snapshot.name} ${result.meta ?? ""} ${result.externalUrl ?? ""}`;
-  const normalized = normalizeText(blob);
-
-  if (
-    normalized.includes(" tv series ") ||
-    normalized.includes(" television series ") ||
-    normalized.includes(" miniseries ") ||
-    normalized.includes("/tv/")
-  ) {
-    return "tv";
-  }
-
-  if (normalized.includes(" film ") || normalized.includes("/movie/")) {
-    return "film";
-  }
-
-  return null;
-}
-
-function isSameCreativeWork(
-  left: ExternalNodeSearchResult,
-  right: ExternalNodeSearchResult,
-): boolean {
-  const leftScreenType = inferredScreenType(left);
-  const rightScreenType = inferredScreenType(right);
-  if (!leftScreenType || leftScreenType !== rightScreenType) {
-    return false;
-  }
-
-  if (
-    SCREEN_NODE_TYPES.has(left.snapshot.type) ||
-    SCREEN_NODE_TYPES.has(right.snapshot.type) ||
-    left.identity.source === "wikipedia" ||
-    right.identity.source === "wikipedia"
-  ) {
-    const leftName = normalizeComparableTitle(left.snapshot.name);
-    const rightName = normalizeComparableTitle(right.snapshot.name);
-    if (!leftName || leftName !== rightName) {
-      return false;
-    }
-  } else {
-    return false;
-  }
-
-  const leftYear = left.snapshot.year;
-  const rightYear = right.snapshot.year;
-  if (leftYear != null && rightYear != null && leftYear !== rightYear) {
-    return false;
-  }
-
-  return true;
-}
-
-function sourcePriority(result: ExternalNodeSearchResult): number {
-  switch (result.identity.source) {
-    case "tmdb":
-      return 3;
-    case "musicbrainz":
-      return 3;
-    case "google-books":
-      return 2;
-    case "wikipedia":
-      return 1;
-  }
-}
-
-export function dedupeExternalSearchResults(
-  results: ExternalNodeSearchResult[],
-): ExternalNodeSearchResult[] {
-  const deduped: ExternalNodeSearchResult[] = [];
-
-  for (const result of results) {
-    const existingIndex = deduped.findIndex((candidate) => isSameCreativeWork(candidate, result));
-    if (existingIndex === -1) {
-      deduped.push(result);
-      continue;
-    }
-
-    if (sourcePriority(result) > sourcePriority(deduped[existingIndex])) {
-      deduped[existingIndex] = result;
-    }
-  }
-
-  return deduped;
-}
-
-function isStrongHeadMatch(result: ExternalNodeSearchResult, query: string): boolean {
-  return (
-    isExactTitleMatch(result.snapshot.name, query) ||
-    isArticleInsensitiveExactMatch(result.snapshot.name, query) ||
-    isComparableExactTitleMatch(result.snapshot.name, query)
-  );
-}
-
-export function diversifySearchResults(
-  results: ExternalNodeSearchResult[],
-  query: string,
-): ExternalNodeSearchResult[] {
-  const strongMatches = results.filter((result) => isStrongHeadMatch(result, query));
-  if (strongMatches.length <= 1) {
-    return results;
-  }
-
-  const selected = new Set<string>();
-  const head: ExternalNodeSearchResult[] = [];
-
-  for (const type of DIVERSIFIED_TYPE_ORDER) {
-    const match = strongMatches.find(
-      (result) =>
-        result.snapshot.type === type &&
-        !selected.has(`${result.identity.source}:${result.identity.externalId}`),
-    );
-    if (!match) {
-      continue;
-    }
-
-    head.push(match);
-    selected.add(`${match.identity.source}:${match.identity.externalId}`);
-    if (head.length >= DIVERSIFIED_HEAD_LIMIT) {
-      break;
-    }
-  }
-
-  if (head.length === 0) {
-    return results;
-  }
-
-  return [
-    ...head,
-    ...results.filter(
-      (result) => !selected.has(`${result.identity.source}:${result.identity.externalId}`),
-    ),
-  ];
-}
-
-function creatorFromWikipediaDescription(description: string | undefined): string | undefined {
-  if (!description) {
     return undefined;
   }
-  const match = description.match(/\bby\s+([^,.()]+)/i);
-  return match?.[1]?.trim();
 }
 
-function inferWikipediaType(blob: string): NodeTypeValue | null {
-  const normalized = normalizeText(blob);
-  if (!normalized) {
+async function fetchTmdbPersonById(personId: string): Promise<TmdbPersonItem | null> {
+  const url = new URL(`${TMDB_BASE}/person/${personId}`);
+  try {
+    const response = await fetch(url, tmdbFetchInit(url));
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as TmdbPersonItem;
+  } catch {
     return null;
   }
-  if (normalized.includes(" album ")) return "album";
-  if (normalized.includes(" song ")) return "song";
-  if (
-    normalized.includes(" band ") ||
-    normalized.includes(" duo ") ||
-    normalized.includes(" musician ") ||
-    normalized.includes(" singer ") ||
-    normalized.includes(" rapper ") ||
-    normalized.includes(" composer ") ||
-    normalized.includes(" dj ") ||
-    normalized.includes(" musical group ")
-  ) {
-    return "artist";
-  }
-  if (
-    normalized.includes(" author ") ||
-    normalized.includes(" writer ") ||
-    normalized.includes(" poet ") ||
-    normalized.includes(" actor ") ||
-    normalized.includes(" actress ") ||
-    normalized.includes(" director ") ||
-    normalized.includes(" journalist ") ||
-    normalized.includes(" philosopher ") ||
-    normalized.includes(" politician ") ||
-    normalized.includes(" historian ")
-  ) {
-    return "person";
-  }
-  if (
-    normalized.includes(" painting ") ||
-    normalized.includes(" sculpture ") ||
-    normalized.includes(" artwork ") ||
-    normalized.includes(" mural ") ||
-    normalized.includes(" installation art ")
-  ) {
-    return "artwork";
-  }
-  return null;
 }
 
-export function normalizeTmdbSearchResult(
-  item: TmdbSearchItem,
-  mediaType: "movie" | "tv",
-  query: string,
-  rank: number,
-): RankedSearchResult | null {
-  if (item.id == null) {
-    return null;
-  }
-  const name = (mediaType === "movie" ? item.title : item.name)?.trim();
-  if (!name) {
-    return null;
-  }
-  const year = parseYear(mediaType === "movie" ? item.release_date : item.first_air_date);
-  const image = item.poster_path ? `${TMDB_IMG}/w185${item.poster_path}` : undefined;
-  const exactMatch = isExactTitleMatch(name, query);
-  const articleInsensitiveExactMatch = isArticleInsensitiveExactMatch(name, query);
-  const score =
-    baseMatchScore(name, query) +
-    (year != null ? 8 : 0) +
-    (image ? 4 : 0) +
-    tmdbVoteCountBoost(item.vote_count) +
-    (articleInsensitiveExactMatch && !exactMatch ? 10 : 0) +
-    (exactMatch ? -8 : 0) -
-    rank * 2;
-  return {
-    identity: {
-      source: "tmdb",
-      externalId: `${mediaType}:${item.id}`,
-    },
-    snapshot: {
-      name,
-      type: mediaType === "movie" ? "film" : "tv",
-      year,
-      image,
-    },
-    searchHint: {
-      title: name,
-    },
-    meta: pickMetadata([year != null ? String(year) : undefined]),
-    externalUrl: `https://www.themoviedb.org/${mediaType}/${item.id}`,
-    score,
-  };
-}
-
-export function normalizeGoogleBooksSearchResult(
-  item: GoogleBooksItem,
-  query: string,
-  rank: number,
-): RankedSearchResult | null {
-  const volumeInfo = item.volumeInfo;
-  if (!item.id || !volumeInfo) {
-    return null;
-  }
-  const name = volumeDisplayTitle(volumeInfo);
-  if (!name) {
-    return null;
-  }
-  const authors = Array.isArray(volumeInfo.authors)
-    ? volumeInfo.authors
-        .map((author) => (typeof author === "string" ? author.trim() : ""))
-        .filter(Boolean)
-    : [];
-  const year = parseYear(volumeInfo.publishedDate);
-  const imageLinks =
-    volumeInfo.imageLinks && typeof volumeInfo.imageLinks === "object"
-      ? (volumeInfo.imageLinks as Record<string, unknown>)
-      : undefined;
-  const rawImage = httpsify(
-    typeof imageLinks?.thumbnail === "string"
-      ? imageLinks.thumbnail
-      : typeof imageLinks?.smallThumbnail === "string"
-        ? imageLinks.smallThumbnail
-        : undefined,
-  );
-  const image = isLikelyGoogleBooksPlaceholderUrl(rawImage) ? undefined : rawImage;
-  const infoLink = typeof volumeInfo.infoLink === "string" ? volumeInfo.infoLink : undefined;
-  const score =
-    baseMatchScore(name, query) +
-    (authors.length > 0 ? 10 : 0) +
-    (year != null ? 8 : 0) +
-    (image ? 4 : 0) -
-    rank * 2;
-
-  return {
-    identity: {
-      source: "google-books",
-      externalId: item.id,
-    },
-    snapshot: {
-      name,
-      type: "book",
-      year,
-      image,
-    },
-    searchHint: {
-      title: name,
-      creator: authors[0],
-    },
-    meta: pickMetadata([authors[0], year != null ? String(year) : undefined]),
-    externalUrl: googleBooksEditionUrl(item.id, infoLink),
-    score,
-  };
-}
-
-export function normalizeWikipediaSearchResult(input: {
-  search: WikipediaSearchItem;
-  summary: {
-    description?: string;
-    extract?: string;
-    thumbnail?: { source?: string };
-    originalimage?: { source?: string };
-    content_urls?: { desktop?: { page?: string } };
-  };
-  query: string;
-  rank: number;
-}): RankedSearchResult | null {
-  const title = input.search.title?.trim();
-  if (!title) {
-    return null;
-  }
-  if (isWikipediaDisambiguation(input.summary)) {
-    return null;
-  }
-  const blob = [input.summary.description, input.summary.extract, input.search.snippet]
-    .filter(Boolean)
-    .join(" ");
-  const type = inferWikipediaType(blob);
-  if (!type) {
-    return null;
-  }
-  const year = parseYear(blob);
-  const image = input.summary.thumbnail?.source ?? input.summary.originalimage?.source;
-  const normalizedKey = normalizedWikipediaKey(title);
-  const exactMatch = isExactTitleMatch(title, input.query);
-  const score =
-    baseMatchScore(title, input.query) +
-    (input.summary.description ? 10 : 0) +
-    (year != null ? 6 : 0) +
-    exactMatchTypeBoost(type, exactMatch) +
-    disambiguatedMatchTypeBoost(type, title, input.query) +
-    (image ? 4 : 0) -
-    input.rank * 2;
-  const creator =
-    type === "album" || type === "song" || type === "artwork"
-      ? creatorFromWikipediaDescription(input.summary.description)
-      : undefined;
-
-  const searchHint: SearchHint = {
-    title,
-    wikiSlug: normalizedKey,
-  };
-  if (creator) {
-    searchHint.creator = creator;
-  }
-
-  return {
-    identity: {
-      source: "wikipedia",
-      externalId: normalizedKey,
-    },
-    snapshot: {
-      name: title,
-      type,
-      year,
-      image,
-    },
-    searchHint,
-    meta: input.summary.description?.trim() || undefined,
-    externalUrl: input.summary.content_urls?.desktop?.page,
-    score,
-  };
-}
-
-async function searchTmdb(query: string): Promise<RankedSearchResult[]> {
-  if (!hasTmdbCredentials()) {
+// A creator's filmography, ranked by each work's own popularity (movies only, Phase 1).
+// Directors/writers/producers are credited in `crew` under their department; actors in `cast`.
+async function fetchTmdbPersonCredits(person: TmdbPersonItem): Promise<ExternalNodeSearchResult[]> {
+  if (person.id == null) {
     return [];
   }
-
-  async function fetchList(
-    mediaType: "movie" | "tv",
-    tmdbQuery: string,
-  ): Promise<RankedSearchResult[]> {
-    const url = new URL(`${TMDB_BASE}/search/${mediaType}`);
-    url.searchParams.set("query", tmdbQuery);
+  const url = new URL(`${TMDB_BASE}/person/${person.id}/combined_credits`);
+  let data: { cast?: TmdbCreditItem[]; crew?: TmdbCreditItem[] };
+  try {
     const response = await fetch(url, tmdbFetchInit(url));
     if (!response.ok) {
       return [];
     }
-    const data = (await response.json()) as { results?: TmdbSearchItem[] };
-    return (data.results ?? [])
-      .slice(0, TMDB_CANDIDATE_LIMIT)
-      .map((item, index) => normalizeTmdbSearchResult(item, mediaType, query, index))
-      .filter((item): item is RankedSearchResult => item != null);
+    data = (await response.json()) as { cast?: TmdbCreditItem[]; crew?: TmdbCreditItem[] };
+  } catch {
+    return [];
   }
-
-  const tmdbQueries = buildTmdbSearchQueries(query);
-  const settled = await Promise.all(
-    tmdbQueries.flatMap((tmdbQuery) => [fetchList("movie", tmdbQuery), fetchList("tv", tmdbQuery)]),
-  );
-
-  const deduped = new Map<string, RankedSearchResult>();
-  for (const result of settled.flat()) {
-    const key = `${result.identity.source}:${result.identity.externalId}`;
-    const existing = deduped.get(key);
-    if (!existing || result.score > existing.score) {
-      deduped.set(key, result);
+  const primaryDept = person.known_for_department;
+  const chosen =
+    primaryDept && primaryDept !== "Acting"
+      ? (data.crew ?? []).filter((credit) => credit.department === primaryDept)
+      : (data.cast ?? []);
+  const pool = chosen.length > 0 ? chosen : [...(data.cast ?? []), ...(data.crew ?? [])];
+  const byId = new Map<string, TmdbCreditItem>();
+  for (const credit of pool) {
+    if (credit.id == null || credit.media_type !== "movie") {
+      continue;
+    }
+    const key = `movie:${credit.id}`;
+    const existing = byId.get(key);
+    if (!existing || (credit.popularity ?? 0) > (existing.popularity ?? 0)) {
+      byId.set(key, credit);
     }
   }
-
-  return Array.from(deduped.values());
+  return Array.from(byId.values())
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .slice(0, TMDB_CREDITS_LIMIT)
+    .map((credit) => tmdbCreditToResult(credit, person.name))
+    .filter((result): result is ExternalNodeSearchResult => result != null);
 }
 
-async function searchGoogleBooks(query: string): Promise<RankedSearchResult[]> {
-  const url = new URL(GOOGLE_BOOKS_BASE);
-  url.searchParams.set("q", query);
-  url.searchParams.set("maxResults", String(GOOGLE_BOOKS_CANDIDATE_LIMIT));
-  const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
-  if (key) {
-    url.searchParams.set("key", key);
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    return [];
-  }
-  const data = (await response.json()) as { items?: GoogleBooksItem[] };
-  return (data.items ?? [])
-    .slice(0, GOOGLE_BOOKS_CANDIDATE_LIMIT)
-    .map((item, index) => normalizeGoogleBooksSearchResult(item, query, index))
-    .filter((item): item is RankedSearchResult => item != null);
-}
-
-async function fetchWikipediaSummary(title: string) {
-  const path = encodeURIComponent(title.replaceAll(" ", "_"));
-  const response = await fetch(`${WIKI_REST}/page/summary/${path}`);
-  if (!response.ok) {
+function tmdbCreditToResult(
+  credit: TmdbCreditItem,
+  creator: string | undefined,
+): ExternalNodeSearchResult | null {
+  if (credit.id == null || credit.media_type !== "movie") {
     return null;
   }
-  return (await response.json()) as {
-    description?: string;
-    extract?: string;
-    thumbnail?: { source?: string };
-    originalimage?: { source?: string };
-    content_urls?: { desktop?: { page?: string } };
+  const name = credit.title?.trim();
+  if (!name) {
+    return null;
+  }
+  const year = parseYear(credit.release_date);
+  const image = credit.poster_path ? `${TMDB_IMG}/w500${credit.poster_path}` : undefined;
+  return {
+    kind: "addable-work",
+    identity: { source: "tmdb", externalId: `movie:${credit.id}` },
+    snapshot: { name, type: "film", year, image },
+    searchHint: { title: name, creator: creator?.trim() || undefined },
+    meta: pickMeta([creator?.trim(), year]),
+    externalUrl: `https://www.themoviedb.org/movie/${credit.id}`,
   };
 }
 
-async function searchWikipedia(query: string): Promise<RankedSearchResult[]> {
-  const url = new URL(WIKI_API);
-  url.searchParams.set("action", "query");
-  url.searchParams.set("list", "search");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("srlimit", String(WIKIPEDIA_CANDIDATE_LIMIT));
-  url.searchParams.set("srsearch", query);
+// ---- result building ----------------------------------------------------------------------
 
-  const response = await fetch(url);
-  if (!response.ok) {
+function entityToRanked(
+  entity: WikidataEntity,
+  type: NodeTypeValue,
+  query: string,
+): RankedResult | null {
+  const name = entity.label?.trim();
+  if (!name) {
+    return null;
+  }
+  const year = yearFromClaims(entity.claims);
+  const creator = creatorHintFromDescription(entity.description);
+  const image = buildWikidataCover(entity, type);
+  const result: ExternalNodeSearchResult = {
+    kind: isCreatorType(type) ? "expandable-subject" : "addable-work",
+    identity: { source: "wikidata", externalId: entity.id },
+    snapshot: { name, type, year, image },
+    searchHint: { title: name, creator },
+    meta: entity.description?.trim() || pickMeta([creator, year]),
+    externalUrl: `https://www.wikidata.org/wiki/${entity.id}`,
+  };
+  const exact = normalizeTitle(name) === normalizeTitle(query);
+  return { result, sitelinks: entity.sitelinks, exact, type, entity };
+}
+
+// Fetch real posters for the film/TV candidates that will be shown, overriding the Commons
+// fallback. Bounded and parallel; skipped without TMDB credentials (Commons fallback stands).
+async function enrichFilmPosters(ranked: RankedResult[]): Promise<void> {
+  if (!hasTmdbCredentials()) {
+    return;
+  }
+  await Promise.all(
+    ranked.map(async (item) => {
+      if (item.type !== "film" && item.type !== "tv") {
+        return;
+      }
+      const tmdbProp = item.type === "film" ? WD.tmdbMovieId : WD.tmdbTvId;
+      const tmdbId = claimString(item.entity.claims, tmdbProp);
+      if (!tmdbId) {
+        return;
+      }
+      const poster = await fetchTmdbPoster(item.type === "film" ? "movie" : "tv", tmdbId);
+      if (poster) {
+        item.result.snapshot.image = poster;
+      }
+    }),
+  );
+}
+
+// Replace the Cover Art Archive fallback with clean Apple storefront art for the album/song
+// candidates shown, when a confident artist+title match exists. CAA stands when Apple declines
+// (no match / rate-limited), so a result never loses its cover — it only upgrades. Bounded to
+// the few music results in a mixed gallery and run in parallel.
+async function enrichAlbumCovers(ranked: RankedResult[]): Promise<void> {
+  await Promise.all(
+    ranked.map(async (item) => {
+      if (item.type !== "album" && item.type !== "song") {
+        return;
+      }
+      const cover = await fetchItunesCover(
+        item.type,
+        item.result.searchHint.creator,
+        item.result.snapshot.name,
+      );
+      if (cover) {
+        item.result.snapshot.image = cover;
+      }
+    }),
+  );
+}
+
+function logSearch(query: string, ranked: RankedResult[]): void {
+  if (!DEBUG_SEARCH) {
+    return;
+  }
+  console.log(`\n[search] query="${query}" — ${ranked.length} result(s), ranked by sitelinks:`);
+  for (const item of ranked) {
+    const { snapshot, searchHint } = item.result;
+    console.log(
+      `  ${String(item.sitelinks).padStart(4)}sl  ${snapshot.type.padEnd(7)} ${snapshot.name}` +
+        `${searchHint.creator ? ` — ${searchHint.creator}` : ""}` +
+        `${snapshot.year ? ` (${snapshot.year})` : ""}  [${item.result.identity.externalId}]`,
+    );
+  }
+  console.log("");
+}
+
+// The franchise siblings the text search missed: gather the P527 members of every franchise hub
+// among the text candidates, drop the ones we already fetched, and fetch the rest in one bounded
+// wbgetentities call. Returns [] (no extra request) when no hub is present — the common case.
+async function fetchFranchiseMembers(
+  entities: WikidataEntity[],
+  seen: Set<string>,
+): Promise<WikidataEntity[]> {
+  const memberIds: string[] = [];
+  const queued = new Set<string>();
+  for (const entity of entities) {
+    if (!isFranchiseHub(entity)) {
+      continue;
+    }
+    for (const id of claimEntityIds(entity.claims, WD.hasPart)) {
+      if (!seen.has(id) && !queued.has(id)) {
+        queued.add(id);
+        memberIds.push(id);
+      }
+    }
+  }
+  if (memberIds.length === 0) {
     return [];
   }
-  const data = (await response.json()) as {
-    query?: { search?: WikipediaSearchItem[] };
-  };
-  const candidates = data.query?.search?.slice(0, WIKIPEDIA_CANDIDATE_LIMIT) ?? [];
-  const summaries = await Promise.all(
-    candidates.map(async (candidate) => ({
-      candidate,
-      summary: candidate.title ? await fetchWikipediaSummary(candidate.title) : null,
-    })),
-  );
-
-  return summaries
-    .map(({ candidate, summary }, index) => {
-      if (!summary) {
-        return null;
-      }
-      return normalizeWikipediaSearchResult({
-        search: candidate,
-        summary,
-        query,
-        rank: index,
-      });
-    })
-    .filter((item): item is RankedSearchResult => item != null);
+  return fetchWikidataEntities(memberIds.slice(0, FRANCHISE_MEMBERS_LIMIT));
 }
 
 export async function searchExternalNodes(query: string): Promise<ExternalNodeSearchResult[]> {
@@ -773,19 +358,143 @@ export async function searchExternalNodes(query: string): Promise<ExternalNodeSe
     return [];
   }
 
-  const settled = await Promise.allSettled([
-    searchTmdb(trimmed),
-    searchGoogleBooks(trimmed),
-    searchWikipedia(trimmed),
+  const qids = await searchWikidataEntities(trimmed);
+  const textEntities = await fetchWikidataEntities(qids);
+  const members = await fetchFranchiseMembers(textEntities, new Set(qids));
+  const entities = [...textEntities, ...members];
+
+  const ranked = entities
+    .map((entity) => {
+      const type = classifyWikidataType(entity);
+      return type ? entityToRanked(entity, type, trimmed) : null;
+    })
+    .filter((item): item is RankedResult => item != null);
+
+  await Promise.all([enrichFilmPosters(ranked), enrichAlbumCovers(ranked)]);
+
+  // Quality floor: drop the barely-notable long tail. Guarded — if every match is below the
+  // floor (a genuinely niche query), keep them all rather than returning nothing.
+  const floored = ranked.filter((item) => item.sitelinks >= MIN_SITELINKS_TO_SURFACE);
+  const surviving = floored.length > 0 ? floored : ranked;
+
+  // Three ranking tiers, each ordered by notability (sitelink count) within:
+  //   2 — a *notable* exact-title match leads (a strong intent signal): keeps "It" on the work
+  //       titled exactly "It" over a higher-sitelink person whose name merely starts with it,
+  //       without letting a junk exact match outrank a famous prefix match.
+  //   1 — covered results, so the poster gallery isn't broken up by placeholder cards.
+  //   0 — real but imageless works. A *demotion*, not a filter: they still appear, just lower.
+  // Stable within a tier: fetchWikidataEntities preserves Wikidata's relevance order. Medium is
+  // a UI filter, not a forced section.
+  const tier = (item: RankedResult): number => {
+    if (item.exact && item.sitelinks >= EXACT_MATCH_NOTABILITY_FLOOR) {
+      return 2;
+    }
+    return item.result.snapshot.image ? 1 : 0;
+  };
+  surviving.sort((left, right) => tier(right) - tier(left) || right.sitelinks - left.sitelinks);
+
+  logSearch(trimmed, surviving);
+
+  return surviving.map((item) => item.result);
+}
+
+// ---- creator expansion (hop two) ----------------------------------------------------------
+
+// Thrown when an expected authority can't be reached (network/503) — distinct from a creator
+// who genuinely has no resolvable works. Lets the UI say "couldn't load" vs "no works".
+export class SubjectWorksUnavailableError extends Error {
+  constructor(source: string) {
+    super(`Could not load works from ${source}.`);
+    this.name = "SubjectWorksUnavailableError";
+  }
+}
+
+function releaseGroupToResult(rg: MusicBrainzReleaseGroup): ExternalNodeSearchResult {
+  const year = parseYear(rg.firstReleaseDate);
+  return {
+    kind: "addable-work",
+    // Bare release-group MBID — the convention the entity resolver expects for an album.
+    identity: { source: "musicbrainz", externalId: rg.id },
+    snapshot: { name: rg.title, type: "album", year, image: coverArtFrontUrl(rg.id) },
+    searchHint: { title: rg.title, creator: rg.artistName },
+    meta: pickMeta([rg.artistName, year]),
+    externalUrl: `https://musicbrainz.org/release-group/${rg.id}`,
+  };
+}
+
+// Resolve a creator (a Wikidata person/artist QID) into their works from the specialists:
+// MusicBrainz discography (via P434) and/or TMDB filmography (via P4985). Wikidata identifies
+// and ranks the creator; the specialist enumerates the works (Wikidata's own work back-links
+// are too patchy). A creator with neither cross-link (e.g. most book authors) simply has no
+// expansion — they remain addable as a person.
+export async function resolveSearchSubjectWorks(
+  identity: TreeNodeIdentity,
+): Promise<ExternalNodeSearchResult[]> {
+  if (identity.source !== "wikidata") {
+    return [];
+  }
+  const [entity] = await fetchWikidataEntities([identity.externalId]);
+  if (!entity) {
+    return [];
+  }
+
+  const mbArtistId = claimString(entity.claims, WD.musicBrainzArtistId);
+  const tmdbPersonId = claimString(entity.claims, WD.tmdbPersonId);
+  const artistName = entity.label?.trim();
+
+  // The authorities are independent — a creator can be a recording artist, a screen credit, and
+  // an Apple storefront act all at once (e.g. Bowie) — so resolve the MusicBrainz discography,
+  // TMDB filmography, and Apple cover map concurrently. The Apple map is fetched once per
+  // creator (a search + a lookup) rather than per album.
+  const [albums, credits, itunesCovers] = await Promise.all([
+    mbArtistId
+      ? fetchMusicBrainzArtistAlbums(mbArtistId, MUSICBRAINZ_ARTIST_ALBUMS_LIMIT)
+      : Promise.resolve([] as MusicBrainzReleaseGroup[]),
+    tmdbPersonId && hasTmdbCredentials()
+      ? fetchTmdbPersonById(tmdbPersonId).then((person) =>
+          person ? fetchTmdbPersonCredits(person) : [],
+        )
+      : Promise.resolve([] as ExternalNodeSearchResult[]),
+    mbArtistId && artistName
+      ? fetchItunesArtistAlbumCovers(artistName)
+      : Promise.resolve(new Map<string, string>()),
   ]);
 
-  const rankedResults = settled
-    .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
-    .sort((left, right) => right.score - left.score)
-    .map(({ score: _score, ...result }) => result);
+  // null (not []) means MusicBrainz was unreachable — surface it so the UI distinguishes
+  // "couldn't load" from a creator who genuinely has no discography.
+  if (albums == null) {
+    throw new SubjectWorksUnavailableError("MusicBrainz");
+  }
 
-  return diversifySearchResults(dedupeExternalSearchResults(rankedResults), trimmed).slice(
-    0,
-    FINAL_RESULT_LIMIT,
-  );
+  // Prefer Apple's clean storefront cover by album-title match; Cover Art Archive stands when
+  // Apple has no match for that title (so a work never loses its cover, only upgrades it).
+  const albumResults = albums.map(releaseGroupToResult).map((result) => {
+    const cover = itunesCovers.get(normalizeAlbumTitle(result.snapshot.name));
+    return cover ? { ...result, snapshot: { ...result.snapshot, image: cover } } : result;
+  });
+
+  return [...albumResults, ...credits];
+}
+
+// A short biography for an expanded creator — the English Wikipedia intro extract plus the
+// article URL — to fill the panel beside the creator while their (slower) works load. Resolved
+// from the exact `enwiki` sitelink of the Wikidata QID, so it can't land on a namesake. Empty
+// when the subject isn't a Wikidata entity or has no English article.
+export type SearchSubjectBio = {
+  extract?: string;
+  wikipediaUrl?: string;
+};
+
+export async function resolveSearchSubjectBio(
+  identity: TreeNodeIdentity,
+): Promise<SearchSubjectBio> {
+  if (identity.source !== "wikidata") {
+    return {};
+  }
+  const title = await fetchWikidataEnwikiTitle(identity.externalId);
+  if (!title) {
+    return {};
+  }
+  const media = await fetchSummaryByTitle(title);
+  return { extract: media.wikiExtract, wikipediaUrl: media.wikipediaUrl };
 }

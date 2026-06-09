@@ -1,11 +1,19 @@
 export {
   ConnectionType,
   acceptCultureTreeGenerationOutput,
+  BranchRole,
+  branchRoleForGuideSection,
+  CORE_RECOMMENDATION_GUIDE_SECTION_IDS,
   countCultureTreeNodes,
   CultureTreeSchema,
   deriveSearchHintFromName,
   ExternalNodeSearchResultSchema,
   ExternalNodeSource,
+  ExternalSearchResultKind,
+  formatGuideSectionTitle,
+  GUIDE_SECTION_DISPLAY_ORDER,
+  GuideSectionId,
+  GuideSectionSchema,
   NodeSource,
   NodeType,
   normalizeCultureTreeOutput,
@@ -13,10 +21,14 @@ export {
   TreeItemSchema,
   TreeNodeIdentitySchema,
   TreeNodeSnapshotSchema,
+  type BranchRoleValue,
   type ConnectionTypeValue,
   type CultureTree,
   type ExternalNodeSearchResult,
   type ExternalNodeSourceValue,
+  type ExternalSearchResultKindValue,
+  type GuideSection,
+  type GuideSectionIdValue,
   type NodeSourceValue,
   type NodeTypeValue,
   type SearchHint,
@@ -24,6 +36,16 @@ export {
   type TreeNodeIdentity,
   type TreeNodeSnapshot,
 } from "./tree";
+
+export {
+  addBranchToGuideSection,
+  branchForGuideSection,
+  cultureTreeWithGuideSectionItems,
+  cultureTreeWithRevealedBranches,
+  filterCultureTreeToNodeTypes,
+  guideSectionsIncludeCore,
+  removeBranchFromGuideSections,
+} from "./guide-sections";
 
 export { TreeRequestSchema, type TreeRequest } from "./input";
 

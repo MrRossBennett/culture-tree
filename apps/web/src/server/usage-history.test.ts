@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildAcceptedAiGenerationUsage,
+  buildAcceptedTreeCreationUsage,
   currentAllowancePeriod,
   usageTypeForGenerateTreeAction,
 } from "./usage-history";
@@ -37,9 +38,53 @@ describe("Usage History", () => {
     });
   });
 
+  it("records accepted Tree Creation usage separately from AI Generation usage", () => {
+    const usage = buildAcceptedTreeCreationUsage({
+      id: "usage_create_tree",
+      person: { id: "person_123", email: "free@example.com" },
+      cultureTreeId: "tree_123",
+      proAllowlist: [],
+      now: new Date("2026-04-30T09:00:00.000Z"),
+    });
+
+    expect(usage).toEqual({
+      id: "usage_create_tree",
+      personId: "person_123",
+      usageType: "create_tree",
+      effectivePlan: PLANS.free,
+      cultureTreeId: "tree_123",
+      allowancePeriodStart: null,
+      allowancePeriodEnd: null,
+      createdAt: new Date("2026-04-30T09:00:00.000Z"),
+    });
+  });
+
   it("records Generate Tree from a Branch as the same Usage Type", () => {
     expect(usageTypeForGenerateTreeAction("direct_generate_tree")).toBe("generate_tree");
     expect(usageTypeForGenerateTreeAction("generate_tree_from_branch")).toBe("generate_tree");
+  });
+
+  it("records AI-assisted Start Tree from a Seed as Generate Tree usage", () => {
+    const usageType = usageTypeForGenerateTreeAction("direct_generate_tree");
+    if (!usageType) {
+      throw new Error("direct Generate Tree should record AI usage.");
+    }
+    const usage = buildAcceptedAiGenerationUsage({
+      id: "usage_start_tree",
+      person: { id: "person_start_tree", email: "free@example.com" },
+      cultureTreeId: "tree_start_tree",
+      usageType,
+      proAllowlist: [],
+      now: new Date("2026-04-30T09:00:00.000Z"),
+    });
+
+    expect(usage).toMatchObject({
+      usageType: "generate_tree",
+      effectivePlan: PLANS.free,
+      cultureTreeId: "tree_start_tree",
+      allowancePeriodStart: null,
+      allowancePeriodEnd: null,
+    });
   });
 
   it("records paid Allowance Period when one applies", () => {

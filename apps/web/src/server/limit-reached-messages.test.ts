@@ -4,6 +4,25 @@ import { describe, expect, it } from "vite-plus/test";
 import { messageForLimitReached } from "./limit-reached-messages";
 
 describe("Limit Reached messages", () => {
+  it("explains blocked Tree Creation actions", () => {
+    expect(
+      messageForLimitReached({
+        action: "create_tree",
+        limitReached: {
+          code: "limit_reached",
+          allowance: "free_lifetime_tree_creation",
+          usageType: ENTITLEMENTS.createTree,
+          limit: 3,
+          used: 3,
+          remaining: 0,
+          message: "",
+        },
+      }),
+    ).toBe(
+      "You've used the 3 Culture Trees included with the Free Plan. Pro access is not self-serve yet, but this is the paid boundary.",
+    );
+  });
+
   it("explains blocked direct Generate Tree actions", () => {
     expect(
       messageForLimitReached({
@@ -19,7 +38,7 @@ describe("Limit Reached messages", () => {
         },
       }),
     ).toBe(
-      "You've used the 3 generated Culture Trees included with the Free Plan. Pro access is not self-serve yet, but this is the paid boundary.",
+      "You've used the 3 AI-generated Culture Trees included with the Free Plan. Pro access is not self-serve yet, but this is the paid boundary.",
     );
   });
 

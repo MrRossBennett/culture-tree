@@ -1,3 +1,4 @@
+import { CORE_RECOMMENDATION_GUIDE_SECTION_IDS, GUIDE_SECTION_DISPLAY_ORDER } from "@repo/schemas";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { completeTreeItemConnection, generateTree } from "./pipeline";
@@ -13,7 +14,7 @@ describe("generateTree", () => {
     }
   });
 
-  it("returns a flat tree with items when MOCK_ENGINE is enabled", async () => {
+  it("returns a generated tree with recommendation Guide Sections when MOCK_ENGINE is enabled", async () => {
     process.env.MOCK_ENGINE = "true";
 
     const tree = await generateTree({
@@ -23,6 +24,12 @@ describe("generateTree", () => {
     });
 
     expect(tree.seed).toBe("OK Computer — Radiohead");
+    const sectionIds = tree.guideSections.map((section) => section.id);
+    expect(sectionIds).toEqual(GUIDE_SECTION_DISPLAY_ORDER);
+    expect(CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((id) => sectionIds.includes(id))).toBe(true);
+    expect(
+      tree.guideSections.every((section) => section.items.every((item) => item.branchRole != null)),
+    ).toBe(true);
     expect(tree.items.length).toBeGreaterThan(0);
     expect(tree.items[0]).toMatchObject({
       id: expect.any(String),
@@ -30,6 +37,7 @@ describe("generateTree", () => {
       type: expect.any(String),
       reason: expect.any(String),
       connectionType: expect.any(String),
+      branchRole: "essential-next",
       source: "ai",
     });
     expect("children" in tree.items[0]).toBe(false);
@@ -46,7 +54,15 @@ describe("generateTree", () => {
     });
 
     expect(tree.items.length).toBeGreaterThan(0);
+    expect(
+      CORE_RECOMMENDATION_GUIDE_SECTION_IDS.every((id) =>
+        tree.guideSections.some((section) => section.id === id),
+      ),
+    ).toBe(true);
     expect(tree.items.every((item) => item.type === "film")).toBe(true);
+    expect(
+      tree.guideSections.every((section) => section.items.every((item) => item.type === "film")),
+    ).toBe(true);
   });
 
   it("fills an added tree item reason when MOCK_ENGINE is enabled", async () => {
@@ -56,6 +72,7 @@ describe("generateTree", () => {
       {
         seed: "Grimy New York 70s",
         seedType: "root",
+        guideSections: [],
         items: [],
       },
       {

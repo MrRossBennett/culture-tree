@@ -1,5 +1,5 @@
 import { authQueryOptions } from "@repo/auth/tanstack/queries";
-import type { CultureTree, NodeTypeValue, TreeItem } from "@repo/schemas";
+import { type CultureTree, type NodeTypeValue, type TreeItem } from "@repo/schemas";
 import { Button } from "@repo/ui/components/button";
 import { ButtonGroup } from "@repo/ui/components/button-group";
 import {
@@ -9,34 +9,58 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@repo/ui/components/dialog";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/dropdown-menu";
+import { Input } from "@repo/ui/components/input";
+import { Textarea } from "@repo/ui/components/textarea";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from "@tanstack/react-router";
-import { LoaderCircleIcon, RefreshCwIcon, SproutIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  LoaderCircleIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  SproutIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
   CultureTreeToneSelector,
   type CultureTreeTone,
 } from "~/components/culture-tree-tone-selector";
+import { DeleteTreeDialog } from "~/components/delete-tree-dialog";
 import { DeleteTreeNodeDialog } from "~/components/delete-tree-node-dialog";
 import {
   CULTURE_TREE_NODE_TYPES,
   CulturalMixSelector,
   mediaFilterFromSelectedNodeTypes,
 } from "~/components/node-type-filter-list";
-import { TreeNodeDrawer, type TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
-import { TreePreview } from "~/components/tree-preview";
+import type { TreeNodePopoverSubmitInput } from "~/components/tree-node-popover";
+import { TreePreview, type AddToTreeTarget } from "~/components/tree-preview";
 import { myCultureTreesQueryOptions } from "~/lib/my-culture-trees-query";
+import { loaderContainsCommittedTree, treeForVisiblePreview } from "~/lib/tree-preview-state";
 import {
-  $addCultureTreeNode,
+  $addManualCultureTreeBranches,
+  $addPublicCultureTreeBranchToMyTree,
+  $deleteCultureTree,
   $deleteCultureTreeNode,
   $getCultureTreeById,
   $setCultureTreePublic,
+  $suggestCultureTreeBranches,
+  $updateCultureTreeDetails,
 } from "~/server/culture-trees";
-import { $enrichExistingCultureTree } from "~/server/enrich-culture-tree";
 import { $likeEntity, $unlikeEntity } from "~/server/entity-resolver";
-import { $retryCultureTreeGeneration, $seedTreeFromItem } from "~/server/generate-culture-tree";
+import {
+  $retryCultureTreeGeneration,
+  $seedTreeFromItem,
+  $startCultureTreeFromBranch,
+} from "~/server/generate-culture-tree";
 import {
   isGenerationActive,
   isGenerationTerminal,
@@ -59,6 +83,7 @@ export const Route = createFileRoute("/tree/$treeId")({
       enrichments: row.enrichments,
       resolvedEntities: row.resolvedEntities,
       isOwner: user?.id === row.userId,
+      viewerUserId: user?.id ?? null,
       isPublic: row.isPublic,
       generation: row.generation,
     };
@@ -90,7 +115,7 @@ function ProgressiveGenerationPanel({
       : "The first branches are being shaped now.";
 
   return (
-    <section className="mx-auto w-full max-w-3xl rounded border border-border/70 bg-muted/20 px-4 py-4">
+    <section className="mx-auto w-full max-w-4xl rounded border border-border/70 bg-muted/20 px-4 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           {failed ? (
@@ -129,7 +154,7 @@ function ProgressiveGenerationPanel({
 
 function LoadingBranchCards() {
   return (
-    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
       {[0, 1].map((index) => (
         <div
           key={index}
@@ -154,49 +179,99 @@ function LoadingBranchCards() {
 function CultureTreeSeedCard({
   tree,
   ownerUsername,
-  isAddItemPending = false,
-  onAddItem,
+  visibilityControl,
 }: {
   readonly tree: CultureTree;
   readonly ownerUsername?: string | null;
-  readonly isAddItemPending?: boolean;
-  readonly onAddItem?: (parentItemId: string, node: TreeNodePopoverSubmitInput) => Promise<void>;
+  readonly visibilityControl?: ReactNode;
 }) {
   const byline = ownerUsername?.trim() ? `by ${ownerUsername.trim()}` : null;
+  const seed = tree.seed?.trim();
+  const title = tree.title?.trim();
+  const heading = title || seed || "Untitled tree";
+  const description = tree.description?.trim();
 
   return (
-    <section className="relative mx-auto w-full max-w-3xl">
-      <div className="rounded-[1.4rem] border border-primary/20 bg-card/92 px-3 py-2 shadow-[0_14px_38px_-34px_rgba(120,78,18,0.36)] sm:px-4">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-            <SproutIcon className="size-4 shrink-0 translate-y-0.5 text-primary" aria-hidden />
-            <h1 className="font-heading min-w-0 truncate text-2xl leading-tight tracking-tight text-card-foreground md:text-3xl">
-              {tree.seed}
-            </h1>
-            {byline ? (
-              <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
-                {byline}
+    <section className="w-full">
+      <div className="flex min-w-0 flex-col gap-4 border-b border-border/55 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/8 text-primary">
+            <SproutIcon className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="font-heading min-w-0 truncate text-3xl leading-tight tracking-tight text-foreground md:text-4xl">
+                {heading}
+              </h1>
+              {byline ? (
+                <p className="font-body shrink-0 text-sm text-muted-foreground italic md:text-base">
+                  {byline}
+                </p>
+              ) : null}
+            </div>
+            {description ? (
+              <p className="font-body mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+                {description}
               </p>
             ) : null}
           </div>
-          {onAddItem ? (
-            <div className="shrink-0">
-              <TreeNodeDrawer
-                triggerLabel="Grow new branch"
-                triggerClassName="text-[0.65rem]"
-                isPending={isAddItemPending}
-                onSubmit={(node) => onAddItem("root", node)}
-              />
-            </div>
-          ) : null}
         </div>
+        {visibilityControl ? <div className="shrink-0 sm:pb-1">{visibilityControl}</div> : null}
       </div>
-      <div className="mx-auto mt-2 h-5 w-px bg-gradient-to-b from-primary/35 to-transparent" />
     </section>
   );
 }
 
-function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): TreeItem {
+function TreeVisibilityToggle({
+  isPublic,
+  isPending,
+  onChange,
+}: {
+  readonly isPublic: boolean;
+  readonly isPending: boolean;
+  readonly onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      <ButtonGroup aria-label="Tree link visibility" className="rounded">
+        <Button
+          type="button"
+          size="xs"
+          variant={isPublic ? "outline" : "default"}
+          aria-pressed={!isPublic}
+          disabled={isPending}
+          onClick={() => {
+            if (isPublic) {
+              onChange(false);
+            }
+          }}
+          className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+        >
+          Private
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant={isPublic ? "default" : "outline"}
+          aria-pressed={isPublic}
+          disabled={isPending}
+          onClick={() => {
+            if (!isPublic) {
+              onChange(true);
+            }
+          }}
+          className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
+        >
+          Public
+        </Button>
+      </ButtonGroup>
+    </div>
+  );
+}
+
+type PendingTreeItem = TreeItem;
+
+function pendingTreeItemFromInput(input: TreeNodePopoverSubmitInput): PendingTreeItem {
   const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const { identity, searchHint, snapshot } = input.result;
 
@@ -218,27 +293,55 @@ function TreePage() {
   const router = useRouter();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { tree, username, enrichments, resolvedEntities, isOwner, treeId, isPublic, generation } =
-    Route.useLoaderData();
+  const {
+    tree,
+    username,
+    enrichments,
+    resolvedEntities,
+    isOwner,
+    viewerUserId,
+    treeId,
+    isPublic,
+    generation,
+  } = Route.useLoaderData();
   const [generatingItem, setGeneratingItem] = useState<TreeItem | null>(null);
   const [selectedGenerationTypes, setSelectedGenerationTypes] = useState<NodeTypeValue[]>([
     ...CULTURE_TREE_NODE_TYPES,
   ]);
   const [generationTone, setGenerationTone] = useState<CultureTreeTone>("mixed");
   const [deleteTarget, setDeleteTarget] = useState<TreeItem | null>(null);
-  const [pendingItems, setPendingItems] = useState<TreeItem[]>([]);
+  const [namingItem, setNamingItem] = useState<TreeItem | null>(null);
+  const [newTreeTitle, setNewTreeTitle] = useState("");
+  const [newTreeDescription, setNewTreeDescription] = useState("");
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [deleteTreeOpen, setDeleteTreeOpen] = useState(false);
+  const [pendingItems, setPendingItems] = useState<PendingTreeItem[]>([]);
+  const [committedTreeState, setCommittedTreeState] = useState<{
+    treeId: string;
+    tree: CultureTree;
+  } | null>(null);
   const treeIsReady = generation.status === "ready";
-
-  const enrich = useMutation({
-    mutationFn: () => $enrichExistingCultureTree({ data: { treeId } }),
-    onSuccess: async () => {
-      toast.success("Media and links updated.");
-      await router.invalidate();
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Could not enrich this tree.");
-    },
+  const committedTree =
+    committedTreeState?.treeId === treeId &&
+    !loaderContainsCommittedTree({ loaderTree: tree, committedTree: committedTreeState.tree })
+      ? committedTreeState.tree
+      : null;
+  const myTrees = useQuery({
+    ...myCultureTreesQueryOptions(),
+    enabled: Boolean(viewerUserId && treeIsReady),
   });
+  const addToTreeTargets: AddToTreeTarget[] = (myTrees.data?.trees ?? [])
+    .filter((target) => target.id !== treeId && target.generationStatus === "ready")
+    .map((target) => ({
+      id: target.id,
+      title: target.listTitle,
+      isPublic: target.isPublic,
+      branchCount: target.branchCount,
+      previewType: target.previewItems[0]?.type,
+      previewImageUrl: target.previewItems[0]?.imageUrl,
+    }));
 
   const retryGeneration = useMutation({
     mutationFn: () => $retryCultureTreeGeneration({ data: { treeId } }),
@@ -266,27 +369,86 @@ function TreePage() {
 
   const addItem = useMutation({
     mutationFn: (input: {
-      parentItemId: string;
-      node: TreeNodePopoverSubmitInput;
-      pendingItemId: string;
+      nodes: readonly TreeNodePopoverSubmitInput[];
+      pendingItemIds: readonly string[];
     }) => {
-      const { parentItemId, node } = input;
-      return $addCultureTreeNode({ data: { treeId, parentNodeId: parentItemId, node } });
+      return $addManualCultureTreeBranches({ data: { treeId, nodes: [...input.nodes] } });
     },
     onSuccess: async (result, variables) => {
+      setCommittedTreeState({ treeId, tree: result.tree });
+      toast.success(
+        result.branches.length === 1
+          ? "Branch added to your tree."
+          : "Branches added to your tree.",
+      );
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+      const committedPendingIds = new Set(variables.pendingItemIds);
+      setPendingItems((items) => items.filter((item) => !committedPendingIds.has(item.id)));
+    },
+    onError: (err: Error, variables) => {
+      const failedPendingIds = new Set(variables.pendingItemIds);
+      setPendingItems((items) => items.filter((item) => !failedPendingIds.has(item.id)));
+      toast.error(err.message || "Could not add that branch.");
+    },
+  });
+
+  const addPublicBranch = useMutation({
+    mutationFn: (input: { item: TreeItem; targetTreeId: string }) => {
+      return $addPublicCultureTreeBranchToMyTree({
+        data: {
+          sourceTreeId: treeId,
+          sourceBranchId: input.item.id,
+          targetTreeId: input.targetTreeId,
+        },
+      });
+    },
+    onSuccess: async (_result, variables) => {
+      const target = addToTreeTargets.find((candidate) => candidate.id === variables.targetTreeId);
+      toast.success(
+        target
+          ? `Added “${variables.item.name}” to “${target.title}”.`
+          : "Branch added to your tree.",
+      );
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not add that branch.");
+    },
+  });
+
+  const startTreeFromBranch = useMutation({
+    mutationFn: (input: { item: TreeItem; title: string; description?: string }) =>
+      $startCultureTreeFromBranch({
+        data: {
+          sourceTreeId: treeId,
+          sourceBranchId: input.item.id,
+          title: input.title,
+          description: input.description,
+        },
+      }),
+    onSuccess: async (result) => {
       if (!result.ok) {
-        setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
         toast.error(result.limitReached.message);
         return;
       }
-      toast.success("Branch added to your tree.");
+      setNamingItem(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
-      await router.invalidate();
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
+      toast.success("New tree started.");
+      void navigate({ to: "/tree/$treeId", params: { treeId: result.treeId } });
     },
-    onError: (err: Error, variables) => {
-      setPendingItems((items) => items.filter((item) => item.id !== variables.pendingItemId));
-      toast.error(err.message || "Could not add that branch.");
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not start a new tree from that branch.");
+    },
+  });
+
+  const suggestBranches = useMutation({
+    mutationFn: (trayResults: readonly TreeNodePopoverSubmitInput["result"][]) =>
+      $suggestCultureTreeBranches({
+        data: { treeId, trayResults: [...trayResults] },
+      }),
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not suggest Branches.");
     },
   });
 
@@ -315,11 +477,42 @@ function TreePage() {
     onSuccess: async () => {
       toast.success("Branch removed from your tree.");
       setDeleteTarget(null);
+      setCommittedTreeState(null);
       await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       await router.invalidate();
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not delete that branch.");
+    },
+  });
+
+  const updateDetails = useMutation({
+    mutationFn: (input: { title: string; description?: string }) =>
+      $updateCultureTreeDetails({
+        data: { treeId, title: input.title, description: input.description },
+      }),
+    onSuccess: async () => {
+      toast.success("Tree details updated.");
+      setEditDetailsOpen(false);
+      setCommittedTreeState(null);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      await router.invalidate();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not update tree details.");
+    },
+  });
+
+  const deleteTree = useMutation({
+    mutationFn: () => $deleteCultureTree({ data: { treeId } }),
+    onSuccess: async () => {
+      setDeleteTreeOpen(false);
+      await queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
+      toast.success("Tree deleted.");
+      void navigate({ to: "/" });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not delete this tree.");
     },
   });
 
@@ -356,66 +549,11 @@ function TreePage() {
     </section>
   ) : null;
 
-  const ownerToolbar =
-    isOwner && treeIsReady ? (
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={enrich.isPending}
-          onClick={() => enrich.mutate()}
-          className="inline-flex items-center gap-2 font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase hover:text-foreground"
-        >
-          {enrich.isPending ? (
-            <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" aria-hidden />
-          ) : null}
-          {enrich.isPending ? "Enriching…" : "Dev: Enrich media"}
-        </Button>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[0.6rem] tracking-wide text-muted-foreground/60 uppercase">
-            Link
-          </span>
-          <ButtonGroup aria-label="Tree link visibility" className="rounded">
-            <Button
-              type="button"
-              size="xs"
-              variant={isPublic ? "outline" : "default"}
-              aria-pressed={!isPublic}
-              disabled={setPublic.isPending}
-              onClick={() => {
-                if (!isPublic) {
-                  return;
-                }
-                setPublic.mutate(false);
-              }}
-              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-            >
-              Private
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant={isPublic ? "default" : "outline"}
-              aria-pressed={isPublic}
-              disabled={setPublic.isPending}
-              onClick={() => {
-                if (isPublic) {
-                  return;
-                }
-                setPublic.mutate(true);
-              }}
-              className="font-mono text-[0.6rem] tracking-[0.06em] uppercase"
-            >
-              Public
-            </Button>
-          </ButtonGroup>
-        </div>
-      </div>
-    ) : null;
-
-  const previewTree =
-    pendingItems.length > 0 ? { ...tree, items: [...tree.items, ...pendingItems] } : tree;
+  const previewTree = treeForVisiblePreview({
+    loaderTree: tree,
+    committedTree,
+    pendingItems,
+  });
   const pendingItemIds = pendingItems.map((item) => item.id);
   const generationIsActive = isGenerationActive(generation.status);
   const generationIsTerminal = isGenerationTerminal(generation.status);
@@ -431,29 +569,75 @@ function TreePage() {
     return () => window.clearInterval(id);
   }, [generationIsActive, router]);
 
-  const handleAddItem = async (parentItemId: string, node: TreeNodePopoverSubmitInput) => {
-    const pendingItem = pendingTreeItemFromInput(node);
-    setPendingItems((items) => [...items, pendingItem]);
-    await addItem.mutateAsync({ parentItemId, node, pendingItemId: pendingItem.id });
+  const handleAddItems = async (nodes: readonly TreeNodePopoverSubmitInput[]) => {
+    const nextPendingItems = nodes.map((node) => pendingTreeItemFromInput(node));
+    setPendingItems((items) => [...items, ...nextPendingItems]);
+    await addItem.mutateAsync({
+      nodes,
+      pendingItemIds: nextPendingItems.map((item) => item.id),
+    });
   };
 
-  return (
-    <div className="flex min-h-0 w-full flex-1 flex-col text-foreground">
-      <div className="shrink-0 bg-background px-4 py-3">
-        <div className="mx-auto max-w-6xl">{ownerToolbar}</div>
-      </div>
+  const handleSuggestItems = async (
+    trayResults: readonly TreeNodePopoverSubmitInput["result"][],
+  ) => {
+    const result = await suggestBranches.mutateAsync(trayResults);
+    if (!result.ok) {
+      toast.error(result.limitReached.message);
+      return [];
+    }
+    return result.suggestions;
+  };
 
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-4 px-4 pb-10">
+  const openEditDetails = () => {
+    setEditTitle(tree.title?.trim() ?? "");
+    setEditDescription(tree.description?.trim() ?? "");
+    setEditDetailsOpen(true);
+  };
+
+  const treeOptionsMenu =
+    isOwner && treeIsReady ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Tree options"
+              className="shrink-0"
+            >
+              <MoreHorizontalIcon className="size-4" aria-hidden />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={openEditDetails}>
+            <PencilIcon aria-hidden />
+            Edit details
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleteTreeOpen(true)}>
+            <Trash2Icon aria-hidden />
+            Delete tree
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
+  return (
+    <div className="flex min-h-0 w-full flex-1 flex-col bg-background text-foreground">
+      <div className="flex w-full flex-1 flex-col gap-4 px-4 pt-3 pb-12 sm:px-6 lg:px-8">
         <CultureTreeSeedCard
           tree={tree}
           ownerUsername={username}
-          isAddItemPending={addItem.isPending}
-          onAddItem={
-            isOwner && treeIsReady
-              ? async (parentItemId, node) => {
-                  await handleAddItem(parentItemId, node);
-                }
-              : undefined
+          visibilityControl={
+            isOwner && treeIsReady ? (
+              <TreeVisibilityToggle
+                isPublic={isPublic}
+                isPending={setPublic.isPending}
+                onChange={(next) => setPublic.mutate(next)}
+              />
+            ) : undefined
           }
         />
         {!treeIsReady ? (
@@ -468,10 +652,45 @@ function TreePage() {
         ) : null}
         {previewTree.items.length > 0 ? (
           <TreePreview
+            key={treeId}
+            addToTreeTargets={addToTreeTargets}
             enrichments={enrichments}
+            headerActions={treeOptionsMenu}
             loadingItemIds={pendingItemIds}
+            isAddItemPending={addItem.isPending}
+            isGrowItemPending={suggestBranches.isPending}
             isGeneratingNewTree={seedFromItem.isPending}
             resolvedEntities={resolvedEntities}
+            onAddItem={
+              isOwner && treeIsReady
+                ? async (node) => {
+                    await handleAddItems(node);
+                  }
+                : undefined
+            }
+            onAddBranchToTree={
+              viewerUserId && treeIsReady
+                ? async (item, targetTreeId) => {
+                    await addPublicBranch.mutateAsync({ item, targetTreeId });
+                  }
+                : undefined
+            }
+            onStartNewTree={
+              viewerUserId && treeIsReady
+                ? async (item) => {
+                    setNamingItem(item);
+                    setNewTreeTitle(item.name);
+                    setNewTreeDescription("");
+                  }
+                : undefined
+            }
+            onSuggestItems={
+              isOwner && treeIsReady
+                ? async (trayResults) => {
+                    return handleSuggestItems(trayResults);
+                  }
+                : undefined
+            }
             onToggleLike={async (entityId, liked) => {
               await toggleLike.mutateAsync({ entityId, liked });
             }}
@@ -483,12 +702,66 @@ function TreePage() {
                 : undefined
             }
             onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            sourceTreeId={treeId}
             tree={previewTree}
           />
         ) : !treeIsReady ? (
           <LoadingBranchCards />
         ) : (
-          <TreePreview tree={previewTree} />
+          <TreePreview
+            key={treeId}
+            addToTreeTargets={addToTreeTargets}
+            enrichments={enrichments}
+            headerActions={treeOptionsMenu}
+            loadingItemIds={pendingItemIds}
+            isAddItemPending={addItem.isPending}
+            isGrowItemPending={suggestBranches.isPending}
+            isGeneratingNewTree={seedFromItem.isPending}
+            resolvedEntities={resolvedEntities}
+            onAddItem={
+              isOwner && treeIsReady
+                ? async (node) => {
+                    await handleAddItems(node);
+                  }
+                : undefined
+            }
+            onAddBranchToTree={
+              viewerUserId && treeIsReady
+                ? async (item, targetTreeId) => {
+                    await addPublicBranch.mutateAsync({ item, targetTreeId });
+                  }
+                : undefined
+            }
+            onStartNewTree={
+              viewerUserId && treeIsReady
+                ? async (item) => {
+                    setNamingItem(item);
+                    setNewTreeTitle(item.name);
+                    setNewTreeDescription("");
+                  }
+                : undefined
+            }
+            onSuggestItems={
+              isOwner && treeIsReady
+                ? async (trayResults) => {
+                    return handleSuggestItems(trayResults);
+                  }
+                : undefined
+            }
+            onToggleLike={async (entityId, liked) => {
+              await toggleLike.mutateAsync({ entityId, liked });
+            }}
+            onGenerateNewTree={
+              generationIsTerminal
+                ? async (item) => {
+                    setGeneratingItem(item);
+                  }
+                : undefined
+            }
+            onDeleteItem={isOwner && treeIsReady ? (item) => setDeleteTarget(item) : undefined}
+            sourceTreeId={treeId}
+            tree={previewTree}
+          />
         )}
         {visitorCta}
       </div>
@@ -503,17 +776,17 @@ function TreePage() {
       >
         <DialogContent showCloseButton={!seedFromItem.isPending} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl">
-              {seedFromItem.isPending ? "Generating new tree" : "Generate new tree"}
+            <DialogTitle className="font-heading text-2xl">
+              {seedFromItem.isPending ? "Exploring" : "Explore This"}
             </DialogTitle>
             <DialogDescription className="font-body text-base leading-relaxed">
               {generatingItem ? (
                 <>
-                  Build a fresh tree from{" "}
+                  Build a fresh guide-shaped Culture Tree from{" "}
                   <span className="text-foreground">{generatingItem.name}</span>.
                 </>
               ) : (
-                "Build a fresh tree from this item."
+                "Build a fresh guide-shaped Culture Tree from this Branch."
               )}
             </DialogDescription>
           </DialogHeader>
@@ -536,7 +809,7 @@ function TreePage() {
                   aria-hidden
                 />
                 <p className="font-mono text-[0.65rem] tracking-[0.08em] text-muted-foreground uppercase">
-                  Generating connections…
+                  Exploring…
                 </p>
               </div>
             ) : (
@@ -555,12 +828,188 @@ function TreePage() {
                   });
                 }}
               >
-                Generate tree
+                Explore This
               </Button>
             )}
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={namingItem != null}
+        onOpenChange={(open) => {
+          if (!open && !startTreeFromBranch.isPending) {
+            setNamingItem(null);
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!startTreeFromBranch.isPending} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl">Start a new tree</DialogTitle>
+            <DialogDescription className="font-body text-base leading-relaxed">
+              {namingItem ? (
+                <>
+                  Name a fresh tree seeded with{" "}
+                  <span className="text-foreground">{namingItem.name}</span>.
+                </>
+              ) : (
+                "Name a fresh tree seeded with this Branch."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const title = newTreeTitle.trim();
+              if (!title || !namingItem || startTreeFromBranch.isPending) {
+                return;
+              }
+              startTreeFromBranch.mutate({
+                item: namingItem,
+                title,
+                description: newTreeDescription.trim() || undefined,
+              });
+            }}
+          >
+            <div className="space-y-1.5">
+              <label
+                htmlFor="new-tree-title"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Tree name
+              </label>
+              <Input
+                id="new-tree-title"
+                value={newTreeTitle}
+                disabled={startTreeFromBranch.isPending}
+                maxLength={140}
+                onChange={(event) => setNewTreeTitle(event.target.value)}
+                placeholder="Name your tree…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="new-tree-description"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Description <span className="normal-case">(optional)</span>
+              </label>
+              <Textarea
+                id="new-tree-description"
+                value={newTreeDescription}
+                disabled={startTreeFromBranch.isPending}
+                maxLength={500}
+                rows={3}
+                onChange={(event) => setNewTreeDescription(event.target.value)}
+                placeholder="What ties this tree together?"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="amber"
+              className="w-full rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+              disabled={startTreeFromBranch.isPending || newTreeTitle.trim().length === 0}
+            >
+              {startTreeFromBranch.isPending ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                "Create tree"
+              )}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editDetailsOpen}
+        onOpenChange={(open) => {
+          if (!open && !updateDetails.isPending) {
+            setEditDetailsOpen(false);
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!updateDetails.isPending} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl">Edit tree details</DialogTitle>
+            <DialogDescription className="font-body text-base leading-relaxed">
+              Update the name and description for this Culture Tree.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const title = editTitle.trim();
+              if (!title || updateDetails.isPending) {
+                return;
+              }
+              updateDetails.mutate({
+                title,
+                description: editDescription.trim() || undefined,
+              });
+            }}
+          >
+            <div className="space-y-1.5">
+              <label
+                htmlFor="edit-tree-title"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Tree name
+              </label>
+              <Input
+                id="edit-tree-title"
+                value={editTitle}
+                disabled={updateDetails.isPending}
+                maxLength={140}
+                onChange={(event) => setEditTitle(event.target.value)}
+                placeholder="Name your tree…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="edit-tree-description"
+                className="px-1 font-mono text-[0.6rem] tracking-[0.14em] text-muted-foreground uppercase"
+              >
+                Description <span className="normal-case">(optional)</span>
+              </label>
+              <Textarea
+                id="edit-tree-description"
+                value={editDescription}
+                disabled={updateDetails.isPending}
+                maxLength={500}
+                rows={3}
+                onChange={(event) => setEditDescription(event.target.value)}
+                placeholder="What ties this tree together?"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="amber"
+              className="w-full rounded-sm font-mono text-[0.65rem] tracking-[0.08em] uppercase"
+              disabled={updateDetails.isPending || editTitle.trim().length === 0}
+            >
+              {updateDetails.isPending ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteTreeDialog
+        open={deleteTreeOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteTree.isPending) {
+            setDeleteTreeOpen(false);
+          }
+        }}
+        treeLabel={tree.title?.trim() || tree.seed?.trim() || "This tree"}
+        isPending={deleteTree.isPending}
+        onConfirm={() => deleteTree.mutate()}
+      />
 
       <DeleteTreeNodeDialog
         open={deleteTarget != null}
@@ -570,7 +1019,6 @@ function TreePage() {
           }
         }}
         branchLabel={deleteTarget?.name ?? ""}
-        subtreeNodeCount={1}
         isPending={deleteItem.isPending}
         onConfirm={() => {
           if (!deleteTarget) {

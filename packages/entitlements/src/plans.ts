@@ -6,6 +6,7 @@ export const PLANS = {
 export type PlanKey = (typeof PLANS)[keyof typeof PLANS];
 
 export const ENTITLEMENTS = {
+  createTree: "create_tree",
   generateTree: "generate_tree",
   growBranch: "grow_branch",
 } as const;
@@ -24,6 +25,7 @@ export type PlanConfig = {
   label: string;
   entitlements: readonly Entitlement[];
   allowances: {
+    lifetimeTreeCreations: number | null;
     lifetimeGenerateTree: number | null;
     growBranchPerCultureTree: number | null;
     sharedAiGenerationsPerAllowancePeriod: number | null;
@@ -36,8 +38,9 @@ export const PLAN_CONFIG = {
   [PLANS.free]: {
     key: PLANS.free,
     label: "Free Plan",
-    entitlements: [ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch],
+    entitlements: [ENTITLEMENTS.createTree, ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch],
     allowances: {
+      lifetimeTreeCreations: 3,
       lifetimeGenerateTree: 3,
       growBranchPerCultureTree: 3,
       sharedAiGenerationsPerAllowancePeriod: null,
@@ -46,8 +49,9 @@ export const PLAN_CONFIG = {
   [PLANS.pro]: {
     key: PLANS.pro,
     label: "Pro Plan",
-    entitlements: [ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch],
+    entitlements: [ENTITLEMENTS.createTree, ENTITLEMENTS.generateTree, ENTITLEMENTS.growBranch],
     allowances: {
+      lifetimeTreeCreations: null,
       lifetimeGenerateTree: null,
       growBranchPerCultureTree: null,
       sharedAiGenerationsPerAllowancePeriod: SHARED_PRO_AI_GENERATIONS_PER_ALLOWANCE_PERIOD,
