@@ -1,5 +1,13 @@
 # Culture Tree — Architecture & Data Flow
 
+> **Update (2026-05-31): search and entity resolution are now Wikidata-spined.** The source
+> of truth for how Branches are searched, ranked, and minted is **ADR 0004** (canonical entity
+> store; Wikidata = canonical record + sitelink-count notability; TMDB/Cover Art Archive/Open
+> Library supply only covers) and **ADR 0005** (creators are first-class Branches). Spotify and
+> Google Books are dropped. Sections below predating this still describe the old per-medium
+> live-blend search and Wikipedia-based music enrichment — treat the ADRs as authoritative
+> where they conflict.
+
 ## Stack
 
 Based on [tanstarter-plus](https://github.com/mugnavo/tanstarter-plus):
@@ -58,10 +66,10 @@ Features are gated by phase, not by schema changes.
 │  (query)     │     │  (Vercel AI SDK) │     │   Pipeline      │     │ (to client)  │
 └─────────────┘     └──────────────────┘     └─────────────────┘     └──────────────┘
                            │                        │
-                     Claude API              P1: Google Books, TMDB,
-                     via anthropic               Wikipedia (music, people,
-                     provider                    artists, artworks)
-                                             P2: Google Places, Wikidata
+                     Claude API              Wikidata spine (canonical
+                     via anthropic               record + notability) +
+                     provider                    covers: TMDB / Cover Art
+                                             Archive / Open Library
 ```
 
 ---
@@ -710,8 +718,11 @@ export async function enrichTV(node: TreeNode): Promise<EnrichedMedia> {
 }
 ```
 
-Album and song nodes use **Wikipedia** for article images, extracts, and links.
-No Spotify, MusicBrainz, Cover Art Archive, or YouTube Data API is used.
+Album and song records come from the **Wikidata spine**; album covers come from the
+**Cover Art Archive** (keyed by the MusicBrainz release-group ID carried on the Wikidata item,
+`P436`), with the item's Commons image (`P18`) as fallback. MusicBrainz also supplies an
+artist's studio discography when a creator Branch is expanded. (Spotify and Google Books are
+removed; YouTube Data API is still not used — see below.)
 
 Trailer data comes bundled with TMDB's film/TV enrichment via
 `append_to_response=videos`. No separate YouTube API needed — the

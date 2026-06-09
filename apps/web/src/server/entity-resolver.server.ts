@@ -9,6 +9,17 @@ import {
   treeItemEntity,
 } from "@repo/db/schema";
 import {
+  WD,
+  buildWikidataCover,
+  classifyWikidataType,
+  claimString,
+  creatorHintFromDescription,
+  fetchWikidataEntities,
+  searchWikidataEntities,
+  yearFromClaims,
+  type WikidataEntity,
+} from "@repo/engine";
+import {
   buildImageProvenance,
   CultureTreeSchema,
   inferImageProvenanceFromUrl,
@@ -36,12 +47,8 @@ import { buildTreeSummaryCardData } from "./tree-summary.server";
 const ENTITY_RESOLVER_BATCH_LIMIT = 5;
 const ENTITY_RESOLVER_KICK_MAX_JOBS = 25;
 const MAX_JOB_ATTEMPTS = 3;
-const MUSICBRAINZ_BASE = "https://musicbrainz.org/ws/2";
 const COVER_ART_ARCHIVE_BASE = "https://coverartarchive.org";
 const TMDB_BASE = "https://api.themoviedb.org/3";
-const GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1/volumes";
-const WIKI_REST = "https://en.wikipedia.org/api/rest_v1";
-const WIKI_API = "https://en.wikipedia.org/w/api.php";
 
 type ExternalIdentityInput = {
   source: ExternalNodeSourceValue;
@@ -88,18 +95,6 @@ type ResolverCandidate = EntityDisplayInput & ExternalIdentityInput;
 type ResolutionResult =
   | { status: "resolved"; entityId: string }
   | { status: "skipped"; reason: string };
-
-function normalizeForMatch(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s]/gu, " ")
-    .replace(/\b(the|a|an)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
@@ -189,15 +184,6 @@ function provenanceForKnownImage(input: {
       checkedAt: new Date(),
     });
   }
-  if (source === "google-books") {
-    return buildImageProvenance({
-      source: "google-books",
-      kind: "cover",
-      remoteUrl: input.imageUrl,
-      attributionUrl: input.externalUrl,
-      checkedAt: new Date(),
-    });
-  }
   if (source === "wikipedia") {
     return buildImageProvenance({
       source: "wikipedia",
@@ -246,15 +232,6 @@ async function setCachedResolverCandidate(
     });
 }
 
-function titleLooksConfident(found: string | undefined, wanted: string): boolean {
-  if (!found?.trim() || !wanted.trim()) {
-    return false;
-  }
-  const left = normalizeForMatch(found);
-  const right = normalizeForMatch(wanted);
-  return left === right || left.includes(right) || right.includes(left);
-}
-
 function creatorRoleForType(type: NodeTypeValue): string | undefined {
   if (type === "book") {
     return "author";
@@ -296,11 +273,6 @@ function canonicalNameFromItem(item: TreeItem): string {
   return item.snapshot?.name ?? item.name;
 }
 
-function parseYear(value: string | undefined): number | undefined {
-  const match = value?.match(/\b(18|19|20)\d{2}\b/);
-  return match?.[0] ? Number.parseInt(match[0], 10) : undefined;
-}
-
 function normalizeWikipediaKey(titleOrUrl: string): string | undefined {
   const trimmed = titleOrUrl.trim();
   if (!trimmed) {
@@ -314,23 +286,6 @@ function normalizeWikipediaKey(titleOrUrl: string): string | undefined {
     return slug ? decodeURIComponent(slug).replaceAll(" ", "_") : undefined;
   } catch {
     return trimmed.replaceAll(" ", "_");
-  }
-}
-
-function isLikelyGoogleBooksPlaceholderUrl(url: string | undefined): boolean {
-  if (!url) {
-    return false;
-  }
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === "books.google.com" &&
-      parsed.pathname.includes("/books/content") &&
-      !parsed.searchParams.has("edge") &&
-      !parsed.searchParams.has("imgtk")
-    );
-  } catch {
-    return false;
   }
 }
 
@@ -377,12 +332,12 @@ function parseTreeIdentity(item: TreeItem): ExternalIdentityInput | null {
     return null;
   }
 
-  if (identity.source === "google-books") {
+  if (identity.source === "wikidata") {
     return {
-      source: "google-books",
-      externalType: "volume",
+      source: "wikidata",
+      externalType: "item",
       externalId: identity.externalId,
-      externalUrl: `https://books.google.com/books?id=${encodeURIComponent(identity.externalId)}`,
+      externalUrl: `https://www.wikidata.org/wiki/${identity.externalId}`,
     };
   }
 
@@ -624,7 +579,14 @@ async function resolveKnownIdentity(input: {
   item: TreeItem;
   media?: EnrichedMedia;
 }): Promise<ResolutionResult | null> {
-  const candidate = candidateFromKnownIdentity(input.item, input.media);
+  // A staged Wikidata search result resolves by fetching its QID — the canonical record (and
+  // its notability) comes from Wikidata, not from the possibly-thin snapshot, keeping one
+  // authoritative entity per work. Specialist identities (TMDB/MusicBrainz from creator
+  // expansion) still mint from the snapshot via candidateFromKnownIdentity below.
+  const candidate =
+    input.item.identity?.source === "wikidata"
+      ? await resolveWikidataByQid(input.item, input.item.identity.externalId)
+      : candidateFromKnownIdentity(input.item, input.media);
   if (!candidate) {
     return null;
   }
@@ -634,86 +596,27 @@ async function resolveKnownIdentity(input: {
   return resolveWithCandidate({ treeId: input.treeId, item: input.item, candidate });
 }
 
-async function resolveTmdb(item: TreeItem): Promise<ResolverCandidate | null> {
-  if ((item.type !== "film" && item.type !== "tv") || !hasTmdbCredentials()) {
-    return null;
+// A film/TV poster fetched by its TMDB id (read from Wikidata P4947/P4983). TMDB exposes no
+// constructible poster URL, so this single call is the only way to the real artwork at mint
+// time; the Wikidata Commons image (P18) is the fallback when it's unavailable.
+async function fetchTmdbPosterById(
+  mediaType: "movie" | "tv",
+  id: string,
+): Promise<string | undefined> {
+  if (!hasTmdbCredentials()) {
+    return undefined;
   }
-  const tmdbType = item.type === "film" ? "movie" : "tv";
-  const url = new URL(`${TMDB_BASE}/search/${tmdbType}`);
-  url.searchParams.set("query", item.searchHint.title || item.name);
-  if (item.year != null) {
-    url.searchParams.set(tmdbType === "movie" ? "year" : "first_air_date_year", String(item.year));
+  const url = new URL(`${TMDB_BASE}/${mediaType}/${id}`);
+  try {
+    const response = await fetch(url, tmdbFetchInit(url));
+    if (!response.ok) {
+      return undefined;
+    }
+    const data = (await response.json()) as { poster_path?: string | null };
+    return data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : undefined;
+  } catch {
+    return undefined;
   }
-  const response = await fetch(url, tmdbFetchInit(url));
-  if (!response.ok) {
-    return null;
-  }
-  const data = (await response.json()) as {
-    results?: Array<{
-      id?: number;
-      title?: string;
-      name?: string;
-      release_date?: string;
-      first_air_date?: string;
-      poster_path?: string | null;
-      overview?: string;
-    }>;
-  };
-  const match = data.results?.find((result) => {
-    const title = tmdbType === "movie" ? result.title : result.name;
-    return titleLooksConfident(title, item.searchHint.title || item.name);
-  });
-  if (match?.id == null) {
-    return null;
-  }
-  const name = (tmdbType === "movie" ? match.title : match.name) ?? item.name;
-  const year = parseYear(tmdbType === "movie" ? match.release_date : match.first_air_date);
-  const imageUrl = match.poster_path
-    ? `https://image.tmdb.org/t/p/w500${match.poster_path}`
-    : undefined;
-  const creatorName = item.searchHint.creator?.trim() || undefined;
-  const externalUrl = `https://www.themoviedb.org/${tmdbType}/${match.id}`;
-  const imageProvenance = buildImageProvenance({
-    source: "tmdb",
-    kind: "poster",
-    remoteUrl: imageUrl,
-    attributionUrl: externalUrl,
-    providerAssetId: match.poster_path,
-    checkedAt: new Date(),
-  });
-  return {
-    source: "tmdb",
-    externalType: tmdbType,
-    externalId: String(match.id),
-    externalUrl,
-    type: item.type,
-    name,
-    creatorName,
-    creatorRole: creatorName ? "director" : undefined,
-    year: year ?? item.year,
-    imageUrl,
-    description: match.overview,
-    metadata: compactMetadata({ searchHint: item.searchHint, imageProvenance }),
-  };
-}
-
-let lastMusicBrainzRequestAt = 0;
-
-async function musicBrainzFetch(url: URL): Promise<Response> {
-  const elapsed = Date.now() - lastMusicBrainzRequestAt;
-  if (elapsed < 1_000) {
-    await new Promise((resolve) => setTimeout(resolve, 1_000 - elapsed));
-  }
-  lastMusicBrainzRequestAt = Date.now();
-  const userAgent =
-    process.env.MUSICBRAINZ_USER_AGENT?.trim() ||
-    "CultureTreeLocal/0.1 (local development; contact: ross@culturetree.local)";
-  return fetch(url, {
-    headers: {
-      "User-Agent": userAgent,
-      Accept: "application/json",
-    },
-  });
 }
 
 function musicBrainzExternalTypeForNode(type: NodeTypeValue): string | null {
@@ -732,25 +635,6 @@ function musicBrainzExternalTypeForNode(type: NodeTypeValue): string | null {
 function musicBrainzUrlForNode(type: NodeTypeValue, mbid: string): string | undefined {
   const externalType = musicBrainzExternalTypeForNode(type);
   return externalType ? `https://musicbrainz.org/${externalType}/${mbid}` : undefined;
-}
-
-function musicTitleSearchVariants(title: string, type: NodeTypeValue): string[] {
-  const trimmed = title.replace(/\s+/g, " ").trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  const variants = [trimmed];
-  if (type === "album") {
-    const stripped = trimmed
-      .replace(/\s*[:\-–—]?\s*(original\s+motion\s+picture\s+)?(score|soundtrack|ost)\s*$/i, "")
-      .trim();
-    if (stripped.length >= 3) {
-      variants.push(stripped);
-    }
-  }
-
-  return Array.from(new Set(variants));
 }
 
 async function fetchReleaseGroupCoverArt(releaseGroupMbid: string): Promise<string | undefined> {
@@ -777,290 +661,90 @@ async function fetchReleaseGroupCoverArt(releaseGroupMbid: string): Promise<stri
   return front?.thumbnails?.large ?? front?.image ?? front?.thumbnails?.small;
 }
 
-async function resolveMusicBrainz(item: TreeItem): Promise<ResolverCandidate | null> {
-  const externalType = musicBrainzExternalTypeForNode(item.type);
-  if (!externalType) {
-    return null;
-  }
-  type MusicBrainzSearchData = {
-    artists?: Array<{ id?: string; name?: string; disambiguation?: string }>;
-    "release-groups"?: Array<{
-      id?: string;
-      title?: string;
-      "first-release-date"?: string;
-      "artist-credit"?: Array<{ name?: string }>;
-    }>;
-    recordings?: Array<{
-      id?: string;
-      title?: string;
-      "first-release-date"?: string;
-      "artist-credit"?: Array<{ name?: string }>;
-    }>;
-  };
+// Build a canonical resolver candidate from a Wikidata entity. The QID is the primary identity;
+// the cover prefers what search already resolved (item.snapshot.image), else is constructed,
+// with a real TMDB poster fetched for film/TV. The sitelink count is persisted as the
+// notability breadcrumb (read live by search; stored here for future work-page ranking).
+async function wikidataEntityToCandidate(
+  item: TreeItem,
+  entity: WikidataEntity,
+): Promise<ResolverCandidate> {
+  const type = item.type;
+  const name = entity.label ?? item.snapshot?.name ?? item.name;
+  const year = yearFromClaims(entity.claims) ?? item.snapshot?.year ?? item.year;
+  const creatorName =
+    item.searchHint.creator?.trim() || creatorHintFromDescription(entity.description);
 
-  async function searchWithTitle(title: string): Promise<MusicBrainzSearchData | null> {
-    const url = new URL(`${MUSICBRAINZ_BASE}/${externalType}`);
-    const creator = item.searchHint.creator?.trim();
-    if (item.type === "artist") {
-      url.searchParams.set("query", `artist:"${title.replaceAll('"', "")}"`);
-    } else if (item.type === "album") {
-      url.searchParams.set(
-        "query",
-        [
-          `releasegroup:"${title.replaceAll('"', "")}"`,
-          creator ? `artistname:"${creator.replaceAll('"', "")}"` : "",
-        ]
-          .filter(Boolean)
-          .join(" AND "),
-      );
-    } else {
-      url.searchParams.set(
-        "query",
-        [
-          `recording:"${title.replaceAll('"', "")}"`,
-          creator ? `artistname:"${creator.replaceAll('"', "")}"` : "",
-        ]
-          .filter(Boolean)
-          .join(" AND "),
-      );
+  let imageUrl = item.snapshot?.image ?? buildWikidataCover(entity, type);
+  if (!item.snapshot?.image && (type === "film" || type === "tv")) {
+    const tmdbId = claimString(entity.claims, type === "film" ? WD.tmdbMovieId : WD.tmdbTvId);
+    if (tmdbId) {
+      const poster = await fetchTmdbPosterById(type === "film" ? "movie" : "tv", tmdbId);
+      if (poster) {
+        imageUrl = poster;
+      }
     }
-    url.searchParams.set("fmt", "json");
-    url.searchParams.set("limit", "5");
-
-    const response = await musicBrainzFetch(url);
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as MusicBrainzSearchData;
   }
 
-  const wantedTitles = musicTitleSearchVariants(item.searchHint.title || item.name, item.type);
-  const searches = await Promise.all(wantedTitles.map((title) => searchWithTitle(title)));
-  if (item.type === "artist") {
-    const match = searches
-      .flatMap((data) => data?.artists ?? [])
-      .find((artist) => wantedTitles.some((wanted) => titleLooksConfident(artist.name, wanted)));
-    if (!match?.id || !match.name) {
-      return null;
-    }
-    return {
-      source: "musicbrainz",
-      externalType,
-      externalId: match.id,
-      externalUrl: musicBrainzUrlForNode(item.type, match.id),
-      type: item.type,
-      name: match.name,
-      description: match.disambiguation,
-      metadata: { searchHint: item.searchHint },
-    };
-  }
+  const externalUrl = `https://www.wikidata.org/wiki/${entity.id}`;
+  const imageProvenance = imageUrl
+    ? inferImageProvenanceFromUrl({
+        remoteUrl: imageUrl,
+        attributionUrl: externalUrl,
+        checkedAt: new Date(),
+      })
+    : undefined;
 
-  const rows = searches.flatMap((data) =>
-    item.type === "album" ? (data?.["release-groups"] ?? []) : (data?.recordings ?? []),
-  );
-  const match = rows.find((row) =>
-    wantedTitles.some((wanted) => titleLooksConfident(row.title, wanted)),
-  );
-  if (!match?.id || !match.title) {
-    return null;
-  }
-  const artistCredit = match["artist-credit"]?.map((credit) => credit.name).filter(Boolean) ?? [];
-  const creatorName = item.searchHint.creator?.trim() || artistCredit[0];
-  const imageUrl = item.type === "album" ? await fetchReleaseGroupCoverArt(match.id) : undefined;
-  const externalUrl = musicBrainzUrlForNode(item.type, match.id);
-  const imageProvenance = buildImageProvenance({
-    source: "cover-art-archive",
-    kind: "cover",
-    remoteUrl: imageUrl,
-    attributionUrl: externalUrl,
-    checkedAt: new Date(),
-  });
   return {
-    source: "musicbrainz",
-    externalType,
-    externalId: match.id,
+    source: "wikidata",
+    externalType: "item",
+    externalId: entity.id,
     externalUrl,
-    type: item.type,
-    name: match.title,
-    creatorName,
-    creatorRole: creatorName ? "artist" : undefined,
-    year: parseYear(match["first-release-date"]),
-    imageUrl,
-    metadata: compactMetadata({
-      searchHint: item.searchHint,
-      artistCredit,
-      imageProvenance,
-    }),
-  };
-}
-
-const DERIVATIVE_BOOK_TITLE_PATTERN =
-  /\b(companion|guide|study guide|critical|criticism|essays|collected|collection|reader|revisited|casebook|approaches|analysis|biography|life of)\b/i;
-
-function isLikelyDerivativeBookTitle(title: string, item: TreeItem): boolean {
-  if (DERIVATIVE_BOOK_TITLE_PATTERN.test(title)) {
-    return true;
-  }
-  const creator = item.searchHint.creator?.trim();
-  if (!creator) {
-    return false;
-  }
-  const normalizedTitle = normalizeForMatch(title);
-  const normalizedCreator = normalizeForMatch(creator);
-  return normalizedTitle.startsWith(`${normalizedCreator} s `);
-}
-
-async function resolveGoogleBooks(item: TreeItem): Promise<ResolverCandidate | null> {
-  if (item.type !== "book") {
-    return null;
-  }
-  const query = item.searchHint.isbn?.trim()
-    ? `isbn:${item.searchHint.isbn.trim()}`
-    : [item.searchHint.title || item.name, item.searchHint.creator]
-        .filter(Boolean)
-        .map((part) => `"${String(part).replaceAll('"', "")}"`)
-        .join("+");
-  const url = new URL(GOOGLE_BOOKS_BASE);
-  url.searchParams.set("q", query);
-  url.searchParams.set("maxResults", "5");
-  const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
-  if (key) {
-    url.searchParams.set("key", key);
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    return null;
-  }
-  const data = (await response.json()) as {
-    items?: Array<{
-      id?: string;
-      volumeInfo?: {
-        title?: string;
-        subtitle?: string;
-        authors?: string[];
-        publishedDate?: string;
-        description?: string;
-        imageLinks?: { thumbnail?: string; smallThumbnail?: string };
-        infoLink?: string;
-      };
-    }>;
-  };
-  const match = data.items?.find((row) =>
-    Boolean(
-      row.volumeInfo?.title &&
-      !isLikelyDerivativeBookTitle(row.volumeInfo.title, item) &&
-      titleLooksConfident(row.volumeInfo.title, item.searchHint.title || item.name),
-    ),
-  );
-  if (!match?.id || !match.volumeInfo?.title) {
-    return null;
-  }
-  const name = match.volumeInfo.subtitle
-    ? `${match.volumeInfo.title}: ${match.volumeInfo.subtitle}`
-    : match.volumeInfo.title;
-  const creatorName = item.searchHint.creator?.trim() || match.volumeInfo.authors?.[0];
-  const rawImageUrl =
-    match.volumeInfo.imageLinks?.thumbnail ?? match.volumeInfo.imageLinks?.smallThumbnail;
-  const imageUrl = isLikelyGoogleBooksPlaceholderUrl(rawImageUrl) ? undefined : rawImageUrl;
-  const externalUrl = `https://books.google.com/books?id=${encodeURIComponent(match.id)}`;
-  const imageProvenance = buildImageProvenance({
-    source: "google-books",
-    kind: "cover",
-    remoteUrl: imageUrl,
-    attributionUrl: externalUrl,
-    checkedAt: new Date(),
-  });
-  return {
-    source: "google-books",
-    externalType: "volume",
-    externalId: match.id,
-    externalUrl,
-    type: item.type,
+    type,
     name,
     creatorName,
-    creatorRole: creatorName ? "author" : undefined,
-    year: parseYear(match.volumeInfo.publishedDate),
+    creatorRole: creatorName ? creatorRoleForType(type) : undefined,
+    disambiguation: disambiguationFor(type, year),
+    year,
     imageUrl,
-    description: match.volumeInfo.description?.slice(0, 500),
+    description: entity.description,
     metadata: compactMetadata({
       searchHint: item.searchHint,
-      authors: match.volumeInfo.authors,
       imageProvenance,
+      notability: entity.sitelinks,
     }),
   };
 }
 
-async function fetchWikipediaSummary(title: string) {
-  const path = encodeURIComponent(title.replaceAll(" ", "_"));
-  const response = await fetch(`${WIKI_REST}/page/summary/${path}`);
-  if (!response.ok) {
+// Resolve an item that already carries a Wikidata identity (a staged search result) by its QID.
+async function resolveWikidataByQid(
+  item: TreeItem,
+  qid: string,
+): Promise<ResolverCandidate | null> {
+  const [entity] = await fetchWikidataEntities([qid]);
+  if (!entity?.label) {
     return null;
   }
-  return (await response.json()) as {
-    title?: string;
-    extract?: string;
-    description?: string;
-    thumbnail?: { source?: string };
-    originalimage?: { source?: string };
-    content_urls?: { desktop?: { page?: string } };
-  };
+  return wikidataEntityToCandidate(item, entity);
 }
 
-async function resolveWikipedia(item: TreeItem): Promise<ResolverCandidate | null> {
-  if (!wikipediaFallbackTypes().has(item.type)) {
+// Resolve an identity-less item (e.g. an AI-generated branch) by finding the most notable
+// Wikidata entity of the item's type for its title — the unified find-or-mint authority that
+// replaced the per-medium TMDB/MusicBrainz/Google Books/Wikipedia title searches.
+async function resolveWikidata(item: TreeItem): Promise<ResolverCandidate | null> {
+  const query = item.searchHint.title || item.name;
+  if (!query.trim()) {
     return null;
   }
-  const directSlug = item.searchHint.wikiSlug?.trim();
-  let title = directSlug;
-  if (!title) {
-    const url = new URL(WIKI_API);
-    url.searchParams.set("action", "query");
-    url.searchParams.set("list", "search");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("srlimit", "3");
-    url.searchParams.set("srsearch", item.searchHint.title || item.name);
-    const response = await fetch(url);
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { query?: { search?: Array<{ title?: string }> } };
-    title = data.query?.search?.find((row) =>
-      titleLooksConfident(row.title, item.searchHint.title || item.name),
-    )?.title;
-  }
-  if (!title) {
+  const qids = await searchWikidataEntities(query);
+  const entities = await fetchWikidataEntities(qids);
+  const match = entities
+    .filter((entity) => entity.label && classifyWikidataType(entity) === item.type)
+    .sort((left, right) => right.sitelinks - left.sitelinks)[0];
+  if (!match) {
     return null;
   }
-  const summary = await fetchWikipediaSummary(title);
-  if (!summary?.title || !titleLooksConfident(summary.title, item.searchHint.title || item.name)) {
-    return null;
-  }
-  const slug = normalizeWikipediaKey(summary.title);
-  if (!slug) {
-    return null;
-  }
-  const creatorName = item.searchHint.creator?.trim() || undefined;
-  const imageUrl = summary.originalimage?.source ?? summary.thumbnail?.source;
-  const imageProvenance = buildImageProvenance({
-    source: "wikipedia",
-    kind: imageKindForNode(item.type),
-    remoteUrl: imageUrl,
-    attributionUrl: summary.content_urls?.desktop?.page,
-    checkedAt: new Date(),
-  });
-  return {
-    source: "wikipedia",
-    externalType: "page",
-    externalId: slug,
-    externalUrl: summary.content_urls?.desktop?.page,
-    type: item.type,
-    name: summary.title,
-    creatorName,
-    creatorRole: creatorName ? creatorRoleForType(item.type) : undefined,
-    imageUrl,
-    description: summary.extract?.slice(0, 500) ?? summary.description,
-    metadata: compactMetadata({ searchHint: item.searchHint, imageProvenance }),
-  };
+  return wikidataEntityToCandidate(item, match);
 }
 
 async function resolveViaPrimaryAuthority(item: TreeItem): Promise<ResolverCandidate | null> {
@@ -1068,18 +752,7 @@ async function resolveViaPrimaryAuthority(item: TreeItem): Promise<ResolverCandi
   if (cached) {
     return cached;
   }
-
-  let candidate: ResolverCandidate | null;
-  if (item.type === "film" || item.type === "tv") {
-    candidate = await resolveTmdb(item);
-  } else if (item.type === "artist" || item.type === "album" || item.type === "song") {
-    candidate = await resolveMusicBrainz(item);
-  } else if (item.type === "book") {
-    candidate = await resolveGoogleBooks(item);
-  } else {
-    candidate = await resolveWikipedia(item);
-  }
-
+  const candidate = await resolveWikidata(item);
   if (candidate) {
     await setCachedResolverCandidate(item, candidate);
   }
@@ -1622,8 +1295,8 @@ export async function backfillEntityImageProvenance(): Promise<{
     const attributionUrl =
       row.primaryExternalSource === "tmdb"
         ? `https://www.themoviedb.org/${row.primaryExternalType}/${row.primaryExternalId}`
-        : row.primaryExternalSource === "google-books"
-          ? `https://books.google.com/books?id=${encodeURIComponent(row.primaryExternalId)}`
+        : row.primaryExternalSource === "wikidata"
+          ? `https://www.wikidata.org/wiki/${row.primaryExternalId}`
           : row.primaryExternalSource === "wikipedia"
             ? `https://en.wikipedia.org/wiki/${encodeURIComponent(row.primaryExternalId)}`
             : row.primaryExternalSource === "musicbrainz"

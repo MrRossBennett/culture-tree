@@ -44,10 +44,16 @@ export function HomeSeedForm({
   prompt,
   setPrompt,
   onSeedHover,
+  variant = "hero",
+  onCreated,
 }: {
   readonly prompt: string;
   readonly setPrompt: (value: string) => void;
   readonly onSeedHover?: (hovered: boolean) => void;
+  /** "hero" is the large homepage form; "compact" is a condensed variant for dialogs. */
+  readonly variant?: "hero" | "compact";
+  /** Called after a tree is created or generation starts (e.g. to close a dialog). */
+  readonly onCreated?: () => void;
 }) {
   const { openSignIn } = useOpenSignIn();
   const { data: user } = useQuery(authQueryOptions());
@@ -83,6 +89,7 @@ export function HomeSeedForm({
       }
       const { treeId } = result;
       setGenerateOptionsOpen(false);
+      onCreated?.();
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       toast.success("Your AI-assisted Culture Tree is growing.");
       void navigate({ to: "/tree/$treeId", params: { treeId } });
@@ -110,6 +117,7 @@ export function HomeSeedForm({
         return;
       }
       const { treeId } = result;
+      onCreated?.();
       void queryClient.invalidateQueries({ queryKey: myCultureTreesQueryOptions().queryKey });
       toast.success("Your Culture Tree is ready to curate.");
       void navigate({ to: "/tree/$treeId", params: { treeId } });
@@ -139,10 +147,31 @@ export function HomeSeedForm({
     setGenerateOptionsOpen(true);
   };
 
+  const compact = variant === "compact";
+  const inputId = compact ? "generate-tree-seed-compact" : "generate-tree-seed";
+  const errorId = compact ? "tree-name-error-compact" : "tree-name-error";
+
+  const handleStartFromScratch = () => {
+    if (!requireTreeName()) {
+      return;
+    }
+    if (!loggedIn) {
+      openSignIn();
+      return;
+    }
+    if (startFromScratch.isPending) return;
+    startFromScratch.mutate();
+  };
+
   return (
-    <section className="relative z-10 mx-auto w-full max-w-4xl space-y-6 px-4 sm:px-6 md:px-0">
+    <section
+      className={cn(
+        "relative z-10 w-full",
+        compact ? "space-y-4" : "mx-auto max-w-4xl space-y-6 px-4 sm:px-6 md:px-0",
+      )}
+    >
       <form
-        className="space-y-7"
+        className={compact ? "space-y-4" : "space-y-7"}
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
@@ -150,101 +179,173 @@ export function HomeSeedForm({
           openGenerateOptions();
         }}
       >
-        <div className="relative rounded-lg border border-border/70 bg-card/35 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.16)] transition-colors focus-within:border-primary/70 sm:p-6">
-          <label htmlFor="generate-tree-seed" className="sr-only">
-            Culture Tree name or Seed
-          </label>
-          <input
-            id="generate-tree-seed"
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-              if (e.target.value.trim()) {
-                setTreeNameError(false);
-              }
-            }}
-            placeholder="A film, album, book, scene, artist..."
-            maxLength={200}
-            aria-invalid={treeNameError}
-            aria-describedby={treeNameError ? "tree-name-error" : undefined}
-            className={cn(
-              "font-heading w-full bg-transparent text-3xl text-foreground italic outline-none sm:text-4xl",
-              "pr-0 pb-24 sm:pr-72 sm:pb-0",
-              "placeholder:text-muted-foreground/65",
-              "caret-primary",
-            )}
-          />
-          <p
-            id="tree-name-error"
-            className={cn(
-              "absolute right-4 bottom-[4.75rem] rounded-sm border border-destructive/25 bg-background/95 px-2 py-1 font-mono text-[0.65rem] tracking-[0.08em] text-destructive uppercase shadow-sm sm:right-6 sm:bottom-[calc(50%+2rem)]",
-              !treeNameError && "invisible",
-            )}
-          >
-            Tree name is required
-          </p>
-          <div className="absolute right-4 bottom-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2 sm:right-6 sm:bottom-1/2 sm:translate-y-1/2">
-            <button
-              type="button"
-              disabled={creationPending}
-              onClick={() => {
-                if (!requireTreeName()) {
-                  return;
-                }
-                if (!loggedIn) {
-                  openSignIn();
-                  return;
-                }
-                if (startFromScratch.isPending) return;
-                startFromScratch.mutate();
-              }}
+        {compact ? (
+          <div className="space-y-4">
+            <div className="relative rounded-lg border border-border/70 bg-card/35 p-3 transition-colors focus-within:border-primary/70">
+              <label htmlFor={inputId} className="sr-only">
+                Culture Tree name or Seed
+              </label>
+              <input
+                id={inputId}
+                value={prompt}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  if (e.target.value.trim()) {
+                    setTreeNameError(false);
+                  }
+                }}
+                placeholder="A film, album, book, scene, artist..."
+                maxLength={200}
+                autoFocus
+                aria-invalid={treeNameError}
+                aria-describedby={treeNameError ? errorId : undefined}
+                className={cn(
+                  "font-heading w-full bg-transparent text-xl text-foreground italic outline-none",
+                  "placeholder:text-muted-foreground/65",
+                  "caret-primary",
+                )}
+              />
+            </div>
+            <p
+              id={errorId}
               className={cn(
-                "inline-flex min-h-12 items-center justify-center gap-2 rounded-sm border px-5 py-3 font-mono text-xs tracking-[0.12em] uppercase transition-colors",
-                treeName
-                  ? "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
-                  : "border-border/70 bg-card/50 text-muted-foreground",
+                "font-mono text-[0.65rem] tracking-[0.08em] text-destructive uppercase",
+                !treeNameError && "invisible",
               )}
             >
-              {startFromScratch.isPending ? (
-                <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
-              ) : (
-                <>
-                  <PlusIcon className="size-3.5" aria-hidden />
-                  Create Tree
-                </>
-              )}
-            </button>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Generate Tree with AI"
-                    disabled={creationPending}
-                    onMouseEnter={() => onSeedHover?.(true)}
-                    onMouseLeave={() => onSeedHover?.(false)}
-                    onClick={openGenerateOptions}
-                    className={cn(
-                      "inline-flex min-h-12 min-w-12 items-center justify-center rounded-sm border p-3 transition-colors",
-                      treeName
-                        ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                        : "border-primary/70 bg-primary text-primary-foreground opacity-65 hover:opacity-80",
-                    )}
-                  />
-                }
+              Tree name is required
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={creationPending}
+                onClick={handleStartFromScratch}
+                className={cn(
+                  "inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-sm border px-4 py-2.5 font-mono text-xs tracking-[0.12em] uppercase transition-colors",
+                  treeName
+                    ? "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
+                    : "border-border/70 bg-card/50 text-muted-foreground",
+                )}
+              >
+                {startFromScratch.isPending ? (
+                  <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <>
+                    <PlusIcon className="size-3.5" aria-hidden />
+                    Create Tree
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                aria-label="Generate Tree with AI"
+                disabled={creationPending}
+                onMouseEnter={() => onSeedHover?.(true)}
+                onMouseLeave={() => onSeedHover?.(false)}
+                onClick={openGenerateOptions}
+                className={cn(
+                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm border px-4 py-2.5 font-mono text-xs tracking-[0.12em] uppercase transition-colors",
+                  treeName
+                    ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "border-primary/70 bg-primary text-primary-foreground opacity-65 hover:opacity-80",
+                )}
               >
                 {generate.isPending ? (
-                  <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                  <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
                 ) : (
-                  <SparklesIcon className="size-4" aria-hidden />
+                  <SparklesIcon className="size-3.5" aria-hidden />
                 )}
-              </TooltipTrigger>
-              <TooltipContent>Generate Tree with AI</TooltipContent>
-            </Tooltip>
+                Generate with AI
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="relative rounded-lg border border-border/70 bg-card/35 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.16)] transition-colors focus-within:border-primary/70 sm:p-6">
+            <label htmlFor={inputId} className="sr-only">
+              Culture Tree name or Seed
+            </label>
+            <input
+              id={inputId}
+              value={prompt}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                if (e.target.value.trim()) {
+                  setTreeNameError(false);
+                }
+              }}
+              placeholder="A film, album, book, scene, artist..."
+              maxLength={200}
+              aria-invalid={treeNameError}
+              aria-describedby={treeNameError ? errorId : undefined}
+              className={cn(
+                "font-heading w-full bg-transparent text-3xl text-foreground italic outline-none sm:text-4xl",
+                "pr-0 pb-24 sm:pr-72 sm:pb-0",
+                "placeholder:text-muted-foreground/65",
+                "caret-primary",
+              )}
+            />
+            <p
+              id={errorId}
+              className={cn(
+                "absolute right-4 bottom-[4.75rem] rounded-sm border border-destructive/25 bg-background/95 px-2 py-1 font-mono text-[0.65rem] tracking-[0.08em] text-destructive uppercase shadow-sm sm:right-6 sm:bottom-[calc(50%+2rem)]",
+                !treeNameError && "invisible",
+              )}
+            >
+              Tree name is required
+            </p>
+            <div className="absolute right-4 bottom-4 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2 sm:right-6 sm:bottom-1/2 sm:translate-y-1/2">
+              <button
+                type="button"
+                disabled={creationPending}
+                onClick={handleStartFromScratch}
+                className={cn(
+                  "inline-flex min-h-12 items-center justify-center gap-2 rounded-sm border px-5 py-3 font-mono text-xs tracking-[0.12em] uppercase transition-colors",
+                  treeName
+                    ? "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
+                    : "border-border/70 bg-card/50 text-muted-foreground",
+                )}
+              >
+                {startFromScratch.isPending ? (
+                  <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <>
+                    <PlusIcon className="size-3.5" aria-hidden />
+                    Create Tree
+                  </>
+                )}
+              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Generate Tree with AI"
+                      disabled={creationPending}
+                      onMouseEnter={() => onSeedHover?.(true)}
+                      onMouseLeave={() => onSeedHover?.(false)}
+                      onClick={openGenerateOptions}
+                      className={cn(
+                        "inline-flex min-h-12 min-w-12 items-center justify-center rounded-sm border p-3 transition-colors",
+                        treeName
+                          ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "border-primary/70 bg-primary text-primary-foreground opacity-65 hover:opacity-80",
+                      )}
+                    />
+                  }
+                >
+                  {generate.isPending ? (
+                    <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <SparklesIcon className="size-4" aria-hidden />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>Generate Tree with AI</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+        )}
 
-        {loggedIn ? <SeedCountLine /> : null}
+        {loggedIn && !compact ? <SeedCountLine /> : null}
       </form>
 
       <Dialog

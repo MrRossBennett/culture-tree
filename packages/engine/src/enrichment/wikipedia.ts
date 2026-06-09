@@ -9,7 +9,7 @@ function stripTrailingAuthorFromTitle(title: string): string {
   return stripped.length >= 3 ? stripped : trimmed;
 }
 
-async function fetchSummaryByTitle(pageTitle: string): Promise<EnrichedMedia> {
+export async function fetchSummaryByTitle(pageTitle: string): Promise<EnrichedMedia> {
   const path = encodeURIComponent(pageTitle.replaceAll(" ", "_"));
   const res = await fetch(`${WIKI_REST}/page/summary/${path}`);
   if (!res.ok) {

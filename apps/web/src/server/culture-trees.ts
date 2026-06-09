@@ -2,7 +2,11 @@ import { $getUser } from "@repo/auth/tanstack/functions";
 import { authMiddleware } from "@repo/auth/tanstack/middleware";
 import { db } from "@repo/db";
 import { cultureTree, user as authUser } from "@repo/db/schema";
-import { resolveSearchSubjectWorks, searchExternalNodes } from "@repo/engine";
+import {
+  resolveSearchSubjectBio,
+  resolveSearchSubjectWorks,
+  searchExternalNodes,
+} from "@repo/engine";
 import {
   CultureTreeSchema,
   ExternalNodeSearchResultSchema,
@@ -190,6 +194,13 @@ export const $resolveSearchSubjectWorks = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const results = await resolveSearchSubjectWorks(data.identity);
     return { results };
+  });
+
+export const $resolveSearchSubjectBio = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .inputValidator(ResolveSearchSubjectWorksInputSchema)
+  .handler(async ({ data }) => {
+    return resolveSearchSubjectBio(data.identity);
   });
 
 export const $suggestCultureTreeBranches = createServerFn({ method: "POST" })

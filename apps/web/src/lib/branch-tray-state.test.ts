@@ -83,18 +83,18 @@ describe("Branch Tray state", () => {
     expect(canSubmitBranchTray(tray)).toBe(true);
   });
 
-  it("refuses to stage a creator subject (subjects are explored, never added)", () => {
+  it("stages a creator subject — creators are first-class Branches (ADR 0005)", () => {
     const radiohead: ExternalNodeSearchResult = {
       kind: "expandable-subject",
-      identity: { source: "musicbrainz", externalId: "artist:abc123" },
+      identity: { source: "wikidata", externalId: "Q44190" },
       snapshot: { name: "Radiohead", type: "artist" },
       searchHint: { title: "Radiohead" },
     };
 
-    expect(branchTrayUnavailableReason({ tray: [], existingBranches: [], result: radiohead })).toBe(
-      "not-addable",
-    );
-    expect(stageSearchResult({ tray: [], result: radiohead })).toHaveLength(0);
+    expect(
+      branchTrayUnavailableReason({ tray: [], existingBranches: [], result: radiohead }),
+    ).toBeNull();
+    expect(stageSearchResult({ tray: [], result: radiohead })).toHaveLength(1);
   });
 
   it("stages multiple searched Branches in order", () => {

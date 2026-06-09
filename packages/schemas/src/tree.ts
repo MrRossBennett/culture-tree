@@ -31,7 +31,7 @@ export const ConnectionType = z.enum([
 ]);
 
 export const NodeSource = z.enum(["ai", "user"]);
-export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "google-books", "musicbrainz"]);
+export const ExternalNodeSource = z.enum(["tmdb", "wikipedia", "musicbrainz", "wikidata"]);
 export const GuideSectionId = z.enum([
   "start-here",
   "more-like-this",

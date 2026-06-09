@@ -2,10 +2,12 @@ import { z } from "zod";
 
 export const ImageProvenanceSource = z.enum([
   "tmdb",
-  "google-books",
   "wikipedia",
+  "wikidata",
   "musicbrainz",
   "cover-art-archive",
+  "apple-music",
+  "open-library",
   "user",
   "unknown",
 ]);
@@ -101,13 +103,9 @@ export function inferImageProvenanceFromUrl(input: {
     });
   }
 
-  if (
-    hostname.endsWith("googleusercontent.com") ||
-    hostname.includes("googleapis.com") ||
-    hostname === "books.google.com"
-  ) {
+  if (hostname === "covers.openlibrary.org") {
     return buildImageProvenance({
-      source: "google-books",
+      source: "open-library",
       kind: "cover",
       remoteUrl,
       attributionUrl: input.attributionUrl,
@@ -119,6 +117,16 @@ export function inferImageProvenanceFromUrl(input: {
     return buildImageProvenance({
       source: "wikipedia",
       kind: "lead-image",
+      remoteUrl,
+      attributionUrl: input.attributionUrl,
+      checkedAt: input.checkedAt,
+    });
+  }
+
+  if (hostname.endsWith("mzstatic.com")) {
+    return buildImageProvenance({
+      source: "apple-music",
+      kind: "cover",
       remoteUrl,
       attributionUrl: input.attributionUrl,
       checkedAt: input.checkedAt,

@@ -39,7 +39,11 @@ import {
   type BranchTrayItem,
   type BranchTraySubmitInput,
 } from "~/lib/branch-tray-state";
-import { $resolveSearchSubjectWorks, $searchCultureTreeNodes } from "~/server/culture-trees";
+import {
+  $resolveSearchSubjectBio,
+  $resolveSearchSubjectWorks,
+  $searchCultureTreeNodes,
+} from "~/server/culture-trees";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -64,6 +68,9 @@ function CoverImage({
     <img
       alt=""
       referrerPolicy="no-referrer"
+      // A comprehensive creator filmography can be 100+ posters; lazy-load so off-screen covers
+      // don't all fetch at once when the gallery mounts.
+      loading="lazy"
       src={src}
       onError={() => setFailed(true)}
       className={imgClassName}
@@ -71,22 +78,36 @@ function CoverImage({
   );
 }
 
+// Music covers (album/song) are square — Cover Art Archive serves 1:1 art; everything else
+// (film/tv/book/creator) is a 3:4 poster. Forcing one shape on both letterboxes or crops the
+// other, so the card mirrors the medium's native aspect.
+function coverAspectClass(type: NodeTypeValue): string {
+  return type === "album" || type === "song" ? "aspect-square" : "aspect-[3/4]";
+}
+
 function ResultCard({
   result,
   unavailableReason,
   onStage,
   onUnstage,
+  expandable = false,
+  isExpanded = false,
+  isExpandLoading = false,
+  onExpand,
 }: {
   readonly result: ExternalNodeSearchResult;
-  readonly unavailableReason: "not-addable" | "staged" | "existing" | "full" | null;
+  readonly unavailableReason: "staged" | "existing" | "full" | null;
   readonly onStage: (result: ExternalNodeSearchResult) => void;
   readonly onUnstage: (result: ExternalNodeSearchResult) => void;
+  // Creators (artist/person) are addable like any other Branch and *also* expandable into
+  // their works (ADR 0005) — staging is the card body, expanding is the corner button.
+  readonly expandable?: boolean;
+  readonly isExpanded?: boolean;
+  readonly isExpandLoading?: boolean;
+  readonly onExpand?: (result: ExternalNodeSearchResult) => void;
 }) {
   const isStaged = unavailableReason === "staged";
-  const isBlocked =
-    unavailableReason === "existing" ||
-    unavailableReason === "full" ||
-    unavailableReason === "not-addable";
+  const isBlocked = unavailableReason === "existing" || unavailableReason === "full";
   const overlayLabel =
     unavailableReason === "existing"
       ? "In tree"
@@ -95,61 +116,102 @@ function ResultCard({
         : null;
 
   return (
-    <button
-      type="button"
-      disabled={isBlocked}
-      onClick={() => (isStaged ? onUnstage(result) : onStage(result))}
+    // A div, not a button: a creator card holds two distinct actions (stage + expand), and
+    // an expand button can't nest inside a stage button. The stage button covers the whole
+    // card; the visuals sit above it pointer-events-transparent, and the expand button on top.
+    <div
       className={cn(
-        "group relative aspect-[3/4] overflow-hidden rounded-lg border text-left transition-transform",
-        "focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none",
-        isBlocked ? "cursor-not-allowed opacity-45" : "hover:scale-[1.03]",
-        isStaged
+        // self-start: keep the card at its intrinsic aspect height instead of stretching to the
+        // row track, so a square album beside a 3:4 poster stays square.
+        "group relative self-start overflow-hidden rounded-lg border transition-transform",
+        coverAspectClass(result.snapshot.type),
+        isBlocked ? "opacity-45" : "hover:scale-[1.03]",
+        isStaged || isExpanded
           ? "border-[oklch(0.82_0.11_100)] ring-2 ring-[oklch(0.82_0.11_100/0.5)]"
           : "border-[oklch(0.9_0.01_120/0.12)]",
       )}
     >
-      <CoverImage
-        src={result.snapshot.image}
-        imgClassName="size-full object-cover"
-        renderFallback={() => (
-          <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
-            <NodeThumbnail
-              type={result.snapshot.type}
-              size="md"
-              className="size-12 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
-            />
-          </div>
+      <button
+        type="button"
+        disabled={isBlocked}
+        aria-label={isStaged ? `Remove ${result.snapshot.name}` : `Add ${result.snapshot.name}`}
+        onClick={() => (isStaged ? onUnstage(result) : onStage(result))}
+        className={cn(
+          "absolute inset-0 z-0 rounded-lg focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none",
+          isBlocked ? "cursor-not-allowed" : "cursor-pointer",
         )}
       />
 
-      <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/95 via-black/70 to-transparent p-2.5 pt-10">
-        <p className="truncate text-sm font-medium text-white">{result.snapshot.name}</p>
-        <div className="mt-1 flex items-center gap-2">
-          <NodeTypeBadge type={result.snapshot.type} />
-          {result.snapshot.year != null ? (
-            <span className="font-mono text-[0.6rem] text-white/70 tabular-nums">
-              {result.snapshot.year}
-            </span>
-          ) : null}
+      <div className="pointer-events-none absolute inset-0">
+        <CoverImage
+          src={result.snapshot.image}
+          imgClassName="size-full object-cover"
+          renderFallback={() => (
+            <div className="flex size-full items-center justify-center bg-[oklch(0.95_0.01_120/0.05)]">
+              <NodeThumbnail
+                type={result.snapshot.type}
+                size="md"
+                className="size-12 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
+              />
+            </div>
+          )}
+        />
+
+        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/95 via-black/70 to-transparent p-2.5 pt-10">
+          <p className="truncate text-sm font-medium text-white">{result.snapshot.name}</p>
+          <div className="mt-1 flex items-center gap-2">
+            <NodeTypeBadge type={result.snapshot.type} />
+            {result.snapshot.year != null ? (
+              <span className="font-mono text-[0.6rem] text-white/70 tabular-nums">
+                {result.snapshot.year}
+              </span>
+            ) : null}
+          </div>
         </div>
+
+        {isStaged ? (
+          <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[oklch(0.82_0.11_100)] text-black">
+            <CheckIcon className="size-3.5" aria-hidden />
+          </span>
+        ) : !isBlocked ? (
+          <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+            <PlusIcon className="size-3.5" aria-hidden />
+          </span>
+        ) : null}
+
+        {overlayLabel ? (
+          <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 font-mono text-[0.55rem] tracking-wide text-white/80 uppercase">
+            {overlayLabel}
+          </span>
+        ) : null}
       </div>
 
-      {isStaged ? (
-        <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[oklch(0.82_0.11_100)] text-black">
-          <CheckIcon className="size-3.5" aria-hidden />
-        </span>
-      ) : !isBlocked ? (
-        <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
-          <PlusIcon className="size-3.5" aria-hidden />
-        </span>
+      {expandable && onExpand ? (
+        // A distinct affordance from staging: reveals the creator's works inline (hop two)
+        // without adding the creator itself.
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          aria-label={
+            isExpanded
+              ? `Hide ${result.snapshot.name}'s works`
+              : `Show ${result.snapshot.name}'s works`
+          }
+          onClick={() => onExpand(result)}
+          className="absolute bottom-2 left-2 z-10 inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/70 px-2 py-1 font-mono text-[0.55rem] tracking-wide text-white/90 uppercase transition hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none"
+        >
+          {isExpandLoading ? (
+            <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
+          ) : (
+            <ChevronDownIcon
+              className={cn("size-3 transition-transform", isExpanded ? "rotate-180" : "")}
+              aria-hidden
+            />
+          )}
+          Works
+        </button>
       ) : null}
-
-      {overlayLabel ? (
-        <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 font-mono text-[0.55rem] tracking-wide text-white/80 uppercase">
-          {overlayLabel}
-        </span>
-      ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -169,98 +231,162 @@ type SubjectWorksState = {
   results: readonly ExternalNodeSearchResult[];
 };
 
-// A creator subject (artist/person): a header row that expands in place to reveal the
-// creator's works (hop two). The subject itself is never addable — only its works are.
-function SubjectSection({
+type SubjectBioState = {
+  status: "loading" | "loaded" | "error";
+  extract?: string;
+  wikipediaUrl?: string;
+};
+
+// Section order within a creator's works, and the plural header each medium shows. Albums
+// (square) and posters (3:4) land in their own rows, so the differing shapes read as
+// intentional rather than a ragged mix.
+const WORKS_SECTION_ORDER: readonly NodeTypeValue[] = [
+  "film",
+  "tv",
+  "album",
+  "song",
+  "book",
+  "artwork",
+];
+const WORKS_SECTION_TITLE: Partial<Record<NodeTypeValue, string>> = {
+  film: "Films",
+  tv: "TV",
+  album: "Albums",
+  song: "Songs",
+  book: "Books",
+  artwork: "Artworks",
+};
+
+// Group a creator's works by medium, preserving each work's notability order within its
+// section and emitting sections in WORKS_SECTION_ORDER (unknown types tacked on after).
+function groupWorksByMedium(
+  works: readonly ExternalNodeSearchResult[],
+): Array<{ type: NodeTypeValue; title: string; works: ExternalNodeSearchResult[] }> {
+  const byType = new Map<NodeTypeValue, ExternalNodeSearchResult[]>();
+  for (const work of works) {
+    const bucket = byType.get(work.snapshot.type);
+    if (bucket) {
+      bucket.push(work);
+    } else {
+      byType.set(work.snapshot.type, [work]);
+    }
+  }
+  const ordered = [
+    ...WORKS_SECTION_ORDER.filter((type) => byType.has(type)),
+    ...[...byType.keys()].filter((type) => !WORKS_SECTION_ORDER.includes(type)),
+  ];
+  return ordered.map((type) => ({
+    type,
+    title: WORKS_SECTION_TITLE[type] ?? typeLabel(type),
+    works: byType.get(type) ?? [],
+  }));
+}
+
+// The Wikipedia intro that fills the space beside an expanded creator while their (slower)
+// works load underneath. Falls back to the Wikidata one-liner (already on the card) when there's
+// no article, so the column is never just empty.
+function SubjectBio({ state }: { readonly state: SubjectBioState | undefined }) {
+  if (state?.status === "loading") {
+    return (
+      <div className="mt-2 space-y-1.5" aria-hidden>
+        {[0.95, 1, 0.85, 0.6].map((width, index) => (
+          <div
+            key={index}
+            className="h-2.5 animate-pulse rounded-full bg-[oklch(0.9_0.01_120/0.08)]"
+            style={{ width: `${width * 100}%` }}
+          />
+        ))}
+      </div>
+    );
+  }
+  if (state?.status === "loaded" && state.extract) {
+    return (
+      <>
+        <p className="mt-2 line-clamp-5 text-xs leading-relaxed text-[oklch(0.9_0.01_120/0.72)]">
+          {state.extract}
+        </p>
+        {state.wikipediaUrl ? (
+          <a
+            href={state.wikipediaUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1.5 inline-block text-[0.65rem] text-[oklch(0.82_0.11_100)] underline-offset-2 hover:underline"
+          >
+            Read on Wikipedia →
+          </a>
+        ) : null}
+      </>
+    );
+  }
+  return null;
+}
+
+// An expanded creator (hop two): the creator's own card on the left, a Wikipedia bio filling
+// the space to its right, and their (addable) works grouped by medium underneath. A single
+// full-width band injected into the gallery grid in the creator's place.
+function SubjectExpansionPanel({
   subject,
-  isOpen,
-  state,
-  onToggle,
+  card,
+  worksState,
+  bioState,
   renderWork,
 }: {
   readonly subject: ExternalNodeSearchResult;
-  readonly isOpen: boolean;
-  readonly state: SubjectWorksState | undefined;
-  readonly onToggle: (subject: ExternalNodeSearchResult) => void;
+  readonly card: ReactNode;
+  readonly worksState: SubjectWorksState | undefined;
+  readonly bioState: SubjectBioState | undefined;
   readonly renderWork: (work: ExternalNodeSearchResult) => ReactNode;
 }) {
-  const works = state?.results ?? [];
+  const works = worksState?.results ?? [];
+  const sections = works.length > 0 ? groupWorksByMedium(works) : [];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-[oklch(0.9_0.01_120/0.12)]">
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        onClick={() => onToggle(subject)}
-        className="flex w-full items-center gap-3 bg-[oklch(0.95_0.01_120/0.04)] p-2.5 text-left transition-colors hover:bg-[oklch(0.95_0.01_120/0.07)] focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.11_100/0.6)] focus-visible:outline-none"
-      >
-        <span className="size-12 shrink-0 overflow-hidden rounded-full bg-[oklch(0.95_0.01_120/0.05)]">
-          <CoverImage
-            src={subject.snapshot.image}
-            imgClassName="size-full object-cover"
-            renderFallback={() => (
-              <span className="flex size-full items-center justify-center">
-                <NodeThumbnail
-                  type={subject.snapshot.type}
-                  size="sm"
-                  className="size-6 bg-transparent text-[oklch(0.9_0.01_120/0.45)]"
-                />
-              </span>
-            )}
-          />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-white">
-            {subject.snapshot.name}
-          </span>
-          <span className="mt-1 flex items-center gap-2">
-            <NodeTypeBadge type={subject.snapshot.type} />
-            {subject.meta ? (
-              <span className="truncate text-[0.7rem] text-[oklch(0.9_0.01_120/0.5)]">
-                {subject.meta}
-              </span>
-            ) : null}
-          </span>
-        </span>
-        <span className="flex items-center gap-1.5 pr-1 text-[0.7rem] text-[oklch(0.9_0.01_120/0.6)]">
-          {state?.status === "loading" ? (
-            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <>
-              {isOpen ? "Hide" : "Expand"}
-              <ChevronDownIcon
-                className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "")}
-                aria-hidden
-              />
-            </>
-          )}
-        </span>
-      </button>
-
-      {isOpen ? (
-        <div className="p-3">
-          {state?.status === "error" ? (
-            <p className="py-4 text-center text-xs text-destructive">
-              Couldn&apos;t load works for {subject.snapshot.name}.
-            </p>
-          ) : state?.status === "loaded" && works.length === 0 ? (
-            <p className="py-4 text-center text-xs text-[oklch(0.9_0.01_120/0.58)]">
-              No works found.
-            </p>
-          ) : works.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
-              {works.map((work) => renderWork(work))}
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-4">
-              <LoaderCircleIcon
-                className="size-4 animate-spin text-[oklch(0.9_0.01_120/0.58)]"
-                aria-hidden
-              />
-            </div>
-          )}
+    <section className="col-span-full rounded-lg border border-[oklch(0.82_0.11_100/0.3)] bg-[oklch(0.95_0.01_120/0.03)] p-3">
+      <div className="flex gap-4">
+        <div className="w-28 shrink-0 sm:w-32">{card}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white">{subject.snapshot.name}</p>
+          {subject.meta ? (
+            <p className="mt-0.5 text-[0.7rem] text-[oklch(0.9_0.01_120/0.55)]">{subject.meta}</p>
+          ) : null}
+          <SubjectBio state={bioState} />
         </div>
-      ) : null}
+      </div>
+
+      <div className="mt-4">
+        <p className="mb-2.5 font-mono text-[0.6rem] tracking-[0.12em] text-[oklch(0.9_0.01_120/0.55)] uppercase">
+          Works
+        </p>
+        {worksState?.status === "error" ? (
+          <p className="py-4 text-center text-xs text-destructive">
+            Couldn&apos;t load works for {subject.snapshot.name}.
+          </p>
+        ) : worksState?.status === "loaded" && works.length === 0 ? (
+          <p className="py-4 text-center text-xs text-[oklch(0.9_0.01_120/0.58)]">
+            No works found — you can still add {subject.snapshot.name} as a Branch.
+          </p>
+        ) : works.length > 0 ? (
+          <div className="space-y-3.5">
+            {sections.map((section) => (
+              <div key={section.type}>
+                <p className="mb-2 font-mono text-[0.55rem] tracking-[0.12em] text-[oklch(0.9_0.01_120/0.42)] uppercase">
+                  {section.title}
+                </p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+                  {section.works.map((work) => renderWork(work))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-4">
+            <LoaderCircleIcon
+              className="size-4 animate-spin text-[oklch(0.9_0.01_120/0.58)]"
+              aria-hidden
+            />
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -303,6 +429,7 @@ export function TreeNodeDialog({
   const [results, setResults] = useState<ExternalNodeSearchResult[]>([]);
   const [openSubjects, setOpenSubjects] = useState<Set<string>>(() => new Set());
   const [subjectWorks, setSubjectWorks] = useState<Record<string, SubjectWorksState>>({});
+  const [subjectBios, setSubjectBios] = useState<Record<string, SubjectBioState>>({});
   const [activeResultType, setActiveResultType] = useState<NodeTypeValue | null>(null);
   const [showResultsFade, setShowResultsFade] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -321,6 +448,7 @@ export function TreeNodeDialog({
       setResults([]);
       setOpenSubjects(new Set());
       setSubjectWorks({});
+      setSubjectBios({});
       setActiveResultType(null);
       setShowResultsFade(false);
       setSearchError(null);
@@ -339,6 +467,7 @@ export function TreeNodeDialog({
       setResults([]);
       setOpenSubjects(new Set());
       setSubjectWorks({});
+      setSubjectBios({});
       setActiveResultType(null);
       setShowResultsFade(false);
       setSearchError(null);
@@ -397,14 +526,10 @@ export function TreeNodeDialog({
     activeResultType == null
       ? results
       : results.filter((result) => result.snapshot.type === activeResultType);
-  // Results can mix addable works and expandable creator subjects; render each in its own
-  // section. Works lead (the engine orders them first), creator subjects follow.
-  const workResults = filteredResults.filter((result) => result.kind === "addable-work");
-  const subjectResultsList = filteredResults.filter(
-    (result) => result.kind === "expandable-subject",
-  );
-  // AI "grow" and keyboard-stage only apply to addable works, never to creator subjects.
-  const suggestedAiResult = workResults.at(0);
+  // One flat gallery ranked by notability (ADR 0004): works and creators interleaved, every
+  // card addable. Creators (`expandable-subject`) additionally expand into their works.
+  // AI "grow" still seeds from the top *work*, not a creator.
+  const suggestedAiResult = filteredResults.find((result) => result.kind === "addable-work");
   const topStageableResult = filteredResults.find(
     (result) =>
       branchTrayUnavailableReason({
@@ -437,8 +562,9 @@ export function TreeNodeDialog({
     };
   }, [filteredResults, open]);
 
-  // Expanding a creator subject resolves its works (hop two) on demand, in place. Results
-  // are cached per subject so collapsing/re-expanding doesn't refetch.
+  // Expanding a creator subject resolves its works (hop two) on demand, in place, plus a short
+  // bio that fills the space beside the creator while the (slower) works load. Both are cached
+  // per subject so collapsing/re-expanding doesn't refetch.
   const handleToggleSubject = (subject: ExternalNodeSearchResult) => {
     const key = identityKey(subject.identity);
     const willOpen = !openSubjects.has(key);
@@ -453,22 +579,43 @@ export function TreeNodeDialog({
       return next;
     });
 
-    if (!willOpen || subjectWorks[key]?.status === "loaded") {
+    if (!willOpen) {
       return;
     }
 
-    setSubjectWorks((current) => ({ ...current, [key]: { status: "loading", results: [] } }));
-    void (async () => {
-      try {
-        const response = await $resolveSearchSubjectWorks({ data: { identity: subject.identity } });
-        setSubjectWorks((current) => ({
-          ...current,
-          [key]: { status: "loaded", results: response.results },
-        }));
-      } catch {
-        setSubjectWorks((current) => ({ ...current, [key]: { status: "error", results: [] } }));
-      }
-    })();
+    if (subjectWorks[key]?.status !== "loaded") {
+      setSubjectWorks((current) => ({ ...current, [key]: { status: "loading", results: [] } }));
+      void (async () => {
+        try {
+          const response = await $resolveSearchSubjectWorks({
+            data: { identity: subject.identity },
+          });
+          setSubjectWorks((current) => ({
+            ...current,
+            [key]: { status: "loaded", results: response.results },
+          }));
+        } catch {
+          setSubjectWorks((current) => ({ ...current, [key]: { status: "error", results: [] } }));
+        }
+      })();
+    }
+
+    // Bio (Wikipedia intro) resolves only for Wikidata subjects — the only source with a QID to
+    // key it on — and in parallel with works so it can land first.
+    if (subject.identity.source === "wikidata" && subjectBios[key]?.status !== "loaded") {
+      setSubjectBios((current) => ({ ...current, [key]: { status: "loading" } }));
+      void (async () => {
+        try {
+          const bio = await $resolveSearchSubjectBio({ data: { identity: subject.identity } });
+          setSubjectBios((current) => ({
+            ...current,
+            [key]: { status: "loaded", extract: bio.extract, wikipediaUrl: bio.wikipediaUrl },
+          }));
+        } catch {
+          setSubjectBios((current) => ({ ...current, [key]: { status: "error" } }));
+        }
+      })();
+    }
   };
 
   // Staging keeps the gallery in place so several Branches can be staged from one search.
@@ -725,29 +872,43 @@ export function TreeNodeDialog({
         {/* Body: poster gallery */}
         <div ref={resultsPaneRef} className="relative min-h-0 overflow-y-auto px-6 py-5">
           {filteredResults.length > 0 ? (
-            <div className="space-y-4">
-              {workResults.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
-                  {workResults.map((result) => renderWorkCard(result))}
-                </div>
-              ) : null}
-              {subjectResultsList.length > 0 ? (
-                <div className="space-y-2.5">
-                  {subjectResultsList.map((subject) => {
-                    const key = identityKey(subject.identity);
-                    return (
-                      <SubjectSection
-                        key={key}
-                        subject={subject}
-                        isOpen={openSubjects.has(key)}
-                        state={subjectWorks[key]}
-                        onToggle={handleToggleSubject}
-                        renderWork={renderWorkCard}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+              {filteredResults.map((result) => {
+                const key = identityKey(result.identity);
+                const expandable = result.kind === "expandable-subject";
+                const isExpanded = expandable && openSubjects.has(key);
+                const card = (
+                  <ResultCard
+                    key={key}
+                    result={result}
+                    unavailableReason={branchTrayUnavailableReason({
+                      tray: branchTray,
+                      existingBranches,
+                      result,
+                    })}
+                    onStage={handleStageResult}
+                    onUnstage={handleUnstageResult}
+                    expandable={expandable}
+                    isExpanded={isExpanded}
+                    isExpandLoading={isExpanded && subjectWorks[key]?.status === "loading"}
+                    onExpand={handleToggleSubject}
+                  />
+                );
+                if (!isExpanded) {
+                  return card;
+                }
+                // Expanded: the card folds into a full-width band beside a bio, works below.
+                return (
+                  <SubjectExpansionPanel
+                    key={key}
+                    subject={result}
+                    card={card}
+                    worksState={subjectWorks[key]}
+                    bioState={subjectBios[key]}
+                    renderWork={renderWorkCard}
+                  />
+                );
+              })}
             </div>
           ) : showSearching ? (
             <div className="flex h-full items-center justify-center">
